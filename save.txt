@@ -1,0 +1,83 @@
+import json
+
+from app.services.intention import classify_intention
+from app.services.ollama import call_ollama, stream_ollama
+from app.services.database import get_db_schema, execute_select, update_intention, create_research
+from app.prompts.aide import AIDE_SYSTEM_PROMPT 
+from app.prompts.affinage import build_affinage_prompt
+from app.prompts.recherche import build_recherche_prompt
+from app.prompts.hors_perimetre import HORS_PERIMETRE_SYSTEM_PROMPT
+from app.prompts.salutation import SALUTATION_SYSTEM_PROMPT
+import asyncio
+
+# Stream un texte mot par mot avec un délai
+async def stream_text(text: str, delay: float = 0.05):
+    for chunk in text.split(" "):
+        yield chunk + " "
+        await asyncio.sleep(delay)
+
+# Retourne un générateur async selon l'intention détectée
+async def handle_stream(message: str, user_id: int, historique: list[dict], last_message_id: int):
+    intention = await classify_intention(message, historique)
+    update_intention(last_message_id, intention)
+
+    sql = ''
+
+    if intention == "salutation":
+        yield json.dumps({ "intention": intention, "generated_sql": sql }) + "\n"
+        yield "[STREAM_START]" + "\n"
+        prompt = f"\nMessage à traiter: {message}\n"
+        async for chunk in stream_ollama(prompt=prompt, system=SALUTATION_SYSTEM_PROMPT):
+            yield chunk
+    
+    elif intention == "aide":
+        yield json.dumps({ "intention": intention, "generated_sql": sql }) + "\n"
+        yield "[STREAM_START]" + "\n"
+        async for chunk in stream_ollama(prompt=message, system=AIDE_SYSTEM_PROMPT):
+            yield chunk
+    
+    elif intention == "recherche":
+        schema = get_db_schema()
+        prompt_system = build_recherche_prompt(schema, message, user_id)
+        prompt_message = f"Demande: {message}"
+        sql = await call_ollama(prompt=prompt_message, system=prompt_system)
+        print(sql)
+    
+    elif intention == "affinage":
+        schema = get_db_schema()
+        prompt_sql = build_affinage_prompt(schema, message, user_id)
+        sql = await call_ollama(prompt=prompt_sql)
+        print(sql)
+    
+    elif intention == "hors_perimetre":
+        yield json.dumps({ "intention": intention, "generated_sql": sql }) + "\n"
+        yield "[STREAM_START]" + "\n"
+        async for chunk in stream_ollama(prompt=message, system=HORS_PERIMETRE_SYSTEM_PROMPT):
+            yield chunk
+    
+    else:
+        yield json.dumps({ "intention": intention, "generated_sql": sql }) + "\n"
+        yield "[STREAM_START]" + "\n"
+        async for chunk in stream_text("Je n'ai pas compris votre demande."):
+            yield chunk
+
+    if intention in ("recherche", "affinage"):
+        try:
+            resultats = execute_select(sql)
+            nb_resultats = len(resultats)
+            research_id = create_research(user_id, sql)
+
+            yield json.dumps({ "intention": intention, "generated_sql": sql, "research_id": research_id }) + "\n"
+            yield "[STREAM_START]" + "\n"
+            print("METADATA SENDED")
+
+            if nb_resultats == 0:
+                async for chunk in stream_text("Aucun ticket ne correspond à votre recherche."):
+                    yield chunk
+            else:
+                header = f"Résultats de la recherche : {nb_resultats} ticket{'s' if nb_resultats > 1 else ''} trouvé{'s' if nb_resultats > 1 else ''}."
+                async for chunk in stream_text(f"<p>{header}</p>"):
+                    yield chunk
+
+        except ValueError as e:
+            yield json.dumps({"intention": intention, "error": str(e)}) + "\n"
