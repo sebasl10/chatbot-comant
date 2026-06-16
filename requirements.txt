@@ -3,3 +3,4 @@ uvicorn>=0.21.0
 pydantic-settings>=2.0.0
 httpx>=0.24.0
 pymysql
+rapidfuzz

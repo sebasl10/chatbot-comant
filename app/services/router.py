@@ -1,14 +1,15 @@
-import json
-
 from app.services.intention import classify_intention
 from app.services.ollama import call_ollama, stream_ollama
 from app.services.database import get_db_schema, execute_select, update_intention, create_research, update_sql, get_sql
+from app.services.entity_cache import handle_vocabulary_suggestions
 from app.prompts.aide import AIDE_SYSTEM_PROMPT 
 from app.prompts.affinage import build_affinage_prompt
 from app.prompts.recherche import build_recherche_prompt
 from app.prompts.hors_perimetre import HORS_PERIMETRE_SYSTEM_PROMPT
 from app.prompts.salutation import SALUTATION_SYSTEM_PROMPT
+from app.prompts.entity_extraction import EXTRACTION_PROMPT
 import asyncio
+import json
 
 # Stream un texte mot par mot avec un délai
 async def stream_text(text: str, delay: float = 0.05):
@@ -41,14 +42,35 @@ async def handle_stream(message: str, user_id: int, historique: list[dict], last
             yield chunk
     
     elif intention == "recherche":
+        prompt_message = f"Demande: {message}"
+        entities = await call_ollama(prompt=prompt_message, system=EXTRACTION_PROMPT)
+        entities_dict = json.loads(entities)  
+        has_vocabulary_error, error_message, vocabulary_error = await handle_vocabulary_suggestions(entities_dict)
+        if has_vocabulary_error:
+            yield json.dumps({ "vocabularyError": vocabulary_error }) + "\n"
+            yield "[STREAM_START]" + "\n"
+            async for chunk in stream_text(error_message):
+                yield chunk
+            return
+        
         schema = get_db_schema()
         prompt_system = build_recherche_prompt(schema, user_id)
-        #print(prompt_system)
-        prompt_message = f"Demande: {message}"
         sql = await call_ollama(prompt=prompt_message, system=prompt_system)
         print(sql)
     
     elif intention == "affinage":
+        prompt_message = f"Demande: {message}"
+        entities = await call_ollama(prompt=prompt_message, system=EXTRACTION_PROMPT)
+        print(entities)
+        entities_dict = json.loads(entities)  
+        has_vocabulary_error, error_message, vocabulary_error = await handle_vocabulary_suggestions(entities_dict)
+        if has_vocabulary_error:
+            yield json.dumps({ "intention": intention, "vocabularyError": vocabulary_error }) + "\n"
+            yield "[STREAM_START]" + "\n"
+            async for chunk in stream_text(error_message):
+                yield chunk
+            return
+        
         schema = get_db_schema()
         last_sql = ''
         if (research_id_affinage != 0):

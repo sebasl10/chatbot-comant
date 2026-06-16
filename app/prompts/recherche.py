@@ -65,6 +65,14 @@ def build_recherche_prompt(schema: str, user_id: int | None) -> str:
         - **Ne jamais ajouter** de texte supplémentaire (ex: "Voici la requête :").
 
         ---
+        
+        ## Règles métier et de la base de données
+        - Les trigrammes correspondent à l'username d'un utilisateur (ex: sls, dba, mwu)
+        - Le temps estimé d'un ticket (champ time_estimate de ma table ticket) est stocké en nombre d'heures
+        - Le temps effectif d'un ticket est stocké en secondes dans le champ duration de la table planning. Il faut savoir qu'il peut y avoir plusieurs lignes pour un même ticket_id, il faut donc faire la somme du champ duration de chaque ligne.
+        - Quand tu dois filtrer par un projet, utilise toujours la colonne code, jamais la colonne name
+        
+        ---
 
         ## EXEMPLES
 
@@ -101,8 +109,11 @@ def build_recherche_prompt(schema: str, user_id: int | None) -> str:
         Message: "Les 10 derniers tickets que j'ai consultés"
         SQL: SELECT DISTINCT t.id, t.code, t.summary FROM ticket t JOIN log l ON l.ressource_id = t.id WHERE l.user_id = 5 AND l.action = 'VIEW-TICKET' AND t.type != 'Group' ORDER BY l.datetime DESC LIMIT 10
 
-        Message: "Les tickets fermés ce mois-ci"
-        SQL: SELECT DISTINCT t.id, t.code, t.summary FROM ticket t WHERE t.status = 'closed' AND t.update_time >= DATE_FORMAT(NOW(), '%Y-%m-01') AND t.type != 'Group'
+        Message: "Les tickets qui ont un temps estimé supérieur à 5h"
+        SQL: SELECT DISTINCT t.id, t.code, t.summary FROM ticket t WHERE t.time_estimate > 5 AND t.type != 'Group'
+        
+        Message: "Les tickets qui ont un temps effectif supérieur à 5h"
+        SQL: SELECT t.id, t.code, t.summary FROM ticket t JOIN planning p ON p.ticket_id = t.id WHERE t.type != 'Group' GROUP BY t.id, t.code, t.summary HAVING SUM(pl.duration) / 3600 >= 5;
 
         Message: "Les tickets sur lesquels j'ai du temps planifié"
         SQL: SELECT DISTINCT t.id, t.code, t.summary FROM ticket t JOIN planning p ON p.ticket_id = t.id WHERE p.user_id = {user_id} AND t.type != 'Group' ORDER BY p.date DESC
@@ -113,8 +124,8 @@ def build_recherche_prompt(schema: str, user_id: int | None) -> str:
         Message: "Les tickets avec le tag 'bug'"
         SQL: SELECT DISTINCT t.id, t.code, t.summary FROM ticket t JOIN ticket_tag tt ON tt.ticket_id = t.id JOIN tag tg ON tg.id = tt.tag_id WHERE tg.name = 'bug' AND t.type != 'Group'
 
-        Message: "Les tickets liés au produit Suite RH"
-        SQL: SELECT DISTINCT t.id, t.code, t.summary FROM ticket t JOIN ticket_product tp ON tp.ticket_id = t.id JOIN product p ON p.id = tp.product_id WHERE p.name LIKE '%RH%' AND t.type != 'Group'
+        Message: "Les tickets liés au produit 3D_Evolution"
+        SQL: SELECT DISTINCT t.id, t.code, t.summary FROM ticket t JOIN ticket_product tp ON tp.ticket_id = t.id JOIN product p ON p.id = tp.product_id WHERE p.name LIKE '%3D_Evolution%' AND t.type != 'Group'
    
         Message: "Les tickets qui ont été fermés hier"
         SQL: SELECT DISTINCT t.id, t.code, t.summary FROM ticket t JOIN log l ON l.ressource_id = t.id WHERE l.action = 'UPDATE' AND l.class LIKE '%Ticket%' AND DATE(l.datetime) = DATE_SUB(CURDATE(), INTERVAL 1 DAY) AND t.type != 'Group' AND JSON_EXTRACT(l.log_data, '$.changes.status[1]') = 'Fermé';
