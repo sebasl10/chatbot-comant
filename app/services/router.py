@@ -47,7 +47,7 @@ async def handle_stream(message: str, user_id: int, historique: list[dict], last
         entities_dict = json.loads(entities)  
         has_vocabulary_error, error_message, vocabulary_error = await handle_vocabulary_suggestions(entities_dict)
         if has_vocabulary_error:
-            yield json.dumps({ "vocabularyError": vocabulary_error }) + "\n"
+            yield json.dumps({ "intention": intention, "vocabularyError": vocabulary_error }) + "\n"
             yield "[STREAM_START]" + "\n"
             async for chunk in stream_text(error_message):
                 yield chunk
@@ -61,7 +61,6 @@ async def handle_stream(message: str, user_id: int, historique: list[dict], last
     elif intention == "affinage":
         prompt_message = f"Demande: {message}"
         entities = await call_ollama(prompt=prompt_message, system=EXTRACTION_PROMPT)
-        print(entities)
         entities_dict = json.loads(entities)  
         has_vocabulary_error, error_message, vocabulary_error = await handle_vocabulary_suggestions(entities_dict)
         if has_vocabulary_error:
