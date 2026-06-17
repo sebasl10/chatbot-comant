@@ -52,9 +52,19 @@ def build_recherche_prompt(schema: str, user_id: int | None) -> str:
         - Exemple : Pour `ticket.type`, n'utilise que les valeurs comme `Bug`, `Dev`, `Suggestion`, etc. **Jamais** une valeur comme `Feature` ou `Task` si elle n'est pas listée.
         - **Ne jamais inventer** une valeur pour une colonne à choix multiples.
 
-        3. **Clauses obligatoires** :
-        - **`DISTINCT` DOIT toujours suivre `SELECT`** pour éviter les doublons.
-        - **`AND t.type != 'Group'` DOIT toujours être dans la clause `WHERE`** (jamais après `ORDER BY`, `LIMIT`, `GROUP BY` ou `HAVING`).
+        3. **Clauses obligatoires (contexte dépendant)** :
+        - **`DISTINCT`** :
+            - Ajoute **`DISTINCT` après `SELECT`** si la requête contient des jointures ou des sous-requêtes **ET** ne contient pas déjà `GROUP BY` ou des agrégations (`COUNT`, `SUM`, etc.).
+            - **Ne jamais utiliser** si `GROUP BY` ou une agrégation est présente.
+
+        - **`AND t.type != 'Group'`** :
+            - Ajoute **`AND t.type != 'Group'` dans la clause `WHERE`** **UNIQUEMENT si** :
+            1. La requête ne contient **pas déjà** de filtre explicite sur `t.type` (ex: `WHERE t.type = 'Bug'`).
+            2. La clause `WHERE` existe déjà (sinon, crée-la).
+            - **Placement** : Toujours **avant** `ORDER BY`, `LIMIT`, `GROUP BY`, ou `HAVING`.
+            - **Exemple de cas où NE PAS l'ajouter** :
+            - `WHERE t.type = 'Bug'`
+            - `WHERE t.type IN ('Bug', 'Task')`
         
         4. **Entités reçues** :
         - Tu vas recevoir un dictionnaire d'entités en format JSON: {{"entities": [{{"type": "project", "value": "CAO2026"}}, ...]}}
@@ -78,6 +88,8 @@ def build_recherche_prompt(schema: str, user_id: int | None) -> str:
         - Le temps estimé d'un ticket (champ time_estimate de ma table ticket) est stocké en nombre d'heures
         - Le temps effectif d'un ticket est stocké en secondes dans le champ duration de la table planning. Il faut savoir qu'il peut y avoir plusieurs lignes pour un même ticket_id, il faut donc faire la somme du champ duration de chaque ligne.
         - Quand tu dois filtrer par un projet, utilise toujours la colonne code, jamais la colonne name
+        - Si le type de branche n'est pas specifié (dev, travail, release), tu dois chercher dans les 3 types de branche
+        - L'historique de modifications des attributs d'un ticket (status, assigné, description, etc) est stockée dans la table Log (action UPDATE)
         
         ---
 
@@ -128,8 +140,8 @@ def build_recherche_prompt(schema: str, user_id: int | None) -> str:
         Message: "Les tickets sur lesquels j'ai du temps planifié"
         SQL: SELECT DISTINCT t.id, t.code, t.summary FROM ticket t JOIN planning p ON p.ticket_id = t.id WHERE p.user_id = {user_id} AND t.type != 'Group' ORDER BY p.date DESC
 
-        Message: "Les tickets récents du projet CAO non assignés"
-        SQL: SELECT DISTINCT t.id, t.code, t.summary FROM ticket t JOIN project_ticket pt ON pt.ticket_id = t.id JOIN project p ON p.id = pt.project_id WHERE p.code = 'CAO' AND t.assignee_id IS NULL AND t.type != 'Group' ORDER BY t.create_time DESC
+        Message: "Les tickets qui n'ont pas de correction souhaitée"
+        SQL: SELECT DISTINCT t.id, t.code, t.summary FROM ticket t WHERE t.close_status = 'Pas de correction souhaitée' AND t.type != 'Group'
 
         Message: "Les tickets avec le tag 'bug'"
         SQL: SELECT DISTINCT t.id, t.code, t.summary FROM ticket t JOIN ticket_tag tt ON tt.ticket_id = t.id JOIN tag tg ON tg.id = tt.tag_id WHERE tg.name = 'bug' AND t.type != 'Group'
@@ -154,7 +166,10 @@ def build_recherche_prompt(schema: str, user_id: int | None) -> str:
     
         Message: "Les tickets associés à la branche DComant"
         SQL: SELECT DISTINCT t.id, t.code, t.summary FROM ticket t JOIN project_ticket pt ON pt.ticket_id = t.id JOIN project p ON p.id = pt.project_id WHERE t.type != 'Group' AND (FIND_IN_SET('DComant', REPLACE(p.branches, ' ', '')) > 0 OR p.branch_release = 'DComant' OR p.branch_dev = 'DComant')
-    """
+    
+        Message: "Donne-moi les tickets qui sont associés à deux ou plus projets"
+        SQL: SELECT DISTINCT t.id, t.code, t.summary FROM ticket t JOIN project_ticket pt ON pt.ticket_id = t.id WHERE t.type != 'Group' GROUP BY t.id, t.code, t.summary HAVING COUNT(DISTINCT pt.project_id) >= 2
+"""
 
 def build_recherche_result_prompt(resultats, nb_resultats):
     tickets_list = ""

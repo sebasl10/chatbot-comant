@@ -18,7 +18,7 @@ async def call_ollama(prompt: str, system: str = None, stream: bool = False) -> 
             res.raise_for_status() # Raises an exception if status code between 400 and 599 (HTTP error)
         except httpx.ConnectError:
             raise HTTPException(status_code=503, detail="Ollama is not running on localhost:11434")
-        except httpx.HTTPSStatusError as e:
+        except httpx.HTTPStatusError as e:
             raise HTTPException(status_code=502, detail=f"Ollama error: {e.response.text}")
     
     return res.json()["response"]

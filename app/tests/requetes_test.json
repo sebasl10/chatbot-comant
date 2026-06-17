@@ -64,8 +64,8 @@
     "correct_sql": "SELECT DISTINCT t.id, t.code, t.summary FROM ticket t JOIN project_ticket pt ON pt.ticket_id = t.id JOIN project p ON p.id = pt.project_id WHERE FIND_IN_SET('main', REPLACE(p.branches, ' ', '')) > 0 AND t.type != 'Group'"
   },
   {
-    "user": "les tickets associés à la branche RKio2025sp1",
-    "correct_sql": "SELECT DISTINCT t.id, t.code, t.summary FROM ticket t JOIN project_ticket pt ON pt.ticket_id = t.id JOIN project p ON p.id = pt.project_id WHERE FIND_IN_SET('RKio2025sp1', REPLACE(p.branches, ' ', '')) > 0 AND t.type != 'Group'"
+    "user": "les tickets associés à la branche DComant",
+    "correct_sql": "SELECT DISTINCT t.id, t.code, t.summary FROM ticket t JOIN project_ticket pt ON pt.ticket_id = t.id JOIN project p ON p.id = pt.project_id WHERE t.type != 'Group' AND (FIND_IN_SET('DComant', REPLACE(p.branches, ' ', '')) > 0 OR p.branch_release = 'DComant' OR p.branch_dev = 'DComant')"
   },
   {
     "user": "le dernier ticket que j'ai consulté hier",
