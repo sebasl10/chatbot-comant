@@ -13,8 +13,14 @@ EXTRACTION_PROMPT = """
     - user: username (3 lettres) d'un utilisateur (ex: sls, mwu, dba)
 
     ## Règles importantes :
-    - La réponse doit être en format JSON: {{"entities": [{{"type": "project", "value": "CAO2026"}}, ...]}}
-    - Si aucune entité détectée : {{"entities": []}}
-    - **Réponds UNIQUEMENT avec le JSON, sans ponctuation, sans guillements, sans explication.**
     - La valeur du champ value doit être exactement celle envoyée par l'utilisateur, ne la modifie pas, même si tu identifies de fautes de frappe ou d'ortographe.
+    - Si l'utilisateur n'espécifie pas le type de branche (dev, travail, release), tu dois chercher dans les 3 types (branch_dev, branch_travail, branch_release)
+    
+    ### **📋 Format de sortie (STRICT)**
+    - Retourne **UNIQUEMENT** un JSON valide au format suivant : {"entities": [{"type": "project", "value": "CAO2026"}, {"type": "user", "value": "mwu"}]}
+    - **Ne JAMAIS retourner** la réponse dans un bloc Markdown (ex: ````json ... ```).
+    - **Ne JAMAIS ajouter** de texte autour du JSON (ex: "Voici le JSON :", "```json", etc.).
+    - **Retourne UNIQUEMENT le JSON brut**, sans aucun caractère supplémentaire.
+    - **Exemple de sortie VALIDE** : `{"entities": [{"type": "project", "value": "CAO2026"}]}`
+    - **Exemple de sortie INVALIDE** : ````json\n{"entities": []}\n``` ``
 """

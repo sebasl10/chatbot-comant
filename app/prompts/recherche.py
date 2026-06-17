@@ -54,16 +54,23 @@ def build_recherche_prompt(schema: str, user_id: int | None) -> str:
 
         3. **Clauses obligatoires** :
         - **`DISTINCT` DOIT toujours suivre `SELECT`** pour éviter les doublons.
-        - **`AND t.type != 'Group'` DOIT toujours être dans la clause `WHERE`** (jamais après `ORDER BY`, `LIMIT`, ou `GROUP BY`).
+        - **`AND t.type != 'Group'` DOIT toujours être dans la clause `WHERE`** (jamais après `ORDER BY`, `LIMIT`, `GROUP BY` ou `HAVING`).
+        
+        4. **Entités reçues** :
+        - Tu vas recevoir un dictionnaire d'entités en format JSON: {{"entities": [{{"type": "project", "value": "CAO2026"}}, ...]}}
+        - Tu dois t'en servir pour identifier les entités présentes dans la requête de l'utilisateur et savoir quelles tables et colonnes interroger
 
-        4. **Filtrage par utilisateur** :
+        5. **Filtrage par utilisateur** :
         - Si la demande contient "mes", "j'ai", ou "je", **filtre par `user_id = {user_id}`**.
         - Sinon, **ne filtre pas par utilisateur** (sauf si la demande l'exige explicitement).
 
-        5. **Format de sortie** :
+        6. **Format de sortie** :
         - Retourne **UNIQUEMENT** la requête SQL brute, sans guillemets, sans markdown, sans explication.
         - **Ne jamais ajouter** de texte supplémentaire (ex: "Voici la requête :").
-
+        - **Ne retourne jamais** une réponse de ce type: 
+            ``sql
+                SELECT ...
+            ```.
         ---
         
         ## Règles métier et de la base de données
@@ -78,6 +85,9 @@ def build_recherche_prompt(schema: str, user_id: int | None) -> str:
 
         Message: "Mes tickets ouverts"
         SQL: SELECT DISTINCT t.id, t.code, t.summary FROM ticket t WHERE t.creator_id = {user_id} AND t.status = 'Ouvert' AND t.type != 'Group'
+        
+        Message: "Les tickets de sls"
+        SQL: SELECT DISTINCT t.id, t.code, t.summary FROM ticket t JOIN user u ON t.assignee_id = u.id WHERE u.username = 'sls' AND t.type != 'Group'
 
         Message: "Les tickets assignés à moi"
         SQL: SELECT DISTINCT t.id, t.code, t.summary FROM ticket t WHERE t.assignee_id = {user_id} AND t.type != 'Group'
@@ -113,7 +123,7 @@ def build_recherche_prompt(schema: str, user_id: int | None) -> str:
         SQL: SELECT DISTINCT t.id, t.code, t.summary FROM ticket t WHERE t.time_estimate > 5 AND t.type != 'Group'
         
         Message: "Les tickets qui ont un temps effectif supérieur à 5h"
-        SQL: SELECT t.id, t.code, t.summary FROM ticket t JOIN planning p ON p.ticket_id = t.id WHERE t.type != 'Group' GROUP BY t.id, t.code, t.summary HAVING SUM(pl.duration) / 3600 >= 5;
+        SQL: SELECT t.id, t.code, t.summary FROM ticket t JOIN planning pl ON p.ticket_id = t.id WHERE t.type != 'Group' GROUP BY t.id, t.code, t.summary HAVING SUM(pl.duration) / 3600 >= 5;
 
         Message: "Les tickets sur lesquels j'ai du temps planifié"
         SQL: SELECT DISTINCT t.id, t.code, t.summary FROM ticket t JOIN planning p ON p.ticket_id = t.id WHERE p.user_id = {user_id} AND t.type != 'Group' ORDER BY p.date DESC

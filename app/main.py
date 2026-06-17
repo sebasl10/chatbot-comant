@@ -23,3 +23,7 @@ def read_root():
 @app.get("/health")
 async def health():
     return {"status": "ok"}
+
+@app.get("/tests")
+async def health():
+    return {"status": "ok"}

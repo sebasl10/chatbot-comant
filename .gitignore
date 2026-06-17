@@ -80,6 +80,7 @@ exports/
 save.txt
 *.tmp
 *.temp
+*.txt
 
 # Logs
 *.log

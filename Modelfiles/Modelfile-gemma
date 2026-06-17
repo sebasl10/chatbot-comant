@@ -1,4 +1,4 @@
-FROM mistral-nemo
+FROM gemma4
 
 # ─────────────────────────────────────────
 # SYSTEM PROMPT

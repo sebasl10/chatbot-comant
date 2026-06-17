@@ -17,109 +17,116 @@ async def stream_text(text: str, delay: float = 0.05):
         yield chunk + " "
         await asyncio.sleep(delay)
 
-# Retourne un générateur async selon l'intention détectée
-async def handle_stream(message: str, user_id: int, historique: list[dict], last_message_id: int, intention: str, research_id_affinage: int):
-    if (intention == ''):
+# ── Simple intent handlers ────────────────────────────────────────────────────
+
+SIMPLE_INTENT_PROMPTS = {
+    "salutation":     SALUTATION_SYSTEM_PROMPT,
+    "aide":           AIDE_SYSTEM_PROMPT,
+    "hors_perimetre": HORS_PERIMETRE_SYSTEM_PROMPT,
+}
+
+async def stream_simple_intent(message: str, system_prompt: str):
+    yield "[STREAM_START]\n"
+    async for chunk in stream_ollama(prompt=message, system=system_prompt):
+        yield chunk
+
+
+# ── SQL intent helpers ────────────────────────────────────────────────────────
+
+async def extract_and_validate_entities(message: str):
+    """Returns (entities_dict, error_chunks_generator | None)."""
+    response = await call_ollama(prompt=f"Demande: {message}", system=EXTRACTION_PROMPT)
+    print(f"Raw response from Ollama: {response}")  # Debug
+    entities_dict = json.loads(response)
+    has_error, error_message, vocabulary_error = await handle_vocabulary_suggestions(entities_dict)
+    if has_error:
+        return entities_dict, (vocabulary_error, error_message)
+    return entities_dict, None
+
+
+async def generate_sql(message: str, intention: str, user_id: int, historique: list[dict], research_id_affinage: int, entities_dict: dict) -> str:
+    schema = get_db_schema()
+    prompt_message = f"Demande: {message}"
+
+    if intention == "recherche":
+        prompt_message = f"Demande: {message}. Entités qui ont été trouvées dans la requête: {entities_dict}"
+        system = build_recherche_prompt(schema, user_id)
+        return await call_ollama(prompt=prompt_message, system=system)
+
+    # affinage
+    last_sql = get_sql(research_id_affinage) if research_id_affinage != 0 else historique[-2]["sql"]
+    system = build_affinage_prompt(schema, last_sql, user_id, historique)
+    return await call_ollama(prompt=system)
+
+
+async def persist_and_stream_results(sql: str, intention: str, user_id: int, historique: list[dict], research_id_affinage: int):
+    last_id = historique[-2]["id"] if intention == "affinage" else None
+    resultats = execute_select(sql, "", user_id)
+    nb = len(resultats)
+
+    if intention == "recherche":
+        research_id = create_research(user_id, sql)
+    else:
+        research_id = update_sql(last_id, sql, research_id_affinage)
+
+    yield json.dumps({"intention": intention, "generated_sql": sql, "research_id": research_id}) + "\n"
+    yield "[STREAM_START]\n"
+
+    if nb == 0:
+        async for chunk in stream_text("Aucun ticket ne correspond à votre recherche."):
+            yield chunk
+        return
+
+    plural = lambda n: "s" if n > 1 else ""
+    header = (
+        f"<p>Résultats de la recherche : {nb} ticket{plural(nb)} trouvé{plural(nb)}.</p>"
+        if intention == "recherche"
+        else f"<p>La recherche a été modifiée.</p>"
+             f"<p>Résultats de la recherche : {nb} ticket{plural(nb)} trouvé{plural(nb)}.</p>"
+    )
+    async for chunk in stream_text(header):
+        yield chunk
+
+
+# ── Main entry point ──────────────────────────────────────────────────────────
+
+async def handle_stream(message: str, user_id: int, historique: list[dict],
+                        last_message_id: int, intention: str, research_id_affinage: int):
+    if not intention:
         intention = await classify_intention(message, historique)
     print(intention)
-    
+
     update_intention(last_message_id, intention)
-    yield json.dumps({ "intention": intention }) + "\n"
+    yield json.dumps({"intention": intention}) + "\n"
 
-    sql = ''
-    research_id = ''
-    last_id = ''
+    # ── Simple intents ──────────────────────────────────────────────────────
+    if intention in SIMPLE_INTENT_PROMPTS:
+        async for chunk in stream_simple_intent(message, SIMPLE_INTENT_PROMPTS[intention]):
+            yield chunk
+        return
 
-    if intention == "salutation":
-        yield "[STREAM_START]" + "\n"
-        prompt = f"\nMessage à traiter: {message}\n"
-        async for chunk in stream_ollama(prompt=prompt, system=SALUTATION_SYSTEM_PROMPT):
-            yield chunk
-    
-    elif intention == "aide":
-        yield "[STREAM_START]" + "\n"
-        async for chunk in stream_ollama(prompt=message, system=AIDE_SYSTEM_PROMPT):
-            yield chunk
-    
-    elif intention == "recherche":
-        prompt_message = f"Demande: {message}"
-        entities = await call_ollama(prompt=prompt_message, system=EXTRACTION_PROMPT)
-        entities_dict = json.loads(entities)  
-        has_vocabulary_error, error_message, vocabulary_error = await handle_vocabulary_suggestions(entities_dict)
-        if has_vocabulary_error:
-            yield json.dumps({ "intention": intention, "vocabularyError": vocabulary_error }) + "\n"
-            yield "[STREAM_START]" + "\n"
-            async for chunk in stream_text(error_message):
-                yield chunk
-            return
-        
-        schema = get_db_schema()
-        prompt_system = build_recherche_prompt(schema, user_id)
-        sql = await call_ollama(prompt=prompt_message, system=prompt_system)
-        print(sql)
-    
-    elif intention == "affinage":
-        prompt_message = f"Demande: {message}"
-        entities = await call_ollama(prompt=prompt_message, system=EXTRACTION_PROMPT)
-        entities_dict = json.loads(entities)  
-        has_vocabulary_error, error_message, vocabulary_error = await handle_vocabulary_suggestions(entities_dict)
-        if has_vocabulary_error:
-            yield json.dumps({ "intention": intention, "vocabularyError": vocabulary_error }) + "\n"
-            yield "[STREAM_START]" + "\n"
-            async for chunk in stream_text(error_message):
-                yield chunk
-            return
-        
-        schema = get_db_schema()
-        last_sql = ''
-        if (research_id_affinage != 0):
-            last_sql = get_sql(research_id_affinage)
-        else:
-            last_sql = historique[-2]['sql']
-
-        last_id = historique[-2]['id']
-        prompt_sql = build_affinage_prompt(schema, last_sql, user_id, historique)
-        sql = await call_ollama(prompt=prompt_sql)
-        print(sql)
-    
-    elif intention == "hors_perimetre":
-        yield "[STREAM_START]" + "\n"
-        async for chunk in stream_ollama(prompt=message, system=HORS_PERIMETRE_SYSTEM_PROMPT):
-            yield chunk
-    
-    else:
-        yield "[STREAM_START]" + "\n"
+    # ── Unknown intent ──────────────────────────────────────────────────────
+    if intention not in ("recherche", "affinage"):
+        yield "[STREAM_START]\n"
         async for chunk in stream_text("Je n'ai pas compris votre demande."):
             yield chunk
+        return
 
-    if intention in ("recherche", "affinage"):
-        try:
-            resultats = execute_select(sql, research_id, user_id)
-            nb_resultats = len(resultats)
+    # ── SQL intents (recherche / affinage) ──────────────────────────────────
+    entities_dict, vocab_error = await extract_and_validate_entities(message)
+    if vocab_error:
+        vocabulary_error, error_message = vocab_error
+        yield json.dumps({"intention": intention, "vocabularyError": vocabulary_error}) + "\n"
+        yield "[STREAM_START]\n"
+        async for chunk in stream_text(error_message):
+            yield chunk
+        return
 
-            if intention == "recherche":
-                research_id = create_research(user_id, sql)
-            else: 
-                research_id = update_sql(last_id, sql, research_id_affinage)
-
-            yield json.dumps({ "intention": intention, "generated_sql": sql, "research_id": research_id }) + "\n"
-            yield "[STREAM_START]" + "\n"
-
-            if nb_resultats == 0:
-                async for chunk in stream_text("Aucun ticket ne correspond à votre recherche."):
-                    yield chunk
-            else:
-                header = ''
-                if intention == "recherche":
-                    header = f"<p>Résultats de la recherche : {nb_resultats} ticket{'s' if nb_resultats > 1 else ''} trouvé{'s' if nb_resultats > 1 else ''}.</p>"
-                else:
-                    header = f"<p>La recherche a été modifiée.</p><p>Résultats de la recherche : {nb_resultats} ticket{'s' if nb_resultats > 1 else ''} trouvé{'s' if nb_resultats > 1 else ''}.</p>"
-                
-                async for chunk in stream_text(header):
-                    yield chunk
-
-        except Exception as e:
-            yield json.dumps({"intention": intention, "generated_sql": sql, "research_id": '', "error": str(e)}, ensure_ascii=False) + "\n"
-            yield f"⚠️ Erreur SQL : {str(e)}"
-            #yield "[STREAM_START]" + "\n"
-            
+    try:
+        sql = await generate_sql(message, intention, user_id, historique, research_id_affinage, entities_dict)
+        print(sql)
+        async for chunk in persist_and_stream_results(sql, intention, user_id, historique, research_id_affinage):
+            yield chunk
+    except Exception as e:
+        yield json.dumps({"intention": intention, "generated_sql": sql, "research_id": "", "error": str(e)}, ensure_ascii=False) + "\n"
+        yield f"⚠️ Erreur SQL : {e}"
