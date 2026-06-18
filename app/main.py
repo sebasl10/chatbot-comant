@@ -2,7 +2,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app.config import settings
 from app.routers import admin, chat, name
-from app.tests.tests import run_tests
+from app.tests.tests import run_tests, test_nb_tokens
 
 app = FastAPI(title="LLM API Comant", version="0.1.0")
 app.add_middleware(
@@ -28,3 +28,7 @@ async def health():
 @app.get("/tests")
 async def tests():
     await run_tests()
+    
+@app.get("/tests/tokens")
+async def tests():
+    await test_nb_tokens()

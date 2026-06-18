@@ -10,7 +10,7 @@ def build_recherche_prompt(schema: str, user_id: int | None) -> str:
         ## Valeurs de référence
         
         ### Table `log` - colonne `action`
-        LOGIN, CREATE, UPDATE, DELETE, VIEW-TICKET (quand un utilisateur consulte un projet), VIEW-PROJECT (quand un utilisateur consulte un ticket), CLOSE-NOTIFICATION, RESEARCH
+        LOGIN, CREATE, UPDATE, DELETE, VIEW-TICKET (quand un utilisateur consulte un ticket), VIEW-PROJECT (quand un utilisateur consulte un projt), CLOSE-NOTIFICATION, RESEARCH
         
         ### TABLE `ticket` - colonne `type`
         Bug, Dev, Estimation de ticket, Analyse des tickets externe, Suggestion, Documentation, Requête, Réunion, Confirmation de bug, Aide, Analyse de suggestion, Test, Déplacement, Direction technique, Dev Ops, Support niveau 1, Admin System Asia, Admin System GmbH, Admin System Vente, Admin System, Admin System USA, Action
@@ -73,14 +73,7 @@ def build_recherche_prompt(schema: str, user_id: int | None) -> str:
         5. **Filtrage par utilisateur** :
         - Si la demande contient "mes", "j'ai", ou "je", **filtre par `user_id = {user_id}`**.
         - Sinon, **ne filtre pas par utilisateur** (sauf si la demande l'exige explicitement).
-
-        6. **Format de sortie** :
-        - Retourne **UNIQUEMENT** la requête SQL brute, sans guillemets, sans markdown, sans explication.
-        - **Ne jamais ajouter** de texte supplémentaire (ex: "Voici la requête :").
-        - **Ne retourne jamais** une réponse de ce type: 
-            ``sql
-                SELECT ...
-            ```.
+        
         ---
         
         ## Règles métier et de la base de données
@@ -169,6 +162,16 @@ def build_recherche_prompt(schema: str, user_id: int | None) -> str:
     
         Message: "Donne-moi les tickets qui sont associés à deux ou plus projets"
         SQL: SELECT DISTINCT t.id, t.code, t.summary FROM ticket t JOIN project_ticket pt ON pt.ticket_id = t.id WHERE t.type != 'Group' GROUP BY t.id, t.code, t.summary HAVING COUNT(DISTINCT pt.project_id) >= 2
+
+        ---
+        
+        ## **Format de sortie** :
+        - Retourne **UNIQUEMENT** la requête SQL brute, sans guillemets, sans markdown, sans explication.
+        - **Ne jamais ajouter** de texte supplémentaire (ex: "Voici la requête :").
+        - **Ne retourne jamais** une réponse de ce type: 
+            ``sql
+                SELECT ...
+            ```.
 """
 
 def build_recherche_result_prompt(resultats, nb_resultats):

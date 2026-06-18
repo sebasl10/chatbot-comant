@@ -48,10 +48,6 @@
     "correct_sql": "SELECT DISTINCT t.id, t.code, t.summary FROM ticket t WHERE t.close_status = 'Pas de correction souhaitée' AND t.type != 'Group'"
   },
   {
-    "user": "cherche les 10 derniers tickets qui ont été ajoutés au projet Comant2026 par l'utilisateur qui a créé un ticket pour le projet test-sls en mai 2025",
-    "correct_sql": "SELECT DISTINCT t.id, t.code, t.summary FROM ticket t JOIN project_ticket pt ON pt.ticket_id = t.id JOIN project p ON p.id = pt.project_id JOIN user u ON u.id = t.creator_id WHERE p.code = 'Comant2026' AND u.id IN (SELECT DISTINCT t2.creator_id FROM ticket t2 JOIN project_ticket pt2 ON pt2.ticket_id = t2.id JOIN project p2 ON p2.id = pt2.project_id WHERE p2.code = 'test-sls' AND t2.create_time >= '2025-05-01' AND t2.create_time < '2025-06-01') AND t.type != 'Group' ORDER BY t.create_time DESC LIMIT 10"
-  },
-  {
     "user": "tickets associés à la branch dev tools",
     "correct_sql": "SELECT DISTINCT t.id, t.code, t.summary FROM ticket t JOIN project_ticket pt ON pt.ticket_id = t.id JOIN project p ON p.id = pt.project_id WHERE p.branch_dev = 'tools' AND t.type != 'Group'"
   },

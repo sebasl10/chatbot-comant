@@ -3,6 +3,9 @@ import json
 import sys
 import os
 import time
+import httpx
+from fastapi import HTTPException
+from app.config import settings
 
 # Ajouter le parent directory au path pour les imports
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -11,6 +14,9 @@ from app.services.ollama import call_ollama
 from app.services.database import get_db_schema, execute_select
 from app.prompts.recherche import build_recherche_prompt
 
+
+LMSTUDIO_URL = "http://192.168.69.42:1234/chat"
+OLLAMA_URL = "http://localhost:11434/api/generate"
 
 async def run_tests():
     """
@@ -60,21 +66,38 @@ async def run_tests():
         try:
             # Étape 1: Générer la requête SQL via le modèle IA
             system_prompt = build_recherche_prompt(schema, user_id)
-            generated_sql = await call_ollama(
-                prompt=f"Demande: {user_query}",
-                system=system_prompt
-            )
+            payload = {
+                "model": settings.model_ia,
+                "prompt": f"Demande: {user_query}",
+                "stream": False,
+                "system": system_prompt
+            }
+            
+            async with httpx.AsyncClient(timeout=60.0) as client:
+                try:
+                    res = await client.post(settings.ollama_url, json=payload)
+                    res.raise_for_status() # Raises an exception if status code between 400 and 599 (HTTP error)
+                except httpx.ConnectError:
+                    raise HTTPException(status_code=503, detail="Ollama is not running on localhost:11434")
+                except httpx.HTTPStatusError as e:
+                    raise HTTPException(status_code=502, detail=f"Ollama error: {e.response.text}")
+            
+            print(res)
+            generated_sql = res['response']
             
             # Nettoyer la réponse (supprimer les markdown blocks si présents)
-            """ generated_sql = generated_sql.strip()
+            generated_sql = generated_sql.strip()
             if generated_sql.startswith("```sql"):
                 generated_sql = generated_sql[6:].strip()
             if generated_sql.startswith("```"):
                 generated_sql = generated_sql[3:].strip()
             if generated_sql.endswith("```"):
-                generated_sql = generated_sql[:-3].strip() """
+                generated_sql = generated_sql[:-3].strip()
             
             print(f"  → SQL générée: {generated_sql}")
+            print(f"Load duration: {res["load_duration"]} ")
+            print(f"Prompt eval duration: {res["prompt_eval_duration"]} ")
+            print(f"Eval duration: {res["eval_duration"]} ")
             
             # Étape 2: Exécuter la requête générée
             try:
@@ -142,6 +165,30 @@ async def run_tests():
     else:
         print("\n✅ Tous les tests ont réussi!")
 
+async def test_nb_tokens():
+    print("Executing query...")
+    user_query = "cherche les tickets créés par mwu, assignés à sls"
+    user_id = 5
+    schema = get_db_schema()
+    system_prompt = build_recherche_prompt(schema, user_id)
+    payload = {
+        "model": settings.model_ia,
+        "prompt": f"Demande: {user_query}",
+        "stream": False,
+        "system": system_prompt
+    }
+    
+    async with httpx.AsyncClient(timeout=60.0) as client:
+        try:
+            res = await client.post(settings.ollama_url, json=payload)
+            res.raise_for_status() # Raises an exception if status code between 400 and 599 (HTTP error)
+        except httpx.ConnectError:
+            raise HTTPException(status_code=503, detail="Ollama is not running on localhost:11434")
+        except httpx.HTTPStatusError as e:
+            raise HTTPException(status_code=502, detail=f"Ollama error: {e.response.text}")
+    
+    print(f"Input tokens: {res.json()['prompt_eval_count']}")
+    print(f"Output tokens: {res.json()['eval_count']}")
 
 if __name__ == "__main__":
     asyncio.run(run_tests())
