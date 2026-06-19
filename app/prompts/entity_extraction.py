@@ -14,10 +14,12 @@ EXTRACTION_PROMPT = """
 
     ## Règles importantes :
     - La valeur du champ value doit être exactement celle envoyée par l'utilisateur, ne la modifie pas, même si tu identifies de fautes de frappe ou d'ortographe.
-    - Si l'utilisateur n'espécifie pas le type de branche (dev, travail, release), tu dois chercher dans les 3 types (branch_dev, branch_travail, branch_release)
+    - Si l'utilisateur n'espécifie pas le type de branche (dev, travail, release), tu dois chercher dans les 3 types (branch_dev, branch_travail, branch_release). 
+    - Les branches qui commencent par 'D' sont des branches dev et celles qui commencent par 'R' sont des branches release.
     
     ### **📋 Format de sortie (STRICT)**
     - Retourne **UNIQUEMENT** un JSON valide au format suivant : {"entities": [{"type": "project", "value": "CAO2026"}, {"type": "user", "value": "mwu"}]}
+    - Si tu n'as pas identifié des entités, retourne: {"entities": []}
     - **Ne JAMAIS retourner** la réponse dans un bloc Markdown (ex: ````json ... ```).
     - **Ne JAMAIS ajouter** de texte autour du JSON (ex: "Voici le JSON :", "```json", etc.).
     - **Retourne UNIQUEMENT le JSON brut**, sans aucun caractère supplémentaire.

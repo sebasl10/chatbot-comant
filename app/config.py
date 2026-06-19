@@ -2,7 +2,9 @@ from pydantic_settings import BaseSettings
 
 class Settings(BaseSettings):
     ollama_url: str 
+    lmstudio_url: str 
     model_ia: str 
+    model_ia_lmstudio: str
     cors_origins : list[str]
 
     db_host: str

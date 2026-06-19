@@ -6,19 +6,117 @@ import time
 import httpx
 from fastapi import HTTPException
 from app.config import settings
+from app.services.database import get_db_schema, execute_select
+from app.prompts.recherche import build_recherche_prompt
 
 # Ajouter le parent directory au path pour les imports
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from app.services.ollama import call_ollama
-from app.services.database import get_db_schema, execute_select
-from app.prompts.recherche import build_recherche_prompt
+async def call_llm_provider(provider: str, model: str, prompt: str, system_prompt: str, stream: bool = False):
+    """
+    Generic function to call either Ollama or LMStudio API.
+    """
+    
+    if provider == "ollama":
+        url = settings.ollama_url
+        payload = {
+            "model": model,
+            "prompt": prompt,
+            "system": system_prompt,
+            "stream": stream,
+        }
+        headers = {"Content-Type": "application/json"}
+        
+    elif provider == "lmstudio":
+        url = settings.lmstudio_url
+        payload = {
+            "model": model,
+            "input": prompt,
+            "system_prompt": system_prompt,
+            "stream": stream
+        }
+        headers = {
+            "Content-Type": "application/json"
+        }
+    else:
+        raise ValueError(f"Unknown provider: {provider}. Use {"ollama"} or {"lmstudio"}")
+    
+    async with httpx.AsyncClient(timeout=60.0) as client:
+        try:
+            response = await client.post(url, json=payload, headers=headers)
+            response.raise_for_status()
+            return response.json()
+        except httpx.ConnectError as e:
+            raise HTTPException(
+                status_code=503, 
+                detail=f"{provider.capitalize()} is not running or unreachable: {e}"
+            )
+        except httpx.HTTPStatusError as e:
+            error_detail = f"{provider.capitalize()} error: {e.response.text}"
+            raise HTTPException(status_code=502, detail=error_detail)
 
 
-LMSTUDIO_URL = "http://192.168.69.42:1234/chat"
-OLLAMA_URL = "http://localhost:11434/api/generate"
+def extract_sql_from_response(response_data: dict, provider: str) -> str:
+    """
+    Extract SQL query from provider response.
+    """
+    
+    if provider == "ollama":
+        generated_sql = response_data.get("response", "")
+        
+    elif provider == "lmstudio":
+        output_items = response_data.get("output", [])
+        if output_items:
+            for item in output_items:
+                if item.get("type") == "message":
+                    generated_sql = item.get("content", "")
+                    break
+            else:
+                generated_sql = output_items[0].get("content", "")
+        else:
+            generated_sql = ""
+    else:
+        raise ValueError(f"Unknown provider: {provider}")
+    
+    generated_sql = generated_sql.strip()
+    if generated_sql.startswith("```sql"):
+        generated_sql = generated_sql[6:].strip()
+    if generated_sql.startswith("```"):
+        generated_sql = generated_sql[3:].strip()
+    if generated_sql.endswith("```"):
+        generated_sql = generated_sql[:-3].strip()
+    
+    return generated_sql
 
-async def run_tests():
+
+def get_provider_stats(response_data: dict, provider: str) -> dict:
+    """
+    Extract statistics from provider response.
+    """
+    
+    if provider == "ollama":
+        return {
+            "load_duration": response_data.get("load_duration", 0),
+            "prompt_eval_duration": response_data.get("prompt_eval_duration", 0),
+            "eval_duration": response_data.get("eval_duration", 0),
+            "input_tokens": response_data.get("prompt_eval_count", 0),
+            "output_tokens": response_data.get("eval_count", 0)
+        }
+    elif provider == "lmstudio":
+        stats = response_data.get("stats", {})
+        return {
+            "input_tokens": stats.get("input_tokens", 0),
+            "output_tokens": stats.get("total_output_tokens", 0),
+            "reasoning_tokens": stats.get("reasoning_output_tokens", 0),
+            "tokens_per_second": stats.get("tokens_per_second", 0),
+            "time_to_first_token": stats.get("time_to_first_token_seconds", 0),
+            "model_load_time": stats.get("model_load_time_seconds", 0)
+        }
+    else:
+        return {}
+
+
+async def run_tests(provider: str = "ollama"):
     """
     Fonction principale qui exécute les tests de requêtes SQL.
     Lit le fichier requetes_test.json, envoie chaque requête utilisateur au modèle IA,
@@ -47,10 +145,9 @@ async def run_tests():
     passed_tests = 0
     failed_tests = 0
     
-    # Enregistrer le temps de départ
     start_time = time.time()
     
-    print(f"Démarrage des tests... {total_tests} tests à exécuter.\n")
+    print(f"Démarrage des tests avec {provider}... {total_tests} tests à exécuter.\n")
     print("=" * 100)
     
     user_id = 5
@@ -66,38 +163,33 @@ async def run_tests():
         try:
             # Étape 1: Générer la requête SQL via le modèle IA
             system_prompt = build_recherche_prompt(schema, user_id)
-            payload = {
-                "model": settings.model_ia,
-                "prompt": f"Demande: {user_query}",
-                "stream": False,
-                "system": system_prompt
-            }
+            if provider == "ollama":
+                model = settings.model_ia
+            else:
+                model = settings.model_ia_lmstudio
             
-            async with httpx.AsyncClient(timeout=60.0) as client:
-                try:
-                    res = await client.post(settings.ollama_url, json=payload)
-                    res.raise_for_status() # Raises an exception if status code between 400 and 599 (HTTP error)
-                except httpx.ConnectError:
-                    raise HTTPException(status_code=503, detail="Ollama is not running on localhost:11434")
-                except httpx.HTTPStatusError as e:
-                    raise HTTPException(status_code=502, detail=f"Ollama error: {e.response.text}")
+            response_data = await call_llm_provider(
+                provider=provider,
+                model=model,
+                prompt=f"Demande: {user_query}",
+                system_prompt=system_prompt,
+                stream=False
+            )
             
-            print(res)
-            generated_sql = res['response']
-            
-            # Nettoyer la réponse (supprimer les markdown blocks si présents)
-            generated_sql = generated_sql.strip()
-            if generated_sql.startswith("```sql"):
-                generated_sql = generated_sql[6:].strip()
-            if generated_sql.startswith("```"):
-                generated_sql = generated_sql[3:].strip()
-            if generated_sql.endswith("```"):
-                generated_sql = generated_sql[:-3].strip()
+            generated_sql = extract_sql_from_response(response_data, provider)
+            stats = get_provider_stats(response_data, provider)
             
             print(f"  → SQL générée: {generated_sql}")
-            print(f"Load duration: {res["load_duration"]} ")
-            print(f"Prompt eval duration: {res["prompt_eval_duration"]} ")
-            print(f"Eval duration: {res["eval_duration"]} ")
+            if provider == "ollama":
+                print(f"Load duration: {stats.get('load_duration', 'N/A')} ")
+                print(f"Prompt eval duration: {stats.get('prompt_eval_duration', 'N/A')} ")
+                print(f"Eval duration: {stats.get('eval_duration', 'N/A')} ")
+            elif provider == "lmstudio":
+                print(f"Input tokens: {stats.get('input_tokens', 'N/A')} ")
+                print(f"Output tokens: {stats.get('output_tokens', 'N/A')} ")
+                print(f"Reasoning tokens: {stats.get("reasoning_output_tokens", 'N/A')} ")
+                print(f"Tokens per second: {stats.get('tokens_per_second', 'N/A')} ")
+                print(f"Time to first token: {stats.get('time_to_first_token', 'N/A')} ")
             
             # Étape 2: Exécuter la requête générée
             try:
@@ -151,6 +243,7 @@ async def run_tests():
     print("\n" + "=" * 100)
     print("\nSTATISTIQUES FINALES")
     print("=" * 100)
+    print(f"Fournisseur: {provider}")
     print(f"Total des tests: {total_tests}")
     print(f"Tests passés: {passed_tests}")
     print(f"Tests échoués: {failed_tests}")
@@ -165,30 +258,38 @@ async def run_tests():
     else:
         print("\n✅ Tous les tests ont réussi!")
 
-async def test_nb_tokens():
-    print("Executing query...")
+
+async def test_nb_tokens(provider: str = "ollama"):
+    print(f"Executing query with {provider}...")
     user_query = "cherche les tickets créés par mwu, assignés à sls"
     user_id = 5
     schema = get_db_schema()
     system_prompt = build_recherche_prompt(schema, user_id)
-    payload = {
-        "model": settings.model_ia,
-        "prompt": f"Demande: {user_query}",
-        "stream": False,
-        "system": system_prompt
-    }
     
-    async with httpx.AsyncClient(timeout=60.0) as client:
-        try:
-            res = await client.post(settings.ollama_url, json=payload)
-            res.raise_for_status() # Raises an exception if status code between 400 and 599 (HTTP error)
-        except httpx.ConnectError:
-            raise HTTPException(status_code=503, detail="Ollama is not running on localhost:11434")
-        except httpx.HTTPStatusError as e:
-            raise HTTPException(status_code=502, detail=f"Ollama error: {e.response.text}")
+    if provider == "ollama":
+        model = settings.model_ia
+    else:
+        model = settings.model_ia_lmstudio
     
-    print(f"Input tokens: {res.json()['prompt_eval_count']}")
-    print(f"Output tokens: {res.json()['eval_count']}")
+    response_data = await call_llm_provider(
+        provider=provider,
+        model=model,
+        prompt=user_query,
+        system_prompt=system_prompt,
+        stream=False
+    )
+    
+    stats = get_provider_stats(response_data, provider)
+    
+    print(extract_sql_from_response(response_data, provider))
+    print(stats)
 
 if __name__ == "__main__":
-    asyncio.run(run_tests())
+    provider = "ollama" 
+    if len(sys.argv) > 1:
+        arg = sys.argv[1].lower()
+        if arg in ["ollama", "lmstudio"]:
+            provider = arg
+        else:
+            print(f"Warning: Unknown provider '{arg}'. Using default: {"ollama"}")
+    asyncio.run(run_tests(provider=provider))

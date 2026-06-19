@@ -20,8 +20,8 @@
     "correct_sql": "SELECT DISTINCT t.id, t.code, t.summary FROM ticket t JOIN user u ON u.id = t.assignee_id WHERE u.username = 'sls' AND t.validation_status = 'En attente d\\'une compilation' AND t.type != 'Group'"
   },
   {
-    "user": "les tickets ouverts de sls",
-    "correct_sql": "SELECT DISTINCT t.id, t.code, t.summary FROM ticket t JOIN user u ON u.id = t.assignee_id WHERE u.username = 'sls' AND t.status = 'Ouvert' AND t.type != 'Group'"
+    "user": "les tickets estimés de l'user sls",
+    "correct_sql": "SELECT DISTINCT t.id, t.code, t.summary FROM ticket t JOIN user u ON u.id = t.assignee_id WHERE u.username = 'sls' AND t.status = 'Estimé' AND t.type != 'Group'"
   },
   {
     "user": "les tickets assignés à mwu qui ont un temps effectif supérieur ou égal à 5h",

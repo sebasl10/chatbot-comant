@@ -81,7 +81,7 @@ def build_recherche_prompt(schema: str, user_id: int | None) -> str:
         - Le temps estimé d'un ticket (champ time_estimate de ma table ticket) est stocké en nombre d'heures
         - Le temps effectif d'un ticket est stocké en secondes dans le champ duration de la table planning. Il faut savoir qu'il peut y avoir plusieurs lignes pour un même ticket_id, il faut donc faire la somme du champ duration de chaque ligne.
         - Quand tu dois filtrer par un projet, utilise toujours la colonne code, jamais la colonne name
-        - Si le type de branche n'est pas specifié (dev, travail, release), tu dois chercher dans les 3 types de branche
+        - Si le type de branche n'est pas specifié (branch dev/branche développement, branche de travail, branche release), tu dois chercher dans les 3 types de branche
         - L'historique de modifications des attributs d'un ticket (status, assigné, description, etc) est stockée dans la table Log (action UPDATE)
         
         ---
@@ -130,9 +130,9 @@ def build_recherche_prompt(schema: str, user_id: int | None) -> str:
         Message: "Les tickets qui ont un temps effectif supérieur à 5h"
         SQL: SELECT t.id, t.code, t.summary FROM ticket t JOIN planning pl ON p.ticket_id = t.id WHERE t.type != 'Group' GROUP BY t.id, t.code, t.summary HAVING SUM(pl.duration) / 3600 >= 5;
 
-        Message: "Les tickets sur lesquels j'ai du temps planifié"
-        SQL: SELECT DISTINCT t.id, t.code, t.summary FROM ticket t JOIN planning p ON p.ticket_id = t.id WHERE p.user_id = {user_id} AND t.type != 'Group' ORDER BY p.date DESC
-
+        Message: "Les tickets estimés de sls"
+        SQL: SELECT DISTINCT t.id, t.code, t.summary FROM ticket t JOIN user u ON t.assignee_id = u.id WHERE t.status = 'Estimé' AND u.username = 'sls' AND t.type != 'Group'
+        
         Message: "Les tickets qui n'ont pas de correction souhaitée"
         SQL: SELECT DISTINCT t.id, t.code, t.summary FROM ticket t WHERE t.close_status = 'Pas de correction souhaitée' AND t.type != 'Group'
 

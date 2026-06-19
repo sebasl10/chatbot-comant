@@ -36,7 +36,16 @@ async def stream_simple_intent(message: str, system_prompt: str):
 async def extract_and_validate_entities(message: str):
     """Returns (entities_dict, error_chunks_generator | None)."""
     response = await call_ollama(prompt=f"Demande: {message}", system=EXTRACTION_PROMPT)
-    print(f"Raw response from Ollama: {response}")  # Debug
+    print(response)
+    
+    response = response.strip()
+    if response.startswith("```json"):
+        response = response[6:].strip()
+    if response.startswith("```"):
+        response = response[3:].strip()
+    if response.endswith("```"):
+        response = response[:-3].strip()
+        
     entities_dict = json.loads(response)
     has_error, error_message, vocabulary_error = await handle_vocabulary_suggestions(entities_dict)
     if has_error:

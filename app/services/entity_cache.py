@@ -116,7 +116,6 @@ async def handle_vocabulary_suggestions(entities_dict: dict) -> tuple[bool, str,
     linked = link_entities(entities_dict["entities"])
     suggestions = [e for e in linked if e["status"] == "suggestion"]
     unknowns = [e for e in linked if e["status"] == "unknown"]
-    print(linked)
 
     if unknowns:
         message = get_unknown_entities_message(unknowns)

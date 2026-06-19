@@ -27,8 +27,8 @@ async def health():
 
 @app.get("/tests")
 async def tests():
-    await run_tests()
+    await run_tests("ollama")
     
 @app.get("/tests/tokens")
 async def tests():
-    await test_nb_tokens()
+    await test_nb_tokens("ollama")

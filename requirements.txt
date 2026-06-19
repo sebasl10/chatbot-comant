@@ -4,3 +4,4 @@ pydantic-settings>=2.0.0
 httpx>=0.24.0
 pymysql
 rapidfuzz
+bs4
