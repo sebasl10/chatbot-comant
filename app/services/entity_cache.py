@@ -11,6 +11,7 @@ CACHEABLE_COLUMNS = {
     "component": ("component", "name"),
     "product": ("product", "name"),
     "project": ("project", "code"),
+    "tag": ("tag", "name"),
     "user": ("user", "username")
 }
 

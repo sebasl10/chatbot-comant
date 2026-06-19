@@ -25,7 +25,6 @@ async def call_llm_provider(provider: str, model: str, prompt: str, system_promp
             "prompt": prompt,
             "system": system_prompt,
             "stream": stream,
-            "keep_alive": -1
         }
         headers = {"Content-Type": "application/json"}
         

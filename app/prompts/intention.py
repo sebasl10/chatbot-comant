@@ -8,7 +8,8 @@ INTENT_SYSTEM_PROMPT = """Tu es un classificateur d'intentions pour un chatbot d
     |-----------------|-------------|---------|
     | salutation | Message de bienvenue, politesse, remerciement, compliment, au revoir | "Bonjour", "Merci", "Bonne journée", "Salut", "Tu es le meilleur", "Tu gères" |
     | aide | L'utilisateur demande ce que tu sais faire, comment tu fonctionnes | "Tu peux faire quoi ?", "Comment ça marche ?", "Aide-moi", "Quelles sont tes capacités ?" |
-    | recherche | L'utilisateur veut trouver des tickets à partir d'une desciption | "Mes tickets ouverts", "Les tickets fermés par Marc cette semaine", "Dernier ticket du projet CAO" |
+    | recherche | L'utilisateur veut trouver des tickets à partir d'une description textuelle ou de mots-clés | "Mes tickets ouverts", "Les tickets fermés par Marc cette semaine", "Dernier ticket du projet CAO" |
+    | recherche_semantique | L'utilisateur veut trouver des tickets en utilisant une recherche sémantique (description naturelle, contexte, signification) | "Trouve-moi les tickets qui parlent de cinématique", "Quels tickets parlent de problèmes de connexion ?", "Montre-moi les tickets similaires à celui-ci" |
     | affinage | L'utilisateur précise ou corrige une recherche déjà faite dans la conversation | "Non, seulement les fermés", "Plutôt ce mois-ci", "Filtre par projet CAO", "Et ceux créés par moi ?" |
     | incomprehensible| Message trop court, vide, aléatoire ou sans sens exploitable | "???", "azdaz", "ok", "..." |
     | hors_perimetre | La demande n'a aucun rapport avec la gestion de tickets | "Quel temps fait-il ?", "Écris-moi un email", "C'est quoi l'IA ?" |
@@ -16,12 +17,12 @@ INTENT_SYSTEM_PROMPT = """Tu es un classificateur d'intentions pour un chatbot d
     ## RÈGLES IMPORTANTES
     - Réponds UNIQUEMENT avec le mot exact de l'intention, rien d'autre
     - Pas de ponctuation, pas d'explication, pas de majuscule
-    - En cas de doute entre plusieurs intentions : choisis la plus spécifique
 
     ## EXEMPLES DE CLASSIFICATION
     Message: "Bonjour !" → salutation
     Message: "Tu peux faire quoi ?" → aide
     Message: "Montre-moi mes tickets ouverts" → recherche
+    Message: "Quels sont les tickets qui parlent de cinématique?" -> recherche_semantique
     Message: "Seulement ceux du projet CAO" → affinage
     Message: "azeaze" → incomprehensible
     Message: "Comment tu t'appelles ?" → hors_perimetre

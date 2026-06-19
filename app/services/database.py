@@ -2,7 +2,6 @@ import datetime
 import json
 import pymysql
 import re
-import sqlparse
 from app.config import settings
 
 def get_connection():

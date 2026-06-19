@@ -82,5 +82,10 @@
   {
     "user": "cherches les tickets qui ont été fermés en mars 2026 en lien au projet SLS2025",
     "correct_sql": "SELECT DISTINCT t.id, t.code, t.summary FROM ticket t JOIN project_ticket pt ON pt.ticket_id = t.id JOIN project p ON p.id = pt.project_id JOIN log l ON l.ressource_id = t.id WHERE p.code = 'SLS2025' AND l.class LIKE '%Ticket%' AND l.action = 'UPDATE' AND JSON_EXTRACT(l.log_data, '$.changes.status[1]') = 'Fermé' AND l.datetime >= '2026-03-01' AND l.datetime < '2026-04-01' AND t.type != 'Group'"
+  },
+  {
+    "user": "les tickets du projet 3dk_2026-SP2 qui ont un tag SPR",
+    "correct_sql": "SELECT DISTINCT t.id, t.code, t.summary FROM ticket t JOIN project_ticket pt ON pt.ticket_id = t.id JOIN project p ON p.id = pt.project_id JOIN ticket_tag tt ON tt.ticket_id = t.id JOIN tag tg ON tg.id = tt.tag_id WHERE p.code = '3dk_2026-SP2' AND tg.name = 'SPR' AND t.type != 'Group'"
   }
 ]
+

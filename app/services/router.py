@@ -1,3 +1,4 @@
+from app.services.embedding import embedding_service
 from app.services.intention import classify_intention
 from app.services.ollama import call_ollama, stream_ollama
 from app.services.database import get_db_schema, execute_select, update_intention, create_research, update_sql, get_sql
@@ -73,7 +74,7 @@ async def persist_and_stream_results(sql: str, intention: str, user_id: int, his
     resultats = execute_select(sql, "", user_id)
     nb = len(resultats)
 
-    if intention == "recherche":
+    if intention in ("recherche", "recherche_semantique"):
         research_id = create_research(user_id, sql)
     else:
         research_id = update_sql(last_id, sql, research_id_affinage)
@@ -102,7 +103,7 @@ async def persist_and_stream_results(sql: str, intention: str, user_id: int, his
 async def handle_stream(message: str, user_id: int, historique: list[dict],
                         last_message_id: int, intention: str, research_id_affinage: int):
     if not intention:
-        intention = await classify_intention(message, historique)
+        intention = await classify_intention(message)
     print(intention)
 
     update_intention(last_message_id, intention)
@@ -111,6 +112,13 @@ async def handle_stream(message: str, user_id: int, historique: list[dict],
     # ── Simple intents ──────────────────────────────────────────────────────
     if intention in SIMPLE_INTENT_PROMPTS:
         async for chunk in stream_simple_intent(message, SIMPLE_INTENT_PROMPTS[intention]):
+            yield chunk
+        return
+    
+    # ── Semantic research intent ────────────────────────────────────────────
+    if intention == "recherche_semantique":
+        sql = await embedding_service(message)
+        async for chunk in persist_and_stream_results(sql, intention, user_id, historique, research_id_affinage):
             yield chunk
         return
 

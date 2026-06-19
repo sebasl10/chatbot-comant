@@ -17,6 +17,7 @@ def remove_html_tags(text):
     return soup.get_text(separator=" ", strip=True)
 
 def main():
+    print('Test')
     conn = get_connection()
     cursor = conn.cursor()
     cursor.execute("SELECT id, summary, description FROM ticket WHERE ticket.type != 'Group'")
