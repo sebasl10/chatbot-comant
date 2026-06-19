@@ -8,6 +8,7 @@ from fastapi import HTTPException
 from app.config import settings
 from app.services.database import get_db_schema, execute_select
 from app.prompts.recherche import build_recherche_prompt
+from app.prompts.entity_extraction import EXTRACTION_PROMPT
 
 # Ajouter le parent directory au path pour les imports
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -24,6 +25,7 @@ async def call_llm_provider(provider: str, model: str, prompt: str, system_promp
             "prompt": prompt,
             "system": system_prompt,
             "stream": stream,
+            "keep_alive": -1
         }
         headers = {"Content-Type": "application/json"}
         
@@ -168,10 +170,20 @@ async def run_tests(provider: str = "ollama"):
             else:
                 model = settings.model_ia_lmstudio
             
-            response_data = await call_llm_provider(
+            response_entities = await call_llm_provider(
                 provider=provider,
                 model=model,
                 prompt=f"Demande: {user_query}",
+                system_prompt=EXTRACTION_PROMPT,
+                stream=False
+            )
+            print(response_entities['response'])
+            entities_dict = json.loads(response_entities['response'])
+            
+            response_data = await call_llm_provider(
+                provider=provider,
+                model=model,
+                prompt=f"Demande: {user_query}. Entités qui ont été trouvées dans la requête: {entities_dict}",
                 system_prompt=system_prompt,
                 stream=False
             )

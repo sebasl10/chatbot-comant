@@ -13,9 +13,9 @@ EXTRACTION_PROMPT = """
     - user: username (3 lettres) d'un utilisateur (ex: sls, mwu, dba)
 
     ## Règles importantes :
-    - La valeur du champ value doit être exactement celle envoyée par l'utilisateur, ne la modifie pas, même si tu identifies de fautes de frappe ou d'ortographe.
-    - Si l'utilisateur n'espécifie pas le type de branche (dev, travail, release), tu dois chercher dans les 3 types (branch_dev, branch_travail, branch_release). 
+    - La valeur du champ value doit être exactement celle envoyée par l'utilisateur, ne la modifie pas, même si tu identifies de fautes de frappe ou d'ortographe. 
     - Les branches qui commencent par 'D' sont des branches dev et celles qui commencent par 'R' sont des branches release.
+    - La branche tools est une branche dev et une branche de travail (privilégie celle qui est spécifiée par l'utilisateur)
     
     ### **📋 Format de sortie (STRICT)**
     - Retourne **UNIQUEMENT** un JSON valide au format suivant : {"entities": [{"type": "project", "value": "CAO2026"}, {"type": "user", "value": "mwu"}]}

@@ -22,7 +22,7 @@ def build_recherche_prompt(schema: str, user_id: int | None) -> str:
         Fonctionne pour moi, Pas de correction souhaitée, Invalide, Fixé, Livré, Terminé, Intégré, Vérifié
         
         ### TABLE `ticket` - colonne `validation_status`
-        En attente d'une compilation, Prêt à être vérifié, Vérifié
+        En attente d'une compilation (Faire attention à échapper le guillemet simple), Prêt à être vérifié, Vérifié
         
         ### TABLE `ticket` - colonne `priority`
         1 (Basse), 2 (Moyenne), 3 (Haute), 4 (Urgent)
@@ -135,6 +135,9 @@ def build_recherche_prompt(schema: str, user_id: int | None) -> str:
         
         Message: "Les tickets qui n'ont pas de correction souhaitée"
         SQL: SELECT DISTINCT t.id, t.code, t.summary FROM ticket t WHERE t.close_status = 'Pas de correction souhaitée' AND t.type != 'Group'
+        
+        Message: "Les tickets en attente de compilation"
+        SQL: SELECT DISTINCT t.id, t.code, t.summary FROM ticket t WHERE t.validation_status = 'En attente d\'une compilation' AND t.type != 'Group'
 
         Message: "Les tickets avec le tag 'bug'"
         SQL: SELECT DISTINCT t.id, t.code, t.summary FROM ticket t JOIN ticket_tag tt ON tt.ticket_id = t.id JOIN tag tg ON tg.id = tt.tag_id WHERE tg.name = 'bug' AND t.type != 'Group'
