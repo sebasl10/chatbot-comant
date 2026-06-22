@@ -8,7 +8,7 @@ EXTRACTION_PROMPT = """
     - branch_release : nom d'une branch de release (ex: Rios49sp2, RKio2026sp1, Rams18)
     - client : nom d'un client (ex: Altair, Fives, Kuka)
     - component : nom d'un composant (ex: product:3D_Kernel_IO, application:annotations:explore, format:catiaV5:kinematics)
-    - product : nom d'un produit (ex: Comant, 3D_Features, 3D_Evolution)
+    - product : nom d'un produit (ex: 4D_Additive, 3D_Features, 3D_Evolution)
     - project : nom d'un projet (ex: ios_4.11, kio_2025-SP3, ams_dev_1.8, MultiView)
     - tag: nom d'un tag (ex: SPR, Performance, Boucle infinie, MacOS, Crash)
     - user: username (3 lettres) d'un utilisateur (ex: sls, mwu, dba)

@@ -31,14 +31,23 @@ class EntityCache:
         cursor = conn.cursor()
         for entity_type, (table, column) in CACHEABLE_COLUMNS.items():
             cursor.execute(f"SELECT DISTINCT `{column}` FROM `{table}` WHERE `{column}` IS NOT NULL")
-            self._cache[entity_type] = {row[column] for row in cursor.fetchall()}
+            rows = cursor.fetchall()
+            # Cas spécial pour branch_travail (branches séparées par des virgules)
+            if entity_type == "branch_travail":
+                values = set()
+                for row in rows:
+                    branches_str = row[column]
+                    if branches_str: 
+                        branches_list = [branch.strip() for branch in branches_str.split(",")]
+                        values.update(branches_list) 
+                self._cache[entity_type] = values
         cursor.close()
         conn.close()
         self._last_refresh = datetime.now()
 
     def get(self, entity_type: str) -> set[str]:
-        if self._needs_refresh():
-            self.refresh()
+        #if self._needs_refresh():
+        self.refresh()
         return self._cache.get(entity_type, set())
 
 entity_cache = EntityCache()

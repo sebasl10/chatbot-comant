@@ -90,7 +90,7 @@ async def persist_and_stream_results(sql: str, intention: str, user_id: int, his
     plural = lambda n: "s" if n > 1 else ""
     header = (
         f"<p>Résultats de la recherche : {nb} ticket{plural(nb)} trouvé{plural(nb)}.</p>"
-        if intention == "recherche"
+        if intention in ("recherche", "recherche_semantique")
         else f"<p>La recherche a été modifiée.</p>"
              f"<p>Résultats de la recherche : {nb} ticket{plural(nb)} trouvé{plural(nb)}.</p>"
     )
