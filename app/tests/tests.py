@@ -9,6 +9,7 @@ from app.config import settings
 from app.services.database import get_db_schema, execute_select
 from app.prompts.recherche import build_recherche_prompt
 from app.prompts.entity_extraction import EXTRACTION_PROMPT
+from app.prompts.intention import INTENT_SYSTEM_PROMPT, build_intent_prompt
 
 # Ajouter le parent directory au path pour les imports
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -295,12 +296,155 @@ async def test_nb_tokens(provider: str = "ollama"):
     print(extract_sql_from_response(response_data, provider))
     print(stats)
 
+
+def extract_intention_from_response(response_data: dict, provider: str) -> str:
+    """
+    Extract intention from provider response.
+    """
+    if provider == "ollama":
+        intention = response_data.get("response", "").strip().lower()
+    elif provider == "lmstudio":
+        output_items = response_data.get("output", [])
+        if output_items:
+            for item in output_items:
+                if item.get("type") == "message":
+                    intention = item.get("content", "").strip().lower()
+                    break
+            else:
+                intention = output_items[0].get("content", "").strip().lower()
+        else:
+            intention = ""
+    else:
+        raise ValueError(f"Unknown provider: {provider}")
+    
+    return intention
+
+
+async def run_intention_tests(provider: str = "ollama"):
+    """
+    Fonction qui exécute les tests d'identification d'intention.
+    Lit le fichier intentions_test.json, envoie chaque message utilisateur au modèle IA,
+    et compare l'intention retournée avec l'intention attendue.
+    """
+    
+    test_file_path = os.path.join(os.path.dirname(__file__), "intentions_test.json")
+    
+    try:
+        with open(test_file_path, 'r', encoding='utf-8') as f:
+            test_cases = json.load(f)
+    except FileNotFoundError:
+        print(f"Erreur: Le fichier {test_file_path} n'existe pas.")
+        return
+    except json.JSONDecodeError as e:
+        print(f"Erreur de parsing JSON: {e}")
+        return
+    
+    total_tests = len(test_cases)
+    passed_tests = 0
+    failed_tests = 0
+    
+    start_time = time.time()
+    
+    print(f"Démarrage des tests d'intention avec {provider}... {total_tests} tests à exécuter.\n")
+    print("=" * 100)
+    
+    if provider == "ollama":
+        model = settings.model_ia
+    else:
+        model = settings.model_ia_lmstudio
+    
+    for i, test_case in enumerate(test_cases, 1):
+        user_message = test_case.get("user", "")
+        correct_intention = test_case.get("intention", "").lower()
+        
+        print(f"\nTest {i}/{total_tests}")
+        print(f"Message utilisateur: {user_message}")
+        print(f"Intention attendue: {correct_intention}\n")
+        
+        try:
+            # Appeler le modèle IA
+            response_data = await call_llm_provider(
+                provider=provider,
+                model=model,
+                prompt=f"Message à classifier: {user_message}\n", 
+                system_prompt=INTENT_SYSTEM_PROMPT,
+                stream=False
+            )
+            
+            # Extraire l'intention de la réponse
+            generated_intention = extract_intention_from_response(response_data, provider)
+            stats = get_provider_stats(response_data, provider)
+            
+            print(f"  → Intention générée: {generated_intention}")
+            
+            # Afficher les statistiques
+            if provider == "ollama":
+                print(f"  Load duration: {stats.get('load_duration', 'N/A')}")
+                print(f"  Prompt eval duration: {stats.get('prompt_eval_duration', 'N/A')}")
+                print(f"  Eval duration: {stats.get('eval_duration', 'N/A')}")
+            elif provider == "lmstudio":
+                print(f"  Input tokens: {stats.get('input_tokens', 'N/A')}")
+                print(f"  Output tokens: {stats.get('output_tokens', 'N/A')}")
+                print(f"  Reasoning tokens: {stats.get('reasoning_output_tokens', 'N/A')}")
+                print(f"  Tokens per second: {stats.get('tokens_per_second', 'N/A')}")
+            
+            # Comparaison
+            if generated_intention == correct_intention:
+                print(f"  ✅ TEST PASSED")
+                passed_tests += 1
+            else:
+                print(f"  ❌ TEST FAILED - Attendu: {correct_intention}, Obtenu: {generated_intention}")
+                failed_tests += 1
+                
+        except Exception as e:
+            print(f"  ❌ ERREUR INATTENDUE: {e}")
+            import traceback
+            traceback.print_exc()
+            failed_tests += 1
+    
+    print("\n" + "=" * 100)
+    print("\nSTATISTIQUES FINALES")
+    print("=" * 100)
+    print(f"Fournisseur: {provider}")
+    print(f"Total des tests: {total_tests}")
+    print(f"Tests passés: {passed_tests}")
+    print(f"Tests échoués: {failed_tests}")
+    print(f"Taux de réussite: {(passed_tests / total_tests * 100):.2f}%")
+    
+    # Calculer et afficher le temps écoulé
+    elapsed_time = time.time() - start_time
+    print(f"Temps d'exécution: {elapsed_time:.2f} secondes")
+    
+    if failed_tests > 0:
+        print(f"\n⚠️  {failed_tests} test(s) ont échoué. Voir les détails ci-dessus.")
+    else:
+        print("\n✅ Tous les tests ont réussi!")
+
 if __name__ == "__main__":
-    provider = "ollama" 
+    provider = "ollama"
+    test_type = "sql" 
+    
     if len(sys.argv) > 1:
         arg = sys.argv[1].lower()
         if arg in ["ollama", "lmstudio"]:
             provider = arg
+        elif arg in ["intentions", "intention"]:
+            test_type = "intention"
+        elif arg in ["sql", "requetes"]:
+            test_type = "sql"
         else:
-            print(f"Warning: Unknown provider '{arg}'. Using default: {"ollama"}")
-    asyncio.run(run_tests(provider=provider))
+            print(f"Warning: Unknown argument '{arg}'. Using defaults: provider={provider}, test_type={test_type}")
+    
+    if len(sys.argv) > 2:
+        arg2 = sys.argv[2].lower()
+        if arg2 in ["ollama", "lmstudio"]:
+            provider = arg2
+        elif arg2 in ["intentions", "intention"]:
+            test_type = "intention"
+        elif arg2 in ["sql", "requetes"]:
+            test_type = "sql"
+    
+    if test_type == "intention":
+        asyncio.run(run_intention_tests(provider=provider))
+    else:
+        asyncio.run(run_tests(provider=provider))
