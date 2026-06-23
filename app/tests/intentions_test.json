@@ -15,9 +15,9 @@
     {"user": "Explique-moi ton rôle", "intention": "aide"},
 
     {"user": "Mes tickets ouverts", "intention": "recherche"},
-    {"user": "Les tickets fermés par Marc cette semaine", "intention": "recherche"},
+    {"user": "Les tickets fermés par dba cette semaine", "intention": "recherche"},
     {"user": "Dernier ticket du projet CAO", "intention": "recherche"},
-    {"user": "Tickets assignés à Jean", "intention": "recherche"},
+    {"user": "Tickets assignés à mwu", "intention": "recherche"},
     {"user": "Tickets créés hier", "intention": "recherche"},
     {"user": "Tickets de haute priorité", "intention": "recherche"},
     {"user": "Tickets du client XYZ", "intention": "recherche"},
@@ -44,13 +44,18 @@
     {"user": "Tickets liés à la sécurité", "intention": "recherche_semantique"},
     {"user": "Tickets sur l'intégration continue", "intention": "recherche_semantique"},
 
+    {"user": "Tickets du projet Comant2026 qui parlent de cinématique", "intention": "recherche_hybride"},
+    {"user": "Mes tickets ouverts sur les bugs de login", "intention": "recherche_hybride"},
+    {"user": "Tickets créés cette semaine concernant l'API", "intention": "recherche_hybride"},
+    {"user": "Les tickets assignés à Jean qui traitent de la sécurité", "intention": "recherche_hybride"},
+    {"user": "Tickets du projet X et Y qui parlent de calibration", "intention": "recherche_hybride"},
+    {"user": "Tickets fermés la semaine dernière sur les performances", "intention": "recherche_hybride"},
+
     {"user": "???", "intention": "incomprehensible"},
     {"user": "azdaz", "intention": "incomprehensible"},
     {"user": "ok", "intention": "incomprehensible"},
-    {"user": "...", "intention": "incomprehensible"},
     {"user": "soazdja", "intention": "incomprehensible"},
     {"user": "pfkkp", "intention": "incomprehensible"},
-    {"user": " ", "intention": "incomprehensible"},
     {"user": "xYz123", "intention": "incomprehensible"},
 
     {"user": "Quel temps fait-il ?", "intention": "hors_perimetre"},

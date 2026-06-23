@@ -9,7 +9,7 @@ from app.config import settings
 from app.services.database import get_db_schema, execute_select
 from app.prompts.recherche import build_recherche_prompt
 from app.prompts.entity_extraction import EXTRACTION_PROMPT
-from app.prompts.intention import INTENT_SYSTEM_PROMPT, build_intent_prompt
+from app.prompts.intention import INTENT_SYSTEM_PROMPT
 
 # Ajouter le parent directory au path pour les imports
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))

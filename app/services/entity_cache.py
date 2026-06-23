@@ -41,13 +41,17 @@ class EntityCache:
                         branches_list = [branch.strip() for branch in branches_str.split(",")]
                         values.update(branches_list) 
                 self._cache[entity_type] = values
+            else:
+                self._cache[entity_type] = []
+                for row in rows:
+                    self._cache[entity_type].append(row[column])
         cursor.close()
         conn.close()
         self._last_refresh = datetime.now()
 
     def get(self, entity_type: str) -> set[str]:
-        #if self._needs_refresh():
-        self.refresh()
+        if self._needs_refresh():
+            self.refresh()
         return self._cache.get(entity_type, set())
 
 entity_cache = EntityCache()
@@ -108,10 +112,23 @@ def get_suggestion_entities_message(suggestions: list[dict]) -> str:
     """
     Génère un message pour les entités avec des suggestions.
     """
+    type_to_article_and_name = {
+        "branch_dev": ("La", "branche de développement"),
+        "branch_travail": ("La", "branche de travail"),
+        "branch_release": ("La", "branche de release"),
+        "client": ("Le", "client"),
+        "component": ("Le", "composant"),
+        "product": ("Le", "produit"),
+        "project": ("Le", "projet"),
+        "tag": ("Le", "tag"),
+        "user": ("L'", "utilisateur"),
+    }
     parts = []
     for s in suggestions:
+        type_ = s["type"]
+        article, name_fr = type_to_article_and_name.get(type_, ("Le", type_))
         parts.append(
-            f'<p>Le {s["type"]} <strong>{s["value"]}</strong> n\'existe pas. '
+            f'<p>{article} {name_fr} <strong>{s["value"]}</strong> n\'existe pas. '
             f'Voulez-vous dire <strong>{s["suggestion"]}</strong>?</p>'
         )
     return "".join(parts)
@@ -124,6 +141,7 @@ async def handle_vocabulary_suggestions(entities_dict: dict) -> tuple[bool, str,
     - un dictionnaire d'erreurs de vocabulaire (si suggestions)
     """
     linked = link_entities(entities_dict["entities"])
+    print(linked)
     suggestions = [e for e in linked if e["status"] == "suggestion"]
     unknowns = [e for e in linked if e["status"] == "unknown"]
 

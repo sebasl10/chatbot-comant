@@ -8,6 +8,8 @@ from app.config import settings
 from bs4 import BeautifulSoup
 
 def remove_html_tags(text):
+    if text is None:
+        return ""
     soup = BeautifulSoup(text, "html.parser")
     return soup.get_text(separator=" ", strip=True)
 
@@ -46,6 +48,9 @@ async def embedding_service(text: str):
     ticket_ids = tuple([ticket_id for ticket_id, score in results])
     ticket_scores = {ticket_id: score for ticket_id, score in results}
 
+    if (len(ticket_ids) == 0):
+        return "SELECT id, summary, description FROM ticket WHERE 0"
+    
     conn = get_connection()
     cursor = conn.cursor()
     query = "SELECT id, summary, description FROM ticket WHERE id IN ({})".format(

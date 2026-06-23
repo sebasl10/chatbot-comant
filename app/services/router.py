@@ -1,3 +1,4 @@
+from app.prompts.hybrid_research import HYBRID_RESEARCH_PROMPT, HYBRID_RESEARCH_SQL_PROMPT
 from app.services.embedding import embedding_service
 from app.services.intention import classify_intention
 from app.services.ollama import call_ollama, stream_ollama
@@ -17,6 +18,16 @@ async def stream_text(text: str, delay: float = 0.05):
     for chunk in text.split(" "):
         yield chunk + " "
         await asyncio.sleep(delay)
+        
+def clean_json(text: str):
+    text = text.strip()
+    if text.startswith("```json"):
+        text = text[7:].strip()
+    if text.startswith("```"):
+        text = text[3:].strip()
+    if text.endswith("```"):
+        text = text[:-3].strip()
+    return text
 
 # ── Simple intent handlers ────────────────────────────────────────────────────
 
@@ -39,13 +50,7 @@ async def extract_and_validate_entities(message: str):
     response = await call_ollama(prompt=f"Demande: {message}", system=EXTRACTION_PROMPT)
     print(response)
     
-    response = response.strip()
-    if response.startswith("```json"):
-        response = response[6:].strip()
-    if response.startswith("```"):
-        response = response[3:].strip()
-    if response.endswith("```"):
-        response = response[:-3].strip()
+    response = clean_json(response)
         
     entities_dict = json.loads(response)
     has_error, error_message, vocabulary_error = await handle_vocabulary_suggestions(entities_dict)
@@ -58,7 +63,7 @@ async def generate_sql(message: str, intention: str, user_id: int, historique: l
     schema = get_db_schema()
     prompt_message = f"Demande: {message}"
 
-    if intention == "recherche":
+    if intention.startswith("recherche"):
         prompt_message = f"Demande: {message}. Entités qui ont été trouvées dans la requête: {entities_dict}"
         system = build_recherche_prompt(schema, user_id)
         return await call_ollama(prompt=prompt_message, system=system)
@@ -74,7 +79,7 @@ async def persist_and_stream_results(sql: str, intention: str, user_id: int, his
     resultats = execute_select(sql, "", user_id)
     nb = len(resultats)
 
-    if intention in ("recherche", "recherche_semantique"):
+    if intention in ("recherche", "recherche_semantique", "recherche_hybride"):
         research_id = create_research(user_id, sql)
     else:
         research_id = update_sql(last_id, sql, research_id_affinage)
@@ -97,7 +102,25 @@ async def persist_and_stream_results(sql: str, intention: str, user_id: int, his
     async for chunk in stream_text(header):
         yield chunk
 
-
+async def handle_hybrid_research(message, intention, user_id, historique, research_id_affinage):
+    response = await call_ollama(prompt=f"Message: {message}", system=HYBRID_RESEARCH_PROMPT)
+    response = json.loads(clean_json(response))
+    requete_filtres = response['requete_filtres']
+    requete_semantique = response['requete_semantique']
+    
+    # Extraction et validation des entités UNIQUEMENT pour requete_filtres
+    entities_dict, vocab_error = await extract_and_validate_entities(requete_filtres)
+    if vocab_error:
+        return None, vocab_error
+    
+    sql_filtres = await generate_sql(requete_filtres, intention, user_id, historique, research_id_affinage, entities_dict)
+    sql_semantique = await embedding_service(requete_semantique)
+        
+    prompt = f"Première requête SQL: {sql_filtres}\n Deuxième requête SQL: {sql_semantique}"
+    sql_final = await call_ollama(prompt=prompt, system=HYBRID_RESEARCH_SQL_PROMPT)
+    print(sql_final)
+    return sql_final, None
+    
 # ── Main entry point ──────────────────────────────────────────────────────────
 
 async def handle_stream(message: str, user_id: int, historique: list[dict],
@@ -105,6 +128,9 @@ async def handle_stream(message: str, user_id: int, historique: list[dict],
     if not intention:
         intention = await classify_intention(message)
     print(intention)
+    
+    """ if intention == "recherche_hybride":
+        intention = "recherche" """
 
     update_intention(last_message_id, intention)
     yield json.dumps({"intention": intention}) + "\n"
@@ -121,7 +147,25 @@ async def handle_stream(message: str, user_id: int, historique: list[dict],
         async for chunk in persist_and_stream_results(sql, intention, user_id, historique, research_id_affinage):
             yield chunk
         return
-
+    
+    # ── Hybrid research intent  ────────────────
+    if intention == "recherche_hybride":
+        sql, vocab_error = await handle_hybrid_research(message, intention, user_id, historique, research_id_affinage)
+        if vocab_error:
+            vocabulary_error, error_message = vocab_error
+            yield json.dumps({"intention": intention, "vocabularyError": vocabulary_error}) + "\n"
+            yield "[STREAM_START]\n"
+            async for chunk in stream_text(error_message):
+                yield chunk
+            return
+        try:
+            async for chunk in persist_and_stream_results(sql, intention, user_id, historique, research_id_affinage):
+                yield chunk
+        except Exception as e:
+            yield json.dumps({"intention": intention, "generated_sql": sql, "research_id": "", "error": str(e)}, ensure_ascii=False) + "\n"
+            yield f"⚠️ Erreur SQL : {e}"
+        return
+        
     # ── Unknown intent ──────────────────────────────────────────────────────
     if intention not in ("recherche", "affinage"):
         yield "[STREAM_START]\n"
