@@ -125,12 +125,11 @@ async def handle_hybrid_research(message, intention, user_id, historique, resear
 
 async def handle_stream(message: str, user_id: int, historique: list[dict],
                         last_message_id: int, intention: str, research_id_affinage: int):
+    """ print(historique)
+    print(len(historique)) """
     if not intention:
         intention = await classify_intention(message)
     print(intention)
-    
-    """ if intention == "recherche_hybride":
-        intention = "recherche" """
 
     update_intention(last_message_id, intention)
     yield json.dumps({"intention": intention}) + "\n"

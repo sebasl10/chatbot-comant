@@ -28,12 +28,12 @@ def search(query: str, seuil: int):
     query_emb = get_embedding(query)[0]
     conn = get_connection()
     cursor = conn.cursor()
-    cursor.execute("SELECT ticket_id, embedding_v2 FROM ticket_embedding")
+    cursor.execute("SELECT ticket_id, embedding FROM ticket_embedding")
     rows = cursor.fetchall()
 
     scored = []
     for row in rows:
-        emb = json.loads(row['embedding_v2'])[0]
+        emb = json.loads(row['embedding'])[0]
         score = cosine_similarity(query_emb, emb)
         if score >= seuil:
             scored.append((row['ticket_id'], score))
