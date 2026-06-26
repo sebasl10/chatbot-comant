@@ -1,6 +1,7 @@
 from pydantic_settings import BaseSettings
 
 class Settings(BaseSettings):
+    ollama_base_url: str
     ollama_url: str 
     ollama_url_embedding: str
     lmstudio_url: str 
