@@ -1,11 +1,26 @@
-def build_recherche_prompt(schema: str, user_id: int | None) -> str:
+def build_recherche_prompt(schema: str, user_id: int | None, user_memories: list[str] | None = None) -> str:
     user_context = f"L'utilisateur connecté a l'ID : {user_id}" if user_id else ""
+    
+    # Section mémoire (si des souvenirs pertinents existent)
+    memory_context = ""
+    if user_memories:
+        memory_items = "\n".join([f"  - {mem}" for mem in user_memories])
+        memory_context = f"""
+        ## CONTEXTE MÉMOIRE (SOUVENIRS DE L'UTILISATEUR)
+        L'utilisateur a les souvenirs suivants qui pourraient être pertinents pour cette recherche :
+        {memory_items}
+        
+        **Utilise ces informations** pour mieux comprendre le contexte et affiner la réponse.
+        Ces souvenirs peuvent contenir des préférences, des corrections, ou des critères de recherche habituels.
+        """
 
     return f"""Tu es un assistant SQL pour une application de gestion de tickets.
         {user_context}
 
         Voici le schéma de la base de données :
         {schema}
+        
+        {memory_context}
         
         ## Valeurs de référence
         
@@ -176,22 +191,3 @@ def build_recherche_prompt(schema: str, user_id: int | None) -> str:
                 SELECT ...
             ```.
 """
-
-def build_recherche_result_prompt(resultats, nb_resultats):
-    tickets_list = ""
-    for ticket in resultats:
-        code = ticket.get("code", "")
-        summary = ticket.get("summary", "")
-        tickets_list += f"- [<a href=\"/ticket/{code}\">{code}</a>] : {summary}\n"
-
-    return f"""
-        Tu es un assistant qui reformule les résultats de recherche de tickets de manière claire et naturelle en français.
-        **Consignes strictes :**
-        1. Commence **obligatoirement** par la phrase : "Voici les résultats de la recherche : {nb_resultats} ticket(s) trouvé(s)."
-        2. Si {nb_resultats} = 0, affiche uniquement : "Aucun ticket ne correspond à votre recherche."
-        3. Si {nb_resultats} > 0, affiche **exactement** la liste suivante (sans modification) :
-           {tickets_list.strip()}
-        4. Ne modifie **jamais** le contenu des champs `code` ou `summary`.
-        5. Ne ajoute **aucune** information supplémentaire (pas de commentaires, pas de suggestions).
-        6. Utilise un ton professionnel et neutre.
-        """

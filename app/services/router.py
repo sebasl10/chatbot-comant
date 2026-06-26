@@ -1,6 +1,7 @@
 from app.prompts.hybrid_research import HYBRID_RESEARCH_PROMPT, HYBRID_RESEARCH_SQL_PROMPT
 from app.services.embedding import embedding_service
 from app.services.intention import classify_intention
+from app.services.memory import close_memory, extract_search_thread, search_memory
 from app.services.ollama import call_ollama, stream_ollama
 from app.services.database import get_db_schema, execute_select, update_intention, create_research, update_sql, get_sql
 from app.services.entity_cache import handle_vocabulary_suggestions
@@ -59,18 +60,19 @@ async def extract_and_validate_entities(message: str):
     return entities_dict, None
 
 
-async def generate_sql(message: str, intention: str, user_id: int, historique: list[dict], research_id_affinage: int, entities_dict: dict) -> str:
+async def generate_sql(message: str, intention: str, user_id: int, historique: list[dict], research_id_affinage: int, entities_dict: dict, memories: list) -> str:
     schema = get_db_schema()
     prompt_message = f"Demande: {message}"
 
     if intention.startswith("recherche"):
         prompt_message = f"Demande: {message}. Entités qui ont été trouvées dans la requête: {entities_dict}"
-        system = build_recherche_prompt(schema, user_id)
+        system = build_recherche_prompt(schema, user_id, memories)
+        print(system)
         return await call_ollama(prompt=prompt_message, system=system)
 
     # affinage
     last_sql = get_sql(research_id_affinage) if research_id_affinage != 0 else historique[-2]["sql"]
-    system = build_affinage_prompt(schema, last_sql, user_id, historique)
+    system = build_affinage_prompt(schema, last_sql, user_id, historique, memories)
     return await call_ollama(prompt=system)
 
 
@@ -123,12 +125,18 @@ async def handle_hybrid_research(message, intention, user_id, historique, resear
     
 # ── Main entry point ──────────────────────────────────────────────────────────
 
-async def handle_stream(message: str, user_id: int, historique: list[dict],
-                        last_message_id: int, intention: str, research_id_affinage: int):
-    """ print(historique)
-    print(len(historique)) """
+async def handle_stream(message: str, user_id: int, historique: list[dict], last_message_id: int, intention: str, research_id_affinage: int):
+    """ memories = search_memory(message, str(user_id))
+    memory_context = [m['memory'] for m in memories if m.get('memory')]
+    close_memory()
+    print(memory_context) """
+    memory_context = ""
+
     if not intention:
         intention = await classify_intention(message)
+
+    if intention == 'recherche_hybride':
+        intention = 'recherche'
     print(intention)
 
     update_intention(last_message_id, intention)
@@ -183,10 +191,23 @@ async def handle_stream(message: str, user_id: int, historique: list[dict],
         return
 
     try:
-        sql = await generate_sql(message, intention, user_id, historique, research_id_affinage, entities_dict)
+        sql = await generate_sql(message, intention, user_id, historique, research_id_affinage, entities_dict, memory_context)
         print(sql)
+        
         async for chunk in persist_and_stream_results(sql, intention, user_id, historique, research_id_affinage):
             yield chunk
+    
+        """ if (intention == "affinage"):
+            for msg in reversed(historique):
+                if msg["role"] == "user" and msg["intention"] == None:
+                    msg["intention"] = "affinage"
+                    break
+            full_history = historique + [
+                {"id": None, "role": "bot", "content": "", "sql": sql, "intention": None}
+            ]
+            extract_search_thread(full_history, str(user_id))
+            close_memory() """
+
     except Exception as e:
         yield json.dumps({"intention": intention, "generated_sql": sql, "research_id": "", "error": str(e)}, ensure_ascii=False) + "\n"
         yield f"⚠️ Erreur SQL : {e}"

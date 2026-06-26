@@ -5,3 +5,7 @@ httpx>=0.24.0
 pymysql
 rapidfuzz
 bs4
+mem0ai
+ollama
+mem0ai[nlp]
+fastembed

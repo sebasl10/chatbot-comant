@@ -1,5 +1,18 @@
-def build_affinage_prompt(schema: str, last_sql: str, user_id: int | None, history: list[dict]) -> str:
+def build_affinage_prompt(schema: str, last_sql: str, user_id: int | None, history: list[dict], user_memories: list[str] | None = None) -> str:
     user_context = f"L'utilisateur connecté a l'ID : {user_id}" if user_id else ""
+    
+    # Section mémoire (si des souvenirs pertinents existent)
+    memory_context = ""
+    if user_memories:
+        memory_items = "\n".join([f"  - {mem}" for mem in user_memories])
+        memory_context = f"""
+                ## CONTEXTE MÉMOIRE (SOUVENIRS DE L'UTILISATEUR)
+                L'utilisateur a les souvenirs suivants qui pourraient être pertinents pour cet affinage :
+                {memory_items}
+                
+                **Utilise ces informations** pour mieux comprendre le contexte historique et les préférences de l'utilisateur.
+                Ces souvenirs peuvent t'aider à interpréter correctement ce que l'utilisateur souhaite affiner.
+            """
 
     return f"""Tu es un assistant SQL pour une application de gestion de tickets.
             {user_context}
@@ -12,7 +25,9 @@ def build_affinage_prompt(schema: str, last_sql: str, user_id: int | None, histo
 
             ## DERNIÈRE REQUÊTE SQL EXÉCUTÉE
             {last_sql}
-
+            
+            {memory_context}
+            
             ## TON RÔLE
             L'utilisateur vient d'affiner ou corriger sa recherche précédente.
             Tu dois modifier la requête SQL ci-dessus pour intégrer sa demande.
