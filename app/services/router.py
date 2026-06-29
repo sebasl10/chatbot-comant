@@ -50,7 +50,7 @@ async def stream_simple_intent(message: str, system_prompt: str):
 async def extract_and_validate_entities(message: str):
     """Returns (entities_dict, error_chunks_generator | None)."""
     response = await call_ollama(prompt=f"Demande: {message}", system=EXTRACTION_PROMPT)
-    print(response)
+    print(f"\n[RESPONSE] Entity extraction:\n{response}\n")
     
     response = clean_json(response)
         
@@ -120,7 +120,7 @@ async def handle_hybrid_research(message, intention, user_id, historique, resear
         
     prompt = f"Première requête SQL: {sql_filtres}\n Deuxième requête SQL: {sql_semantique}"
     sql_final = await call_ollama(prompt=prompt, system=HYBRID_RESEARCH_SQL_PROMPT)
-    print(sql_final)
+    print(f"\n{'─' * 60}\n[SQL FINAL HYBRID]\n{sql_final}\n{'─' * 60}\n")
     return sql_final, None
     
 # ── Main entry point ──────────────────────────────────────────────────────────
@@ -133,7 +133,7 @@ async def handle_stream(message: str, user_id: int, historique: list[dict], last
 
     if intention == 'recherche_hybride':
         intention = 'recherche'
-    print(intention)
+    print(f"\n[DEBUG] Detected intention: {intention}\n")
 
     update_intention(last_message_id, intention)
     yield json.dumps({"intention": intention}) + "\n"
@@ -193,7 +193,7 @@ async def handle_stream(message: str, user_id: int, historique: list[dict], last
         print(memory_context)
 
         sql = await generate_sql(message, intention, user_id, historique, research_id_affinage, entities_dict)
-        print(sql)
+        print(f"\n{'─' * 60}\n[SQL INITIAL]\n{sql}\n{'─' * 60}\n")
         
         # Vérifier et modifier la requête SQL par rapport aux mémoires de l'utilisateur
         sql = await verify_sql_against_memories(message, sql, memory_context, user_id)
