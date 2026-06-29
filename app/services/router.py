@@ -5,6 +5,7 @@ from app.services.memory import close_memory, extract_search_thread, search_memo
 from app.services.ollama import call_ollama, stream_ollama
 from app.services.database import get_db_schema, execute_select, update_intention, create_research, update_sql, get_sql
 from app.services.entity_cache import handle_vocabulary_suggestions
+from app.services.verify_memories import verify_sql_against_memories
 from app.prompts.aide import AIDE_SYSTEM_PROMPT 
 from app.prompts.affinage import build_affinage_prompt
 from app.prompts.recherche import build_recherche_prompt
@@ -60,19 +61,18 @@ async def extract_and_validate_entities(message: str):
     return entities_dict, None
 
 
-async def generate_sql(message: str, intention: str, user_id: int, historique: list[dict], research_id_affinage: int, entities_dict: dict, memories: list) -> str:
+async def generate_sql(message: str, intention: str, user_id: int, historique: list[dict], research_id_affinage: int, entities_dict: dict) -> str:
     schema = get_db_schema()
     prompt_message = f"Demande: {message}"
 
     if intention.startswith("recherche"):
         prompt_message = f"Demande: {message}. Entités qui ont été trouvées dans la requête: {entities_dict}"
-        system = build_recherche_prompt(schema, user_id, memories)
-        print(system)
+        system = build_recherche_prompt(schema, user_id)
         return await call_ollama(prompt=prompt_message, system=system)
 
     # affinage
     last_sql = get_sql(research_id_affinage) if research_id_affinage != 0 else historique[-2]["sql"]
-    system = build_affinage_prompt(schema, last_sql, user_id, historique, memories)
+    system = build_affinage_prompt(schema, last_sql, user_id, historique)
     return await call_ollama(prompt=system)
 
 
@@ -126,10 +126,6 @@ async def handle_hybrid_research(message, intention, user_id, historique, resear
 # ── Main entry point ──────────────────────────────────────────────────────────
 
 async def handle_stream(message: str, user_id: int, historique: list[dict], last_message_id: int, intention: str, research_id_affinage: int):
-    """ memories = search_memory(message, str(user_id))
-    memory_context = [m['memory'] for m in memories if m.get('memory')]
-    close_memory()
-    print(memory_context) """
     memory_context = ""
 
     if not intention:
@@ -191,13 +187,22 @@ async def handle_stream(message: str, user_id: int, historique: list[dict], last
         return
 
     try:
-        sql = await generate_sql(message, intention, user_id, historique, research_id_affinage, entities_dict, memory_context)
+        memories = search_memory(message, str(user_id))
+        memory_context = [m['memory'] for m in memories if m.get('memory')]
+        close_memory()
+        print(memory_context)
+
+        sql = await generate_sql(message, intention, user_id, historique, research_id_affinage, entities_dict)
         print(sql)
+        
+        # Vérifier et modifier la requête SQL par rapport aux mémoires de l'utilisateur
+        sql = await verify_sql_against_memories(message, sql, memory_context, user_id)
+        print(f"SQL après vérification memories: {sql}")
         
         async for chunk in persist_and_stream_results(sql, intention, user_id, historique, research_id_affinage):
             yield chunk
     
-        """ if (intention == "affinage"):
+        if (intention == "affinage"):
             for msg in reversed(historique):
                 if msg["role"] == "user" and msg["intention"] == None:
                     msg["intention"] = "affinage"
@@ -206,7 +211,7 @@ async def handle_stream(message: str, user_id: int, historique: list[dict], last
                 {"id": None, "role": "bot", "content": "", "sql": sql, "intention": None}
             ]
             extract_search_thread(full_history, str(user_id))
-            close_memory() """
+            close_memory()
 
     except Exception as e:
         yield json.dumps({"intention": intention, "generated_sql": sql, "research_id": "", "error": str(e)}, ensure_ascii=False) + "\n"

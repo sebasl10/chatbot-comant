@@ -2,9 +2,9 @@ from mem0 import Memory, MemoryClient
 from app.config import settings
 from typing import Optional, Union
 import logging
+import warnings
 
-# Désactiver les warnings PostHog sur les clients multiples
-logging.getLogger("posthog").setLevel(logging.ERROR)
+warnings.filterwarnings("ignore", message="Multiple active PostHog clients detected")
 
 _memory: Optional[Memory] = None
 
