@@ -4,6 +4,7 @@ from app.services.intention import classify_intention
 from app.services.ollama import call_ollama, stream_ollama
 from app.services.database import get_db_schema, execute_select, update_intention, create_research, update_sql, get_sql
 from app.services.entity_cache import handle_vocabulary_suggestions
+from app.services.correction import correction_service, save_memory_to_md
 from app.prompts.aide import AIDE_SYSTEM_PROMPT 
 from app.prompts.affinage import build_affinage_prompt
 from app.prompts.recherche import build_recherche_prompt
@@ -48,7 +49,7 @@ async def stream_simple_intent(message: str, system_prompt: str):
 async def extract_and_validate_entities(message: str):
     """Returns (entities_dict, error_chunks_generator | None)."""
     response = await call_ollama(prompt=f"Demande: {message}", system=EXTRACTION_PROMPT)
-    print(f"\n[RESPONSE] Entity extraction:\n{response}\n")
+    print(f"\n{'─' * 60}\n[ENTITY EXTRACTION RESPONSE]\n{response}\n{'─' * 60}")
     
     response = clean_json(response)
         
@@ -138,6 +139,21 @@ async def handle_stream(message: str, user_id: int, historique: list[dict],
     if intention in SIMPLE_INTENT_PROMPTS:
         async for chunk in stream_simple_intent(message, SIMPLE_INTENT_PROMPTS[intention]):
             yield chunk
+        return
+    
+    if intention == "correction":
+        # Appeler le service de correction pour analyser et créer le souvenir
+        correction_data = await correction_service(message, historique)
+        print(f"\n{'─' * 60}\n[CORRECTION ANALYSIS]\n{json.dumps(correction_data, indent=2, ensure_ascii=False)}\n{'─' * 60}")
+        
+        # Sauvegarder le souvenir dans un fichier MD
+        memory_file = await save_memory_to_md(correction_data, user_id)
+        print(f"[MEMORY SAVED] {memory_file}")
+        
+        # Retourner le résultat de la correction
+        yield json.dumps({"intention": intention, "correction_type": correction_data["type"], "memory": correction_data["memory"]}) + "\n"
+        yield "[STREAM_START]\n"
+        yield f"J'ai enregistré votre correction : {correction_data['memory']}"
         return
     
     # ── Semantic research intent ────────────────────────────────────────────
