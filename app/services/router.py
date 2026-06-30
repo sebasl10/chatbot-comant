@@ -4,7 +4,8 @@ from app.services.intention import classify_intention
 from app.services.ollama import call_ollama, stream_ollama
 from app.services.database import get_db_schema, execute_select, update_intention, create_research, update_sql, get_sql
 from app.services.entity_cache import handle_vocabulary_suggestions
-from app.services.correction import correction_service, save_memory_to_md
+from app.services.correction import correction_service
+from app.services.memory_md import save_memory_to_md
 from app.prompts.aide import AIDE_SYSTEM_PROMPT 
 from app.prompts.affinage import build_affinage_prompt
 from app.prompts.recherche import build_recherche_prompt
@@ -142,18 +143,13 @@ async def handle_stream(message: str, user_id: int, historique: list[dict],
         return
     
     if intention == "correction":
-        # Appeler le service de correction pour analyser et créer le souvenir
-        correction_data = await correction_service(message, historique)
+        correction_data = await correction_service(message, historique, user_id)
         print(f"\n{'─' * 60}\n[CORRECTION ANALYSIS]\n{json.dumps(correction_data, indent=2, ensure_ascii=False)}\n{'─' * 60}")
-        
-        # Sauvegarder le souvenir dans un fichier MD
-        memory_file = await save_memory_to_md(correction_data, user_id)
-        print(f"[MEMORY SAVED] {memory_file}")
         
         # Retourner le résultat de la correction
         yield json.dumps({"intention": intention, "correction_type": correction_data["type"], "memory": correction_data["memory"]}) + "\n"
         yield "[STREAM_START]\n"
-        yield f"J'ai enregistré votre correction : {correction_data['memory']}"
+        yield f"J'ai enregistré votre correction : <br/>{correction_data['memory']}"
         return
     
     # ── Semantic research intent ────────────────────────────────────────────
