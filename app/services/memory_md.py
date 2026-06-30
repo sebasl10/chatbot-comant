@@ -2,17 +2,12 @@ import os
 from datetime import datetime
 
 
-async def get_correction_sql_memories(user_id: int) -> str:
+async def get_memories(user_id: int, type: str) -> str:
     """
     Récupère les souvenirs de type correction_sql pour un utilisateur.
-    
-    Args:
-        user_id: identifiant de l'utilisateur
-    
-    Returns:
-        str: Le contenu du fichier correction_sql.md ou chaîne vide
     """
-    file_path = os.path.join("app", "memory", str(user_id), "correction_sql.md")
+    file = f"{type}.md"
+    file_path = os.path.join("app", "memory", str(user_id), file)
     
     if not os.path.exists(file_path):
         return ""
@@ -20,15 +15,10 @@ async def get_correction_sql_memories(user_id: int) -> str:
     with open(file_path, "r", encoding="utf-8") as f:
         return f.read()
 
-
 async def save_memory_to_md(correction_data: dict, user_id: int):
     """
     Sauvegarde le souvenir dans un fichier MD dans le dossier app/memory/{user_id}.
     Il y a 4 fichiers, un pour chaque type de souvenir.
-    
-    Args:
-        correction_data: dict avec clés "type" et "memory"
-        user_id: identifiant de l'utilisateur
     """
     memory_type = correction_data["type"]
     memory_content = correction_data["memory"]
