@@ -48,7 +48,7 @@ async def stream_simple_intent(message: str, system_prompt: str):
 async def extract_and_validate_entities(message: str):
     """Returns (entities_dict, error_chunks_generator | None)."""
     response = await call_ollama(prompt=f"Demande: {message}", system=EXTRACTION_PROMPT)
-    print(f"\n[RESPONSE] Entity extraction:\n{response}\n")
+    print(f"\n{'─' * 60}\n[ENTITY EXTRACTION RESPONSE]\n{response}\n{'─' * 60}")
     
     response = clean_json(response)
         

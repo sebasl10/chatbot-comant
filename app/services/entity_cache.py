@@ -1,4 +1,5 @@
 from datetime import datetime, timedelta
+import json
 from app.services.database import get_connection
 from rapidfuzz import process, fuzz
 
@@ -141,7 +142,7 @@ async def handle_vocabulary_suggestions(entities_dict: dict) -> tuple[bool, str,
     - un dictionnaire d'erreurs de vocabulaire (si suggestions)
     """
     linked = link_entities(entities_dict["entities"])
-    print(linked)
+    print(f"\n{'─' * 60}\n[ENTITY LINKING RESULT]\n{json.dumps(linked, indent=2, ensure_ascii=False)}\n{'─' * 60}")
     suggestions = [e for e in linked if e["status"] == "suggestion"]
     unknowns = [e for e in linked if e["status"] == "unknown"]
 
