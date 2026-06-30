@@ -126,8 +126,6 @@ async def handle_hybrid_research(message, intention, user_id, historique, resear
 # ── Main entry point ──────────────────────────────────────────────────────────
 
 async def handle_stream(message: str, user_id: int, historique: list[dict], last_message_id: int, intention: str, research_id_affinage: int):
-    memory_context = ""
-
     if not intention:
         intention = await classify_intention(message)
 
@@ -190,14 +188,17 @@ async def handle_stream(message: str, user_id: int, historique: list[dict], last
         memories = search_memory(message, str(user_id))
         memory_context = [m['memory'] for m in memories if m.get('memory')]
         close_memory()
-        print(memory_context)
+        if memory_context:
+            print(f"\n[MEMORY] Context ({len(memory_context)} items):")
+            for i, mem in enumerate(memory_context, 1):
+                print(f"  {i}. {mem}")
 
         sql = await generate_sql(message, intention, user_id, historique, research_id_affinage, entities_dict)
         print(f"\n{'─' * 60}\n[SQL INITIAL]\n{sql}\n{'─' * 60}\n")
         
         # Vérifier et modifier la requête SQL par rapport aux mémoires de l'utilisateur
         sql = await verify_sql_against_memories(message, sql, memory_context, user_id)
-        print(f"SQL après vérification memories: {sql}")
+        print(f"\n{'─' * 60}\n[SQL APRES VERIFICATION]\n{sql}\n{'─' * 60}\n")
         
         async for chunk in persist_and_stream_results(sql, intention, user_id, historique, research_id_affinage):
             yield chunk

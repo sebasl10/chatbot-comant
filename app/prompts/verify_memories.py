@@ -8,13 +8,15 @@ def build_verify_memories_prompt(message: str, sql_query: str, memories: list[st
     
     memories_context = ""
     if memories:
-        memory_items = "\n".join([f"  - {mem}" for mem in memories])
+        memory_items = "\n".join([f"  {i+1}. {mem}" for i, mem in enumerate(memories)])
         memories_context = f"""
-            ## CONTEXTE MÉMOIRE DE L'UTILISATEUR
-            L'utilisateur a les règles et préférences suivantes stockées dans ses souvenirs :
+            ## CONTEXTE MÉMOIRE DE L'UTILISATEUR (ORDRE DE PRIORITÉ)
+            L'utilisateur a les règles et préférences suivantes stockées dans ses souvenirs, **classées par ordre d'importance** :
             {memory_items}
 
-            **Ces règles doivent être respectées dans la requête SQL.**
+            **RÈGLE CRITIQUE** : Les mémoires sont appliquées dans l'ordre numéroté ci-dessus.
+            **La première mémoire a la priorité absolue** : en cas de contradiction entre plusieurs règles, c'est toujours la règle N°1 qui prime, puis N°2, etc.
+            **Toutes les règles doivent être respectées**, mais si c'est impossible, donne la priorité aux mémoires les plus anciennes (numéro le plus bas).
             Si la requête actuelle ne respecte pas ces règles, MODIFIE-LA pour qu'elle soit conforme.
         """
     
@@ -68,19 +70,12 @@ def build_verify_memories_prompt(message: str, sql_query: str, memories: list[st
 
     ---
     ## TON RÔLE
-    1. Analyse la requête SQL par rapport aux souvenirs/mémoires de l'utilisateur
+    0. **PRIORITÉ DES MÉMOIRES** : Les règles sont **ordonnées par importance** (N°1 = plus importante). En cas de contradiction, **la première mémoire prime toujours** sur les suivantes.
+    1. Analyse la requête SQL par rapport aux souvenirs/mémoires de l'utilisateur **dans l'ordre numéroté**
     2. Si la requête respecte toutes les règles des mémoires, retourne-la telle quelle
     3. Si l'utilisateur n'a pas de contexte mémoire, retourne la requête telle quelle
-    4. Si la requête NE respecte PAS une ou plusieurs règles des mémoires, MODIFIE-LA pour qu'elle soit conforme
-    5. **Ne jamais ignorer** une règle de mémoire - elle a priorité sur tout le reste
-
-    ## RÈGLES DE MODIFICATION
-    - Si une mémoire dit "toujours filtrer par projet X", ajoute le filtre `p.code = 'X'` dans le WHERE
-    - Si une mémoire dit "exclure les tickets de type Y", ajoute `AND t.type != 'Y'` dans le WHERE
-    - Si une mémoire dit "uniquement les tickets créés par moi", ajoute `t.creator_id = {user_id}`
-    - Si une mémoire dit "toujours inclure les tickets fermés", assure-toi que le filtre sur status inclut 'Fermé'
-    - Si une mémoire contient une préférence de tri, modifie l'ORDER BY
-    - Adaptes-toi au contexte spécifique de chaque mémoire
+    4. Si la requête NE respecte PAS une ou plusieurs règles des mémoires, MODIFIE-LA pour qu'elle soit conforme **en appliquant les règles dans l'ordre de priorité**
+    5. **Ne jamais ignorer** une règle de mémoire - elle a priorité sur tout le reste, **en respectant l'ordre d'importance**
 
     ---
     ## RÈGLES ABSOLUES (comme toujours)
