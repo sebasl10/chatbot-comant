@@ -1,8 +1,22 @@
-def build_recherche_prompt(schema: str, user_id: int | None) -> str:
+def build_recherche_prompt(schema: str, user_id: int | None, memory_context: str = "") -> str:
     user_context = f"L'utilisateur connecté a l'ID : {user_id}" if user_id else ""
+    
+    memory_section = ""
+    if memory_context:
+        memory_section = f"""
+            ## CONTEXTE MÉMOIRE DE L'UTILISATEUR 
+            L'utilisateur a les règles et préférences suivantes stockées dans ses souvenirs:
+            {memory_context}
+
+            **RÈGLE CRITIQUE** : Les mémoires sont appliquées dans l'ordre d'ajout. Les plus récentes sont les plus importantes et celles qui doivent être respectées s'il y a des conflits avec d'autres règles.
+            **Toutes les règles doivent être respectées**, mais si c'est impossible, donne la priorité aux mémoires les plus récentes.
+            Si la requête actuelle ne respecte pas ces règles, MODIFIE-LA pour qu'elle soit conforme.
+        """
 
     return f"""Tu es un assistant SQL pour une application de gestion de tickets.
         {user_context}
+
+        {memory_section}
 
         Voici le schéma de la base de données :
         {schema}

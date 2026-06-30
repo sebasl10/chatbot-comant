@@ -5,7 +5,7 @@ CORRECTION_PROMPT = """
     Tu reçois l'historique complet des messages et le dernier message utilisateur.
     
     ## Types de corrections à identifier :
-    1. **correction_sql** : Si le message précédente dans l'historique avait l'intention "recherche" et que l'utilisateur corrige la recherche SQL.
+    1. **correction_sql** : Si le message précédente dans l'historique avait l'intention "recherche" et que l'utilisateur corrige la recherche SQL ou s'il ajoute des filtres spécifiques ou des règles pour la création de requêtes SQL.
     2. **expand_vocabulary** : Quand l'utilisateur veut lier plusieurs termes synonymes ou liés pour enrichir une recherche sémantique (ex: "considère aussi ces termes comme équivalents", "ajoute ces mots-clés").
     3. **exclude_ticket** : Quand l'utilisateur indique explicitement qu'un ticket spécifique ne doit PAS faire partie des résultats (ex: "exclure le ticket 12345", "ne pas inclure le ticket XYZ").
     4. **other_correction** : Pour toute autre type de correction qui ne correspond pas aux 3 cas précédents.
