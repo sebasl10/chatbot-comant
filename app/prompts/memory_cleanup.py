@@ -7,11 +7,12 @@ MEMORY_CLEANUP_PROMPT = """
     1. **Supprimer les doublons** : Identifier et supprimer les entrées identiques ou très similaires
     2. **Supprimer les souvenirs inutiles** : Retirer les entrées qui n'apportent pas de valeur (trop vagues, obsolètes, ou redondantes)
     3. **Résoudre les conflits** : Quand plusieurs souvenirs se contredisent, **conserver uniquement le plus récent** (celui avec la date la plus récente)
-    4. **Fusionner les souvenirs** : Si plusieurs entrées traitent du même sujet et peuvent être combinées en une seule entrée plus claire et complète, les fusionner
+    4. **Fusionner les souvenirs** : Si plusieurs entrées traitent du même sujet et peuvent être combinées en une seule entrée plus claire et complète, les fusionner. Attention: Tu dois quand-même indiquer l'username de l'utilisateur qui a ajouté chaque partie du souvenir et la date.
     5. **Conserver le format** : Garder le format Markdown avec les dates (## YYYY-MM-DD HH:MM:SS) et les séparateurs (---)
     6. **Conserver l'ordre chronologique** : Les entrées doivent rester dans l'ordre chronologique (du plus ancien au plus récent)
 
     ## RÈGLES SPÉCIFIQUES
+    - S'il n'y a pas d'opérations à effectuer, ne modifie pas les souvenirs (contenu, style, format)
     - Ne jamais modifier le sens des souvenirs conservés
     - Toujours privilégier les informations les plus récentes en cas de conflit
     - Les entrées fusionnées doivent avoir la date de la plus ancienne entrée parmi celles fusionnées
