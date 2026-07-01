@@ -15,6 +15,7 @@ import os
 import sys
 import asyncio
 
+# Ajouter le chemin racine du projet pour importer les modules de l'application
 project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 if project_root not in sys.path:
     sys.path.insert(0, project_root)
@@ -39,14 +40,14 @@ async def clean_memory_file(filepath: str) -> bool:
     if not content.strip():
         print(f"  -> Fichier vide, ignoré: {filepath}")
         return False
-    
-    user_prompt = f"Contenu du fichier de mémoire à nettoyer :\n\n{content}"
+
+    user_prompt = f"Contenu du fichier de mémoire à nettoyer :\n\n{content}" 
     print(f"  -> Appel du LLM pour nettoyer: {filepath}")
     
     try:
         cleaned_content = await call_ollama(prompt=user_prompt, system=MEMORY_CLEANUP_PROMPT)
         cleaned_content = cleaned_content.strip()
-
+        
         if cleaned_content.startswith('```') and cleaned_content.endswith('```'):
             cleaned_content = cleaned_content[3:-3].strip()
         
@@ -72,7 +73,7 @@ async def clean_memory_file(filepath: str) -> bool:
 
 async def clean_all_memory_files():
     """
-    Nettoie tous les fichiers de mémoire dans le dossier app/memory/.
+    Nettoie tous les fichiers de mémoire dans le dossier app/memory/ (incluant _global).
     """
     script_dir = os.path.dirname(os.path.abspath(__file__))
     project_root = os.path.dirname(os.path.dirname(script_dir))
@@ -103,14 +104,10 @@ async def clean_all_memory_files():
 
 
 def main():
-    """
-    Point d'entrée du script.
-    """
+    """Point d'entrée du script."""
     print("="*60)
     print("DEBUT DU NETTOYAGE DES FICHIERS DE MEMOIRE")
     print("="*60)
-    
-    # Exécuter la fonction async de manière synchrone
     asyncio.run(clean_all_memory_files())
 
 

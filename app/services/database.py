@@ -1,4 +1,4 @@
-import datetime
+﻿import datetime
 import json
 import pymysql
 import re
@@ -274,3 +274,18 @@ def get_finetuning_couples() -> list[dict]:
     cursor.close()    
     conn.close()   
     return rows
+
+def get_username(user_id: int) -> str:
+    conn = get_connection()
+    try:
+        with conn.cursor() as cursor:
+            cursor.execute("SELECT username FROM user WHERE id = %s", (user_id,))
+            result = cursor.fetchone()
+            if result:
+                return result['username']
+            return None
+    except Exception as e:
+        print(f"Erreur lors de la récupération du username pour l'ID {user_id}: {e}")
+        return None
+    finally:
+        conn.close()
