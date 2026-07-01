@@ -1,43 +1,42 @@
 def build_ticket_exclusion_prompt(exclude_memories: str):
     return f"""
-        Tu es un assistant qui modifie des requêtes SQL pour exclure des tickets spécifiques basés sur les règles de l'utilisateur.
+        Tu es un assistant qui identifie les codes de tickets à exclure basés sur les règles de l'utilisateur.
 
         ## Contexte
-        L'utilisateur a défini des règles d'exclusion de tickets pour certaines recherches. Ces règles contiennent des **CODES de tickets** (ex: CAO123, PROJ456, TICK789), **pas des IDs numériques**.
+        L'utilisateur a défini des règles d'exclusion de tickets pour certaines recherches. Ces règles contiennent des **CODES de tickets** (ex: 201501-456, 235410-144, 20261245-784), **pas des IDs numériques**.
+        Tu dois identifier les règles d'exclusion concernant le message de l'utilisateur et extraire les tickets qui doivent être extraits des résultats de la recherche.
 
         ## Règles d'exclusion de l'utilisateur :
         {exclude_memories}
 
         ## Règles strictes :
-        1. Les mémoires d'exclusion contiennent **uniquement des codes de tickets** (ex: "CAO123", "PROJ456").
-        2. Tu dois **MODIFIER la requête SQL** pour ajouter une condition qui exclut ces tickets.
-        3. S'il n'y a pas de règles concernant la recherche de l'utilisateur, tu ne dois pas modifier la requête SQL.
-        3. La condition doit être : `AND t.code NOT IN ('code1', 'code2', ...)` ajoutée à la clause WHERE.
-        4. Si la clause WHERE n'existe pas dans la requête, **crée-la** avec la condition NOT IN.
-        5. Si la requête contient déjà une condition sur t.code, **ne la duplique pas**, fusionne les codes.
-        6. Si plusieurs codes sont mentionnés dans les mémoires, **inclue-les tous** dans le NOT IN.
-        7. Si aucun code n'est à exclure ou si les mémoires sont vides, **retourne la requête SQL inchangée**.
+        1. Les mémoires d'exclusion contiennent **uniquement des codes de tickets**.
+        2. Tu dois **extraire tous les codes de tickets** mentionnés dans les règles d'exclusion.
+        3. Retourne **uniquement une liste Python** contenant ces codes.
+        4. Si aucun code de ticket n'est mentionné, retourne une liste vide : []
 
         ## Exemples :
         
-        ### Exemple 1 - Ajout de clause WHERE :
-        Requête actuelle : SELECT id, summary FROM ticket
-        Règles : Le ticket CAO123 doit être exclu
-        Sortie : SELECT t.id, t.summary FROM ticket t WHERE t.code NOT IN ('CAO123')
+        ### Exemple 1 - Code unique à exclure :
+        Message: Cherche les tickets qui parlent de cinématique
+        Règles : L'utilisateur a indiqué que le ticket 20251010-123 ne parle pas de cinématique
+        Sortie : ['20251010-123']
 
-        ### Exemple 2 - Extension de WHERE existante :
-        Requête actuelle : SELECT t.id FROM ticket t WHERE t.type != 'Group'
-        Règles : Exclure les tickets PROJ456 et TICK789
-        Sortie : SELECT t.id FROM ticket t WHERE t.type != 'Group' AND t.code NOT IN ('PROJ456', 'TICK789')
+        ### Exemple 2 - Plusieurs codes à exclure :
+        Message: Cherche les tickets qui parlent d'annotations 3d
+        Règles : 
+            - L'utilisateur ne veut pas que le ticket 202060203-010 fasse partie de la réponse quand il fait de recherches sur l'annotation 3d
+            - L'utilisateur a indiqué que le ticket 202060701-003 ne doit pas faire partie de la réponse pour les recherches sur annotation 3d
+        Sortie : ['202060203-010', '202060701-003']
 
         ### Exemple 3 - Aucun code à exclure :
-        Requête actuelle : SELECT t.id FROM ticket t WHERE t.status = 'Ouvert'
-        Règles : (vide)
-        Sortie : SELECT t.id FROM ticket t WHERE t.status = 'Ouvert'
+        Message: Les tickets qui parlent de la réunion semestrielle
+        Règles : 
+        Sortie : []
 
         ## Format de sortie :
-        - Retourne **UNIQUEMENT** la requête SQL modifiée, sans aucun texte supplémentaire.
+        - Retourne **UNIQUEMENT** la liste Python des codes de tickets à exclure.
         - **Ne jamais ajouter** de commentaires ou d'explications.
-        - **Ne jamais retourner** la réponse dans un bloc Markdown (ex: ```sql ... ```).
-        - Retourne **UNIQUEMENT la requête SQL brute**.
+        - **Ne jamais retourner** la réponse dans un bloc Markdown.
+        - Retourne **UNIQUEMENT la liste Python brute** (ex: [] ou ['CODE1', 'CODE2']).
     """

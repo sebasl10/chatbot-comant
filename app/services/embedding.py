@@ -1,6 +1,7 @@
 import requests
 import numpy as np
 import json
+import ast
 from app.prompts.recherche_semantique_text import build_recherche_semantique_text_prompt
 from app.prompts.ticket_exclusion import build_ticket_exclusion_prompt
 from app.services.database import get_connection
@@ -46,6 +47,16 @@ def search(query: str, seuil: int):
     scored.sort(key=lambda x: x[1], reverse=True)
     return scored
 
+def clean_json(text: str):
+    """Nettoie le texte pour extraire le JSON."""
+    text = text.strip()
+    if text.startswith("```json"):
+        text = text[7:].strip()
+    if text.startswith("```"):
+        text = text[3:].strip()
+    if text.endswith("```"):
+        text = text[:-3].strip()
+    return text
 
 async def embedding_service(text: str, expand_vocabulary_memories: str, user_id: int):
     # Étape 1 : Nettoyer le texte avec les synonymes
@@ -64,6 +75,7 @@ async def embedding_service(text: str, expand_vocabulary_memories: str, user_id:
     else:
         ids_str = ", ".join(str(tid) for tid in ticket_ids)
         base_query = f"SELECT t.id, t.summary, t.description FROM ticket t WHERE t.id IN ({ids_str})"
+    print(f"\n{'─' * 60}\n[BASE QUERY]\n{base_query}\n{'─' * 60}")
     
     # Étape 3 : Appliquer les mémoires d'exclusion (codes de tickets, pas IDs)
     exclude_memories = await get_memories(user_id, "exclude_ticket")
@@ -71,18 +83,27 @@ async def embedding_service(text: str, expand_vocabulary_memories: str, user_id:
         print(f"\n{'─' * 60}\n[EXCLUDE TICKET MEMORIES]\n{exclude_memories}\n{'─' * 60}")
         
         system_prompt = build_ticket_exclusion_prompt(exclude_memories)
-        modified_query = await call_ollama(prompt=f"Recherche de l'utilisateur: {text}\nRequête SQL actuelle: {base_query}", system=system_prompt)
-        print(f"\n{'─' * 60}\n[MODIFIED QUERY]\n{modified_query}\n{'─' * 60}")
+        prompt = f"Recherche de l'utilisateur: {text}"
         
-        modified_query = modified_query.strip()
-        if modified_query.startswith("```sql"):
-            modified_query = modified_query[6:].strip()
-        if modified_query.startswith("```"):
-            modified_query = modified_query[3:].strip()
-        if modified_query.endswith("```"):
-            modified_query = modified_query[:-3].strip()
+        codes_to_exclude_str = await call_ollama(prompt=prompt, system=system_prompt)
+        codes_to_exclude_str = clean_json(codes_to_exclude_str)
+        print(f"\n{'─' * 60}\n[CODES TO EXCLUDE]\n{codes_to_exclude_str}\n{'─' * 60}")
         
-        base_query = modified_query
+        codes_to_exclude_str = codes_to_exclude_str.strip()
+        try:
+            codes_to_exclude = ast.literal_eval(codes_to_exclude_str)
+            if not isinstance(codes_to_exclude, list):
+                codes_to_exclude = []
+        except (ValueError, SyntaxError):
+            codes_to_exclude = []
+        
+        if codes_to_exclude:
+            formatted_codes = ", ".join(f"'{code}'" for code in codes_to_exclude)
+            exclusion_clause = f" AND t.code NOT IN ({formatted_codes})"
+            base_query = base_query.rstrip()
+            base_query = base_query + exclusion_clause
+        
+        print(f"\n{'─' * 60}\n[FINAL QUERY]\n{base_query}\n{'─' * 60}")
     
     # Étape 4 : Exécuter la requête finale et afficher les résultats
     conn = get_connection()
@@ -90,12 +111,12 @@ async def embedding_service(text: str, expand_vocabulary_memories: str, user_id:
     cursor.execute(base_query)
     rows = cursor.fetchall()
 
-    for row in rows:
+    """ for row in rows:
         ticket_id = row['id']
         score = ticket_scores.get(ticket_id, 0) 
         print(f"Ticket {ticket_id} (Score: {score:.4f})")
         print(f"Titre: {row['summary']}")
         print(f"Description: {remove_html_tags(row['description'])}\n")
-        print("---")
+        print("---") """
     
     return base_query
