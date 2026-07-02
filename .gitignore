@@ -102,3 +102,7 @@ config.local.py
 # Jupyter Notebook
 .ipynb_checkpoints/
 *.ipynb
+
+# Chroma
+tests/chroma/
+chroma/

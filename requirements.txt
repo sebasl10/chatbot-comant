@@ -5,3 +5,4 @@ httpx>=0.24.0
 pymysql
 rapidfuzz
 bs4
+chromadb
