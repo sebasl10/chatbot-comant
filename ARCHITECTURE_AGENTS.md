@@ -11,6 +11,32 @@ d'auto-correction, la base vectorielle Chroma et le protocole de streaming.
 
 ---
 
+## 0. Variante d'implémentation — LangGraph (branche `feature/langchain-architecture`)
+
+Il existe **deux implémentations à fonctionnalités identiques** :
+- `feature/agent-architecture` → **Pydantic AI**,
+- `feature/langchain-architecture` → **LangChain / LangGraph** (cette branche).
+
+Les **concepts sont identiques** (superviseur, spécialistes, tools, boucle
+d'auto-correction, events, Chroma) ainsi que **toute la couche métier**
+(`services/*`, `prompts/*`, `deps.py`, `tools/research.py`, `events.py`). Seule la
+**couche agent** diffère. Correspondance des briques :
+
+| Concept | Pydantic AI | LangGraph (cette branche) |
+|---|---|---|
+| Modèle | `OpenAIChatModel` (Ollama `/v1`) | `ChatOllama` (`langchain-ollama`) |
+| Agent | `Agent(deps_type=ChatDeps)` | `create_agent(model, tools, system_prompt)` (`langchain.agents`) |
+| Accès deps dans un tool | `RunContext[ChatDeps].deps` | `config["configurable"]["deps"]` via `deps_from_config` ([context.py](app/agents/context.py)) |
+| Déclaration d'un tool | `@agent.tool` | `@tool` (`langchain_core.tools`) + param `config: RunnableConfig` |
+| System prompt dynamique | `@agent.system_prompt` | `build_system(deps)` → passé en `SystemMessage` à l'invocation |
+| Appel d'un spécialiste | `agent.run(prompt, deps=…)` | `agent.ainvoke({"messages":[SystemMessage, HumanMessage]}, config)` |
+| Streaming réponse | `run_stream` + `stream_text` | `ainvoke` + streaming mot-à-mot (orchestrateur) |
+
+> Le reste de ce document décrit les **concepts communs** ; quand il mentionne
+> `RunContext`/`run_stream`, lire l'équivalent LangGraph via le tableau ci-dessus.
+
+---
+
 ## 1. Avant / Après
 
 | | Avant | Après |

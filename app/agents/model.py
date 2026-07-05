@@ -1,33 +1,32 @@
-"""Factory du modèle Pydantic AI branché sur Ollama.
+"""Factory du modèle LangChain branché sur Ollama.
 
-Ollama expose un endpoint compatible OpenAI (`/v1`) qui supporte le tool
-calling natif pour les modèles qui l'implémentent (Mistral/ministral, Qwen…).
-On l'utilise via l'``OpenAIChatModel`` de Pydantic AI plutôt que l'ancien
-``/api/generate`` (qui n'a ni messages structurés ni tools).
+Variante LangGraph : on utilise ``ChatOllama`` (``langchain-ollama``), qui parle
+à l'API native d'Ollama (``/api/chat``) et supporte le **tool calling** via
+``bind_tools`` (fait automatiquement par ``create_agent``).
 
-L'ancien client ``app/services/ollama.py`` reste utilisé pour les embeddings
-et le code legacy ; toute la partie *chat/agents* passe désormais par ici.
+Équivalent LangChain du ``OpenAIChatModel`` de la branche Pydantic AI.
+Le client Ollama (embeddings, legacy) reste dans ``app/services/ollama.py``.
 """
 from functools import lru_cache
 
-from pydantic_ai.models.openai import OpenAIChatModel
-from pydantic_ai.providers.openai import OpenAIProvider
+from langchain_ollama import ChatOllama
 
 from app.config import settings
 
 
 @lru_cache(maxsize=1)
-def get_agent_model() -> OpenAIChatModel:
-    """Retourne le modèle partagé par tous les agents (mis en cache).
+def get_agent_model() -> ChatOllama:
+    """Modèle partagé par tous les agents (mis en cache).
 
-    - ``base_url`` pointe sur l'endpoint OpenAI-compatible d'Ollama.
-    - ``api_key`` est factice : Ollama ne l'exige pas mais le client OpenAI
-      refuse une valeur vide.
-    - Le nom du modèle vient de ``model_ia_tools`` (fallback ``model_ia``).
+    - ``base_url`` : hôte Ollama (sans le suffixe ``/v1`` — ChatOllama utilise
+      l'API native).
+    - Modèle : ``model_ia_tools`` (fallback ``model_ia``), doit supporter le
+      function calling (Mistral/ministral, Qwen).
+    - ``temperature=0`` pour des appels d'outils déterministes.
     """
     model_name = settings.model_ia_tools or settings.model_ia
-    provider = OpenAIProvider(
-        base_url=settings.ollama_openai_base_url,
-        api_key="ollama",
+    return ChatOllama(
+        model=model_name,
+        base_url=settings.ollama_base_url,
+        temperature=0,
     )
-    return OpenAIChatModel(model_name, provider=provider)

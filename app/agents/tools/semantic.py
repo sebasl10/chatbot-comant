@@ -1,25 +1,23 @@
-"""Tool de recherche sémantique de tickets (backed Chroma).
+"""Tool de recherche sémantique de tickets (LangChain, backed Chroma).
 
-Le vecteur de requête est calculé avec ``embedding.get_embedding`` (même modèle
-+ même préfixe d'instruction qu'avant, pour la parité), puis la recherche des
-plus proches voisins est déléguée à la collection Chroma ``tickets``.
-
-Signature inchangée depuis la Phase 1 : seul le backend a changé (MySQL/cosine
-en Python → Chroma).
+Le vecteur de requête est calculé par ``embedding.get_embedding`` (même modèle +
+préfixe d'instruction qu'avant), puis la recherche des plus proches voisins est
+déléguée à la collection Chroma ``tickets`` (``vectorstore.query_tickets``).
 """
 import asyncio
 
-from pydantic_ai import RunContext
+from langchain_core.runnables import RunnableConfig
+from langchain_core.tools import tool
 
-from app.agents.deps import ChatDeps
 from app.services.embedding import get_embedding
 from app.services import vectorstore as vs
 
 _DEFAULT_THRESHOLD = 0.5
 
 
+@tool
 async def semantic_ticket_search(
-    ctx: RunContext[ChatDeps], query: str, threshold: float = _DEFAULT_THRESHOLD
+    query: str, config: RunnableConfig, threshold: float = _DEFAULT_THRESHOLD
 ) -> dict:
     """Recherche des tickets sémantiquement proches de `query` (sujet/thème).
 

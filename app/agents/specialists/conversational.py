@@ -1,13 +1,8 @@
-"""ConversationalAgent — salutations, aide, hors-périmètre, conversation libre.
+"""ConversationalAgent (LangGraph) — salutations, aide, hors-périmètre, discussion.
 
-Remplace les anciennes intentions salutation / aide / hors_perimetre /
-incomprehensible par un unique agent conversationnel, sans outil, capable de
-dialoguer plus librement tout en restant dans le périmètre (recherche de tickets).
-
-Réutilise le contenu des prompts existants (aide, salutation, hors-périmètre)
-comme base de connaissances sur ses capacités.
+Sans outil. Réutilise le contenu des prompts aide/salutation/hors_perimetre.
 """
-from pydantic_ai import Agent
+from langchain.agents import create_agent
 
 from app.agents.deps import ChatDeps
 from app.agents.model import get_agent_model
@@ -35,5 +30,8 @@ rechercher, affiner et gérer des recherches de tickets) quand c'est pertinent.
 {HORS_PERIMETRE_SYSTEM_PROMPT}
 """
 
+conversational_agent = create_agent(get_agent_model(), [])
 
-conversational_agent = Agent(get_agent_model(), deps_type=ChatDeps, system_prompt=_SYSTEM)
+
+async def build_system(deps: ChatDeps) -> str:
+    return _SYSTEM

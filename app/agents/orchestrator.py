@@ -1,17 +1,21 @@
-"""Orchestrateur de streaming — pont entre l'endpoint FastAPI et le superviseur.
+"""Orchestrateur de streaming (LangGraph) — pont endpoint FastAPI ↔ superviseur.
 
-Produit le flux attendu par le front :
-1. des lignes JSON d'événements (intention, research, action, correction…),
-2. la sentinelle ``[STREAM_START]``,
-3. la réponse en langage naturel du superviseur, streamée en token/delta.
+Produit exactement le même flux que la branche Pydantic AI :
+1. lignes JSON d'événements (intention, research, action, correction…),
+2. sentinelle ``[STREAM_START]``,
+3. réponse en langage naturel du superviseur.
 
-Les événements sont accumulés dans ``deps.events`` pendant l'exécution des outils
-de délégation (qui ont lieu AVANT la génération du texte final), puis drainés
-juste avant ``[STREAM_START]``.
+Choix : on exécute le superviseur en une passe (``ainvoke``) — ses outils de
+délégation s'exécutent et remplissent ``deps.events`` — puis on draine les
+événements avant ``[STREAM_START]`` et on streame la réponse finale mot à mot.
+Ce choix garantit l'ordre des événements et évite le filtrage délicat du streaming
+token-level à travers des sous-agents imbriqués (repli documenté dans le plan).
 """
 import asyncio
 import json
 from collections.abc import AsyncIterator
+
+from langchain_core.messages import HumanMessage
 
 from app.agents.deps import ChatDeps
 from app.agents.supervisor import supervisor_agent
@@ -45,23 +49,28 @@ async def _emit_events(deps: ChatDeps) -> str:
     return "".join(json.dumps(e, ensure_ascii=False) + "\n" for e in events)
 
 
+async def _word_stream(text: str, delay: float = 0.02) -> AsyncIterator[str]:
+    for chunk in text.split(" "):
+        yield chunk + " "
+        await asyncio.sleep(delay)
+
+
 async def run_chat_stream(message: str, deps: ChatDeps) -> AsyncIterator[str]:
     prompt = _history_context(deps.historique) + f"Message de l'utilisateur : {message}"
+    config = {"configurable": {"deps": deps}}
 
     try:
-        async with supervisor_agent.run_stream(prompt, deps=deps) as result:
-            # À ce stade, les outils de délégation ont été exécutés : on draine
-            # les événements accumulés avant de streamer le texte.
-            yield await _emit_events(deps)
-            yield STREAM_START
-            async for delta in result.stream_text(delta=True):
-                yield delta
-        # Événements émis tardivement (par sécurité).
-        tail = await _emit_events(deps)
-        if tail:
-            yield tail
+        result = await supervisor_agent.ainvoke({"messages": [HumanMessage(content=prompt)]}, config)
+        final = result["messages"][-1].content
+        if not isinstance(final, str):
+            final = str(final)
+
+        yield await _emit_events(deps)
+        yield STREAM_START
+        async for word in _word_stream(final):
+            yield word
     except Exception as e:  # dégradation propre : on informe le front
         deps.events.error(str(e))
-        yield deps.events.serialize()
+        yield await _emit_events(deps)
         yield STREAM_START
         yield f"⚠️ Une erreur est survenue : {e}"

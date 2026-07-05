@@ -1,21 +1,19 @@
-"""SemanticResearchAgent — recherche par thème/sujet (sémantique).
+"""SemanticResearchAgent (LangGraph) — recherche par thème/sujet.
 
-Séquence d'outils typique :
-    semantic_ticket_search(sujet) → ids
-    → construire "SELECT ... WHERE t.id IN (ids)"
-    → (optionnel) exclure les tickets mémorisés (get_memory 'exclude_ticket')
-    → run_sql
-
-Les synonymes ``expand_vocabulary`` (globaux) sont injectés dans le prompt pour
-aider à formuler un bon sujet de recherche.
+Séquence typique : semantic_ticket_search → WHERE t.id IN (...) → exclusions
+(get_memory 'exclude_ticket') → run_sql. Les synonymes ``expand_vocabulary`` sont
+injectés dans le system prompt.
 """
-from pydantic_ai import Agent, RunContext
+import asyncio
+
+from langchain.agents import create_agent
 
 from app.agents.deps import ChatDeps
 from app.agents.model import get_agent_model
 from app.agents.tools.db import run_sql
 from app.agents.tools.memory import get_memory
 from app.agents.tools.semantic import semantic_ticket_search
+from app.services import vectorstore as vs
 
 _SYSTEM = """Tu es un agent de recherche sémantique de tickets. L'utilisateur
 cherche des tickets par THÈME/SUJET (ex: "les tickets qui parlent de cinématique"),
@@ -35,15 +33,12 @@ MÉTHODE (utilise les outils, ne renvoie jamais de SQL brut) :
    N'affiche pas le SQL.
 """
 
-
-semantic_research_agent = Agent(get_agent_model(), deps_type=ChatDeps, retries=2)
-semantic_research_agent.tool(semantic_ticket_search)
-semantic_research_agent.tool(get_memory)
-semantic_research_agent.tool(run_sql)
+semantic_research_agent = create_agent(
+    get_agent_model(), [semantic_ticket_search, get_memory, run_sql]
+)
 
 
-@semantic_research_agent.system_prompt
-async def _system_prompt(ctx: RunContext[ChatDeps]) -> str:
-    synonyms = await get_memory(ctx, "expand_vocabulary")
+async def build_system(deps: ChatDeps) -> str:
+    synonyms = await asyncio.to_thread(vs.get_memories_text, "expand_vocabulary", deps.user_id, None)
     block = f"\n\n## SYNONYMES (vocabulaire métier)\n{synonyms}" if synonyms else ""
     return _SYSTEM + block

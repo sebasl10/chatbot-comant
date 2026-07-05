@@ -1,14 +1,10 @@
-"""MemoryAgent — enregistrement des corrections/souvenirs.
+"""MemoryAgent (LangGraph) — enregistrement des corrections/souvenirs.
 
-Remplace l'ancienne intention `correction`. Analyse le message + l'historique,
-détermine le type de correction, puis appelle l'outil `save_memory` (Chroma).
-
-Réutilise ``CORRECTION_PROMPT`` comme base, avec un addendum qui bascule la
-sortie « JSON » vers un appel d'outil.
-
-Types : correction_sql, expand_vocabulary, exclude_ticket, other_correction.
+Réutilise ``CORRECTION_PROMPT`` mais APPELLE le tool ``save_memory`` au lieu de
+renvoyer du JSON. Types : correction_sql, expand_vocabulary, exclude_ticket,
+other_correction.
 """
-from pydantic_ai import Agent
+from langchain.agents import create_agent
 
 from app.agents.deps import ChatDeps
 from app.agents.model import get_agent_model
@@ -24,11 +20,8 @@ Au lieu de renvoyer du JSON, tu APPELLES l'outil `save_memory(type, content)` :
 Puis confirme à l'utilisateur, en une phrase, ce que tu as enregistré.
 """
 
-
-memory_agent = Agent(get_agent_model(), deps_type=ChatDeps, retries=2)
-memory_agent.tool(save_memory)
+memory_agent = create_agent(get_agent_model(), [save_memory])
 
 
-@memory_agent.system_prompt
-def _system() -> str:
+async def build_system(deps: ChatDeps) -> str:
     return CORRECTION_PROMPT + _ADDENDUM
