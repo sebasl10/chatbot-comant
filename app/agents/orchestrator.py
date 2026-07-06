@@ -51,15 +51,16 @@ async def run_chat_stream(message: str, deps: ChatDeps) -> AsyncIterator[str]:
 
     try:
         async with supervisor_agent.run_stream(prompt, deps=deps) as result:
+            #print(f"\n{'─' * 60}\n[SUPERVISOR AGENT RESULT]\n{result}\n{'─' * 60}\n")
             yield await _emit_events(deps)
             yield STREAM_START
             async for delta in result.stream_text(delta=True):
                 yield delta
-        # Événements émis tardivement (par sécurité).
+        
         tail = await _emit_events(deps)
         if tail:
             yield tail
-    except Exception as e:  # dégradation propre : on informe le front
+    except Exception as e:  
         deps.events.error(str(e))
         yield deps.events.serialize()
         yield STREAM_START
