@@ -1,4 +1,5 @@
-"""Orchestrateur de streaming — pont entre l'endpoint FastAPI et le superviseur.
+"""
+Orchestrateur de streaming — pont entre l'endpoint FastAPI et le superviseur.
 
 Produit le flux attendu par le front :
 1. des lignes JSON d'événements (intention, research, action, correction…),
@@ -41,7 +42,7 @@ async def _emit_events(deps: ChatDeps) -> str:
             try:
                 await asyncio.to_thread(update_intention, deps.last_message_id, e["intention"])
             except Exception:
-                pass  # la persistance de l'intention ne doit pas casser le flux
+                pass 
     return "".join(json.dumps(e, ensure_ascii=False) + "\n" for e in events)
 
 
@@ -50,8 +51,6 @@ async def run_chat_stream(message: str, deps: ChatDeps) -> AsyncIterator[str]:
 
     try:
         async with supervisor_agent.run_stream(prompt, deps=deps) as result:
-            # À ce stade, les outils de délégation ont été exécutés : on draine
-            # les événements accumulés avant de streamer le texte.
             yield await _emit_events(deps)
             yield STREAM_START
             async for delta in result.stream_text(delta=True):

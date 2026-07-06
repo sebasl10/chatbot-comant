@@ -22,7 +22,7 @@ Choix de conception :
 from __future__ import annotations
 
 import requests
-from chromadb import PersistentClient
+from chromadb import HttpClient
 from chromadb.api.types import Documents, EmbeddingFunction, Embeddings
 
 from app.config import settings
@@ -30,9 +30,11 @@ from app.config import settings
 TICKETS = "tickets"
 MEMORIES = "memories"
 CONVERSATION_SUMMARIES = "conversation_summaries"
-
-_COSINE = {"hnsw:space": "cosine"}
-
+DEFAULT_HNSW_CONFIG = {
+    "space": "cosine",
+    "ef_construction": 1000,
+    "ef_search": 1000
+}
 
 class OllamaEmbeddingFunction(EmbeddingFunction):
     """Embeddings via l'endpoint /api/embed d'Ollama (même modèle que les tickets)."""
@@ -46,25 +48,23 @@ class OllamaEmbeddingFunction(EmbeddingFunction):
         resp.raise_for_status()
         return resp.json()["embeddings"]
 
-    # Chroma >=0.5 exige un nom pour (dé)sérialiser l'EF d'une collection persistée.
     @staticmethod
     def name() -> str:
         return "ollama_embed"
 
 
-_client: PersistentClient | None = None
+_client: HttpClient | None = None
 
-
-def get_client() -> PersistentClient:
+def get_client() -> HttpClient:
     global _client
     if _client is None:
-        _client = PersistentClient(path=settings.chroma_path)
+        _client = HttpClient(host=settings.chroma_http_url)
     return _client
 
 
 def _collection(name: str):
     return get_client().get_or_create_collection(
-        name, metadata=_COSINE, embedding_function=OllamaEmbeddingFunction()
+        name, metadata=DEFAULT_HNSW_CONFIG, embedding_function=OllamaEmbeddingFunction()
     )
 
 

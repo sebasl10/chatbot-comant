@@ -19,9 +19,7 @@ les sérialise avant ``[STREAM_START]``.
 import json
 from dataclasses import dataclass, field
 
-
 STREAM_START = "[STREAM_START]\n"
-
 
 @dataclass
 class EventSink:

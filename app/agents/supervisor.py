@@ -1,18 +1,11 @@
-"""Superviseur — reçoit le message et délègue à un agent spécialiste.
+"""
+Superviseur — reçoit le message et délègue à un agent spécialiste.
 
-Topologie « superviseur + spécialistes bornés » : le superviseur choisit UN outil
-de délégation (ou répond via l'agent conversationnel), relaie la réponse du
+Le superviseur choisit UN outil de délégation (ou répond via l'agent conversationnel), relaie la réponse du
 spécialiste, et reste léger.
-
-La persistance des recherches (create/update `research`) est faite ici, de façon
-DÉTERMINISTE, après qu'un agent SQL/sémantique a produit une requête valide
-(mémorisée dans ``deps.last_sql`` par le tool ``run_sql``). Ces helpers émettent
-l'événement ``research`` que le front consomme.
 """
 import asyncio
-
 from pydantic_ai import Agent, RunContext
-
 from app.agents.deps import ChatDeps
 from app.agents.model import get_agent_model
 from app.agents.specialists.conversational import conversational_agent
@@ -21,39 +14,9 @@ from app.agents.specialists.semantic_research import semantic_research_agent
 from app.agents.specialists.memory import memory_agent
 from app.agents.tools.research import persist_new_research, persist_affinage
 from app.services.database import get_sql, rename_research as db_rename_research, delete_research as db_delete_research
+from app.prompts.agents.agent_supervisor import AGENT_SUPERVISOR_PROMPT
 
-_SYSTEM = """Tu es le superviseur d'un chatbot de recherche de tickets (Comant).
-Tu reçois le message de l'utilisateur et tu choisis QUOI faire, en appelant UN
-seul outil de délégation, puis tu relaies fidèlement sa réponse à l'utilisateur.
-
-Outils de délégation :
-- `delegate_conversation` : salutations, remerciements, aide/capacités, questions
-  hors périmètre, ou toute conversation qui n'est pas une recherche.
-- `delegate_new_search` : NOUVELLE recherche de tickets par filtres exacts
-  (projet, utilisateur, statut, dates, priorité...). Ex: "tickets du projet X créés par Y".
-- `delegate_refine_search` : AFFINER la dernière recherche (ajouter/retirer/modifier
-  un filtre). Ex: "garde seulement ceux du projet Comant2026", "enlève les fermés".
-- `delegate_semantic_search` : recherche par THÈME/SUJET, pas par filtres exacts.
-  Ex: "les tickets qui parlent de cinématique".
-- `delegate_correction` : l'utilisateur corrige ton comportement ou te demande de
-  RETENIR une règle/synonyme/exclusion. Ex: "utilise la table projet_ticket",
-  "cinématique inclut aussi vitesse de rotation".
-
-Outils directs sur la recherche courante :
-- `rename_research` : SAUVEGARDER / renommer la recherche courante.
-  Ex: "sauvegarde cette recherche sous le nom Bugs Comant", "renomme-la X".
-- `delete_research` : SUPPRIMER la recherche courante. Ex: "supprime cette recherche".
-
-Règles :
-- Choisis `delegate_refine_search` seulement s'il existe une recherche en cours à
-  affiner ; sinon `delegate_new_search`.
-- Après l'outil, réponds en français en relayant la réponse du spécialiste.
-  N'affiche jamais de SQL.
-"""
-
-
-supervisor_agent = Agent(get_agent_model(), deps_type=ChatDeps, system_prompt=_SYSTEM)
-
+supervisor_agent = Agent(get_agent_model(), deps_type=ChatDeps, system_prompt=AGENT_SUPERVISOR_PROMPT)
 
 @supervisor_agent.tool
 async def delegate_conversation(ctx: RunContext[ChatDeps], message: str) -> str:
