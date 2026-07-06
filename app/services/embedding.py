@@ -1,5 +1,3 @@
-import requests
-import numpy as np
 import json
 import ast
 from app.prompts.recherche_semantique_text import build_recherche_semantique_text_prompt
@@ -7,6 +5,7 @@ from app.prompts.ticket_exclusion import build_ticket_exclusion_prompt
 from app.services.database import get_connection
 from app.services.ollama import call_ollama
 from app.services.memory_md import get_memories
+from app.services.chroma_service import get_chroma_service
 from app.config import settings
 from bs4 import BeautifulSoup
 
@@ -15,37 +14,6 @@ def remove_html_tags(text):
         return ""
     soup = BeautifulSoup(text, "html.parser")
     return soup.get_text(separator=" ", strip=True)
-
-
-def get_embedding(text: str) -> list[float]:
-    instruction = "Given a support ticket search query, retrieve relevant support tickets that match the topic or subject of the query"
-    text = f"Instruct: {instruction}\nQuery:{text}"
-    response = requests.post(settings.ollama_url_embedding, json={"model": settings.model_ia_embedding, "input": text})
-    response.raise_for_status()
-    return response.json()["embeddings"]
-
-
-def cosine_similarity(a, b):
-    a, b = np.array(a), np.array(b)
-    return np.dot(a, b) / (np.linalg.norm(a) * np.linalg.norm(b))
-
-
-def search(query: str, seuil: int):
-    query_emb = get_embedding(query)[0]
-    conn = get_connection()
-    cursor = conn.cursor()
-    cursor.execute("SELECT ticket_id, embedding FROM ticket_embedding")
-    rows = cursor.fetchall()
-
-    scored = []
-    for row in rows:
-        emb = json.loads(row['embedding'])[0]
-        score = cosine_similarity(query_emb, emb)
-        if score >= seuil:
-            scored.append((row['ticket_id'], score))
-
-    scored.sort(key=lambda x: x[1], reverse=True)
-    return scored
 
 def clean_json(text: str):
     """Nettoie le texte pour extraire le JSON."""
@@ -60,14 +28,35 @@ def clean_json(text: str):
 
 async def embedding_service(text: str, expand_vocabulary_memories: str, user_id: int):
     # Étape 1 : Nettoyer le texte avec les synonymes
-    system_prompt = build_recherche_semantique_text_prompt(expand_vocabulary_memories)
+    """ system_prompt = build_recherche_semantique_text_prompt(expand_vocabulary_memories)
     cleaned_text = await call_ollama(prompt=f"Message: {text}", system=system_prompt)
-    print(f"Cleaned text: {cleaned_text}")
+    print(f"Cleaned text: {cleaned_text}") """
     
-    # Étape 2 : Recherche sémantique
-    results = search(cleaned_text, 0.5)
-    ticket_ids = [ticket_id for ticket_id, score in results]
-    ticket_scores = {ticket_id: score for ticket_id, score in results}
+    # Étape 2 : Recherche sémantique avec Chroma
+    chroma_service = get_chroma_service()
+    results = chroma_service.search_memories(
+        query=text,
+        n_results=10,
+        include_metadata=True,
+        include_distances=True,
+        collection_name="tickets"
+    )
+    
+    # Extraire ticket_ids et scores depuis les métadonnées
+    ticket_ids = []
+    ticket_scores = {}
+    
+    if results and "metadatas" in results and len(results["metadatas"]) > 0:
+        for i, metadata in enumerate(results["metadatas"][0]):
+            if metadata and "ticket_id" in metadata:
+                ticket_id = metadata["ticket_id"]
+                distance = results["distances"][0][i] if "distances" in results else 0.0
+                similarity_score = 1.0 - distance
+                
+                if similarity_score >= 0.5:
+                    ticket_ids.append(ticket_id)
+                    ticket_scores[ticket_id] = similarity_score
+    print(f"\n{'─' * 60}\n[SEMANTIC RESEARCH TICKETS]\n{ticket_scores}\n{'─' * 60}")
 
     if len(ticket_ids) == 0:
         base_query = "SELECT t.id, t.summary, t.description FROM ticket t WHERE 0"

@@ -1,6 +1,7 @@
 from app.prompts.correction import CORRECTION_PROMPT
 from app.services.ollama import call_ollama
 from app.services.memory_md import save_memory_to_md
+from app.services.chroma_service import get_chroma_service
 import json
 
 def clean_json(text: str):
@@ -30,6 +31,12 @@ async def correction_service(message: str, historique: list[dict], user_id: int)
     response = clean_json(response)
     result = json.loads(response)
 
-    await save_memory_to_md(result, user_id)
-
+    chroma_service = get_chroma_service()
+    metadata = {
+        "user_id": user_id,
+        "correction_type": result['type']
+    }
+    chroma_service.add_memory(text=result['memory'], collection_name="correction", metadata=metadata)
+    #await save_memory_to_md(result, user_id)
+    
     return result

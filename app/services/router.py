@@ -6,6 +6,7 @@ from app.services.database import get_db_schema, execute_select, update_intentio
 from app.services.entity_cache import handle_vocabulary_suggestions
 from app.services.correction import correction_service
 from app.services.memory_md import get_memories
+from app.services.chroma_service import get_chroma_service
 from app.prompts.aide import AIDE_SYSTEM_PROMPT 
 from app.prompts.affinage import build_affinage_prompt
 from app.prompts.recherche import build_recherche_prompt
@@ -205,6 +206,8 @@ async def handle_stream(message: str, user_id: int, historique: list[dict],
     try:
         # Récupérer les corrections SQL mémorisées pour cet utilisateur
         correction_sql_memories = await get_memories(user_id, "correction_sql")
+        """ chroma_service = get_chroma_service()
+        correction_sql_memories = chroma_service.search_memories("correction", "message", where={"user_id": user_id})  """
         print(f"\n{'─' * 60}\n[CORRECTION SQL MEMORIES]\n{correction_sql_memories}\n{'─' * 60}\n")
         
         sql = await generate_sql(message, intention, user_id, historique, research_id_affinage, entities_dict)
@@ -216,6 +219,7 @@ async def handle_stream(message: str, user_id: int, historique: list[dict],
 
         async for chunk in persist_and_stream_results(sql, intention, user_id, historique, research_id_affinage):
             yield chunk
+        
     except Exception as e:
         yield json.dumps({"intention": intention, "generated_sql": sql, "research_id": "", "error": str(e)}, ensure_ascii=False) + "\n"
         yield f"⚠️ Erreur SQL : {e}"

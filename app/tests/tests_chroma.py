@@ -8,7 +8,7 @@ from chromadb import Documents, EmbeddingFunction, Embeddings
 from chromadb.utils.embedding_functions import register_embedding_function
 from app.config import settings
 
-client = chromadb.HttpClient(host='localhost', port=8000)
+client = chromadb.HttpClient(host='localhost', port=8001)
 
 @register_embedding_function
 class MyEmbeddingFunction(EmbeddingFunction):
@@ -96,3 +96,15 @@ for i, query_results in enumerate(results["documents"]):
     for j, doc in enumerate(query_results):
         distance_val = results[distance_key][i][j]
         print(f"  {j+1}. {doc} ({distance_key}: {distance_val:.4f})")
+
+print("\n=== Collection correction ===")
+corrections = client.get_collection(name='correction')
+print(f"Nb d'entrées: {corrections.count()}")
+print(corrections.peek())
+
+print("\n=== Collection tickets ===")
+client.delete_collection(name="tickets")
+""" tickets = client.get_collection(name='tickets')
+print(f"Nb d'entrées: {tickets.count()}")
+print(tickets.get(ids=["8041"]))
+print(tickets.peek()) """
