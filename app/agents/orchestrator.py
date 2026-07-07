@@ -50,12 +50,17 @@ async def run_chat_stream(message: str, deps: ChatDeps) -> AsyncIterator[str]:
     prompt = _history_context(deps.historique) + f"Message de l'utilisateur : {message}"
 
     try:
-        async with supervisor_agent.run_stream(prompt, deps=deps) as result:
-            #print(f"\n{'─' * 60}\n[SUPERVISOR AGENT RESULT]\n{result}\n{'─' * 60}\n")
-            yield await _emit_events(deps)
-            yield STREAM_START
-            async for delta in result.stream_text(delta=True):
-                yield delta
+        result = await supervisor_agent.run(prompt, deps=deps)
+        #print(f"\n{'─' * 60}\n[SUPERVISOR AGENT RESULT]\n{result}\n{'─' * 60}\n")
+        yield await _emit_events(deps)
+        yield STREAM_START
+        
+        output = result.output
+        for chunk in output.split(" "):
+            yield chunk + " "
+            await asyncio.sleep(0.05)
+        """ for msg in result.all_messages():
+            print(msg) """
         
         tail = await _emit_events(deps)
         if tail:
