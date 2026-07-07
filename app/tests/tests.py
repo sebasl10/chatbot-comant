@@ -41,7 +41,7 @@ async def call_llm_provider(provider: str, model: str, prompt: str, system_promp
             "Content-Type": "application/json"
         }
     else:
-        raise ValueError(f"Unknown provider: {provider}. Use {"ollama"} or {"lmstudio"}")
+        raise ValueError(f"Unknown provider: {provider}. Use ollama or lmstudio")
     
     async with httpx.AsyncClient(timeout=60.0) as client:
         try:
@@ -199,7 +199,7 @@ async def run_tests(provider: str = "ollama"):
             elif provider == "lmstudio":
                 print(f"Input tokens: {stats.get('input_tokens', 'N/A')} ")
                 print(f"Output tokens: {stats.get('output_tokens', 'N/A')} ")
-                print(f"Reasoning tokens: {stats.get("reasoning_output_tokens", 'N/A')} ")
+                print(f"Reasoning tokens: {stats.get('reasoning_output_tokens', 'N/A')} ")
                 print(f"Tokens per second: {stats.get('tokens_per_second', 'N/A')} ")
                 print(f"Time to first token: {stats.get('time_to_first_token', 'N/A')} ")
             

@@ -5,3 +5,6 @@ httpx>=0.24.0
 pymysql
 rapidfuzz
 bs4
+chromadb>=1.5.0
+pydantic-ai-slim[openai, logfire]>=2.5.0
+logfire[fastapi, system-metrics]

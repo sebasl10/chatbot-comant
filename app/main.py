@@ -3,6 +3,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.config import settings
 from app.routers import admin, chat, name
 from app.tests.tests import run_intention_tests, run_tests, test_nb_tokens
+import logfire
 
 app = FastAPI(title="LLM API Comant", version="0.1.0")
 app.add_middleware(
@@ -12,6 +13,11 @@ app.add_middleware(
     allow_methods=["*"], 
     allow_headers=["*"],  
 )
+
+logfire.configure()
+logfire.instrument_system_metrics()
+logfire.instrument_pydantic_ai()
+logfire.instrument_fastapi(app)
 
 app.include_router(chat.router)
 app.include_router(name.router)

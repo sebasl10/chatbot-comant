@@ -4,12 +4,15 @@ from app.services.intention import classify_intention
 from app.services.ollama import call_ollama, stream_ollama
 from app.services.database import get_db_schema, execute_select, update_intention, create_research, update_sql, get_sql
 from app.services.entity_cache import handle_vocabulary_suggestions
+from app.services.correction import correction_service
+from app.services.memory_md import get_memories
 from app.prompts.aide import AIDE_SYSTEM_PROMPT 
 from app.prompts.affinage import build_affinage_prompt
 from app.prompts.recherche import build_recherche_prompt
 from app.prompts.hors_perimetre import HORS_PERIMETRE_SYSTEM_PROMPT
 from app.prompts.salutation import SALUTATION_SYSTEM_PROMPT
 from app.prompts.entity_extraction import EXTRACTION_PROMPT
+from app.services.verify_memories import verify_sql_against_memories
 import asyncio
 import json
 
@@ -113,8 +116,11 @@ async def handle_hybrid_research(message, intention, user_id, historique, resear
     if vocab_error:
         return None, vocab_error
     
+    # Récupérer les mémoires pour la recherche sémantique
+    expand_vocabulary_memories = await get_memories(user_id, "expand_vocabulary")
+    
     sql_filtres = await generate_sql(requete_filtres, intention, user_id, historique, research_id_affinage, entities_dict)
-    sql_semantique = await embedding_service(requete_semantique)
+    sql_semantique = await embedding_service(requete_semantique, expand_vocabulary_memories, user_id)
         
     prompt = f"Première requête SQL: {sql_filtres}\n Deuxième requête SQL: {sql_semantique}"
     sql_final = await call_ollama(prompt=prompt, system=HYBRID_RESEARCH_SQL_PROMPT)
@@ -140,9 +146,23 @@ async def handle_stream(message: str, user_id: int, historique: list[dict],
             yield chunk
         return
     
+    if intention == "correction":
+        correction_data = await correction_service(message, historique, user_id)
+        print(f"\n{'─' * 60}\n[CORRECTION ANALYSIS]\n{json.dumps(correction_data, indent=2, ensure_ascii=False)}\n{'─' * 60}")
+        
+        # Retourner le résultat de la correction
+        yield json.dumps({"intention": intention, "correction_type": correction_data["type"], "memory": correction_data["memory"]}) + "\n"
+        yield "[STREAM_START]\n"
+        async for chunk in stream_text(f"J'ai enregistré votre correction : <br/>{correction_data['memory']}"):
+            yield chunk
+        return
+    
     # ── Semantic research intent ────────────────────────────────────────────
     if intention == "recherche_semantique":
-        sql = await embedding_service(message)
+        expand_vocabulary_memories = await get_memories(user_id, "expand_vocabulary")
+        print(f"\n{'─' * 60}\n[EXPAND VOCABULARY MEMORIES]\n{expand_vocabulary_memories}\n{'─' * 60}\n")
+        
+        sql = await embedding_service(message, expand_vocabulary_memories, user_id)
         async for chunk in persist_and_stream_results(sql, intention, user_id, historique, research_id_affinage):
             yield chunk
         return
@@ -183,8 +203,17 @@ async def handle_stream(message: str, user_id: int, historique: list[dict],
         return
 
     try:
+        # Récupérer les corrections SQL mémorisées pour cet utilisateur
+        correction_sql_memories = await get_memories(user_id, "correction_sql")
+        print(f"\n{'─' * 60}\n[CORRECTION SQL MEMORIES]\n{correction_sql_memories}\n{'─' * 60}\n")
+        
         sql = await generate_sql(message, intention, user_id, historique, research_id_affinage, entities_dict)
         print(f"\n{'─' * 60}\n[SQL INITIAL]\n{sql}\n{'─' * 60}\n")
+
+        if (correction_sql_memories != ''):
+            sql = await verify_sql_against_memories(message, sql, correction_sql_memories, user_id)
+            print(f"\n{'─' * 60}\n[SQL APRES VERIFICATION]\n{sql}\n{'─' * 60}\n")
+
         async for chunk in persist_and_stream_results(sql, intention, user_id, historique, research_id_affinage):
             yield chunk
     except Exception as e:
