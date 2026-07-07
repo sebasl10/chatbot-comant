@@ -16,11 +16,19 @@ from app.agents.tools.research import persist_new_research, persist_affinage
 from app.services.database import get_sql, rename_research as db_rename_research, delete_research as db_delete_research
 from app.prompts.agents.agent_supervisor import AGENT_SUPERVISOR_PROMPT
 
-supervisor_agent = Agent(get_agent_model(), deps_type=ChatDeps, system_prompt=AGENT_SUPERVISOR_PROMPT)
+supervisor_agent = Agent(
+    get_agent_model(), 
+    deps_type=ChatDeps, 
+    system_prompt=AGENT_SUPERVISOR_PROMPT
+)
 
 @supervisor_agent.tool
 async def delegate_conversation(ctx: RunContext[ChatDeps], message: str) -> str:
-    """Délègue à l'agent conversationnel (salutation, aide, hors-périmètre, discussion)."""
+    """
+    Délègue à l'agent conversationnel (salutation, aide, hors-périmètre, discussion) et retourne sa réponse exacte, sans aucune modification.
+    Reçoit comme paramètre le message envoyé par l'utilisateur
+    Retourne un string que doit être renvoyé tel quel à l'utilisateur
+    """
     print("[DELEGATE] Conversational agent")
     ctx.deps.events.intention("conversation")
     result = await conversational_agent.run(message, deps=ctx.deps, usage=ctx.usage)

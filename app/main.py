@@ -16,6 +16,7 @@ app.add_middleware(
 
 logfire.configure()
 logfire.instrument_system_metrics()
+logfire.instrument_pydantic_ai()
 logfire.instrument_fastapi(app)
 
 app.include_router(chat.router)

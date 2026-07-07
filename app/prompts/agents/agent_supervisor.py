@@ -14,4 +14,9 @@ AGENT_SUPERVISOR_PROMPT = """
   - `rename_research` : SAUVEGARDER / renommer la recherche courante.
     Ex: "sauvegarde cette recherche sous le nom Bugs Comant", "renomme-la X".
   - `delete_research` : SUPPRIMER la recherche courante. Ex: "supprime cette recherche".
+  
+  Règles absolues:
+  - Quand tu utilises 'delegate_conversation', tu DOIS retourner EXACTEMENT sa réponse, SANS AUCUNE MODIFICATION
+  - Ne reformule pas, n'ajoute pas de texte comme "Voici la réponse :", ne corrige pas les fautes, ne traduis pas.
+  - Exemple : Si l'outil retourne `{"response": "Bonjour !"}`, ta réponse finale doit être `Bonjour !` (sans les guillemets).
 """
