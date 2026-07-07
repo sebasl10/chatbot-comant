@@ -29,15 +29,7 @@ async def delegate_conversation(ctx: RunContext[ChatDeps], user_message: str) ->
     print(f"-> {result.output}")
     return result.output
 
-supervisor_agent = Agent(
-    get_agent_model(), 
-    deps_type=ChatDeps, 
-    system_prompt=AGENT_SUPERVISOR_PROMPT,
-    output_type=[str, delegate_conversation]
-)
-
-@supervisor_agent.tool
-async def delegate_new_search(ctx: RunContext[ChatDeps], request: str) -> str:
+async def delegate_new_research(ctx: RunContext[ChatDeps], request: str) -> str:
     """Délègue une NOUVELLE recherche par filtres exacts à l'agent SQL, puis
     persiste la recherche créée."""
     print("[DELEGATE] SQL research agent")
@@ -47,6 +39,13 @@ async def delegate_new_search(ctx: RunContext[ChatDeps], request: str) -> str:
     if ctx.deps.last_sql:
         await persist_new_research(ctx.deps)
     return result.output
+
+supervisor_agent = Agent(
+    get_agent_model(), 
+    deps_type=ChatDeps, 
+    system_prompt=AGENT_SUPERVISOR_PROMPT,
+    output_type=[str, delegate_conversation, delegate_new_research]
+)
 
 @supervisor_agent.tool
 async def delegate_refine_search(ctx: RunContext[ChatDeps], request: str) -> str:
