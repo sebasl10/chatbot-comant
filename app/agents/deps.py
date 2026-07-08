@@ -1,4 +1,5 @@
-"""Dépendances injectées dans tous les agents et tools (Pydantic AI ``deps_type``).
+"""
+Dépendances injectées dans tous les agents et tools (Pydantic AI ``deps_type``).
 
 Un unique ``ChatDeps`` circule du superviseur vers les spécialistes puis vers les
 tools via ``RunContext.deps``. Il porte le contexte utilisateur, l'historique de
@@ -6,14 +7,14 @@ conversation, l'identifiant de la recherche courante (pour l'affinage) et le
 collecteur d'événements à streamer vers le front.
 """
 from dataclasses import dataclass, field
-
 from app.services.events import EventSink
-
 
 @dataclass
 class ChatDeps:
     user_id: int
+    message: str
     username: str | None = None
+    
     # Infos passées par le front pour l'affinage
     research_id: int = 0
     last_message_id: int = 0

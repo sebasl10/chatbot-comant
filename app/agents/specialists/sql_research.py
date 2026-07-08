@@ -44,8 +44,8 @@ async def _system(ctx: RunContext[ChatDeps]) -> str:
     else:
         base = build_recherche_prompt(schema, ctx.deps.user_id)
 
-    # Souvenirs de correction SQL de l'utilisateur, pertinents pour ce message.
-    memories = await get_memory(ctx, "correction_sql")
+    user_message = ctx.deps.message
+    memories = await get_memory(ctx, "correction_sql", query=user_message)
     memory_block = f"\n\n## RÈGLES MÉMORISÉES (à respecter)\n{memories}" if memories else ""
     
     print(f"\n{'─' * 60}\n[SQL MEMORIES]\n{memories}\n{'─' * 60}")

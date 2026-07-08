@@ -47,7 +47,7 @@ def get_first_rows(collection, limit: int = 5):
 
 def print_first_rows(data: dict, limit: int = 5):
     """Affiche les premières lignes de manière formatée."""
-    if not data or not data["ids"]:
+    if not data or len(data.get("ids", [])) == 0:
         print("  Aucun document trouvé.")
         return
 
@@ -61,7 +61,7 @@ def print_first_rows(data: dict, limit: int = 5):
     for i, (doc_id, doc, meta) in enumerate(zip(ids, documents, metadatas), 1):
         print(f"  {i}. ID: {doc_id}")
         print(f"     Document: {format_value(doc)}")
-        if meta:
+        if meta is not None and meta != []:
             print(f"     Métadonnées: {meta}")
         print()
 
@@ -69,24 +69,20 @@ def print_first_rows(data: dict, limit: int = 5):
 def print_statistics(collection):
     """Affiche les statistiques d'une collection."""
     try:
-        count = collection.count()
+        count_raw = collection.count()
+        # Convertir count en int au cas où ce serait un tableau numpy
+        count = int(count_raw) if hasattr(count_raw, '__len__') else int(count_raw)
         print(f"\n  📊 Statistiques:")
         print(f"     • Nombre de documents: {count:,}")
-
-        # Récupérer un échantillon pour les stats d'embeddings
-        if count > 0:
-            sample = collection.get(limit=1, include=["embeddings"])
-            if sample.get("embeddings"):
-                embedding_dim = len(sample["embeddings"][0])
-                print(f"     • Dimension des embeddings: {embedding_dim}")
 
         # Compter les métadonnées uniques (si applicable)
         if count > 0:
             all_metadata = collection.get(include=["metadatas"])
-            if all_metadata.get("metadatas"):
-                all_metadatas = all_metadata["metadatas"]
+            metadatas = all_metadata.get("metadatas", [])
+            if len(metadatas) > 0:
+                all_metadatas = metadatas
                 # Compter les types uniques
-                if all_metadatas and isinstance(all_metadatas[0], dict):
+                if len(all_metadatas) > 0 and isinstance(all_metadatas[0], dict):
                     type_counts = {}
                     for meta in all_metadatas:
                         if "type" in meta:
@@ -95,10 +91,11 @@ def print_statistics(collection):
                     if type_counts:
                         print(f"     • Répartition par type:")
                         for t, cnt in sorted(type_counts.items(), key=lambda x: -x[1]):
-                            print(f"       - {t}: {cnt:,} ({cnt/count*100:.1f}%)")
+                            cnt_int = int(cnt) if hasattr(cnt, '__len__') else int(cnt)
+                            print(f"       - {t}: {cnt_int:,} ({cnt_int/count*100:.1f}%)")
 
                 # Compter les user_id uniques (si applicable)
-                if all_metadatas and isinstance(all_metadatas[0], dict):
+                if len(all_metadatas) > 0 and isinstance(all_metadatas[0], dict):
                     user_ids = set()
                     for meta in all_metadatas:
                         if "user_id" in meta:

@@ -23,6 +23,7 @@ async def chat_stream(request: ChatRequest):
             last_message_id=request.last_message_id,
             historique=request.historique,
             username=username,
+            message=request.message
         )
         return StreamingResponse(
             run_chat_stream(request.message, deps),
