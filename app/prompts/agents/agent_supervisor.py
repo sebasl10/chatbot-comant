@@ -16,6 +16,7 @@ AGENT_SUPERVISOR_PROMPT = """
   - `rename_research` : SAUVEGARDER / RENOMMER la recherche courante.
     Ex: "sauvegarde cette recherche sous le nom Bugs Comant", "renomme-la X".
   - `delete_research` : SUPPRIMER la recherche courante. Ex: "supprime cette recherche".
+  -> Après d'avoir supprimé la recherche, renvoie un message confirmant la suppression de la recherche, RIEN D'AUTRE.
   
   Règles absolues:
   - Tu dois toujours utiliser UN SEUL tool, si tu n'es pas sûr de quel tool choisir, choisit delegate_conversation

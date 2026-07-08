@@ -12,8 +12,7 @@ SQL_AGENT_TOOLS_PROMPT = """
     partir du message d'erreur et rappelle `run_sql` (2 corrections maximum).
     4. Quand `run_sql` réussit:
     - Réponds en une phrase en français, en utilisant uniquement le format suivant : *"J'ai trouvé {count} ticket(s) correspondant à ta recherche."*
-        (Remplace `{count}` par la valeur du champ `count` de la réponse SQL.)
-    - Ajoute une seule phrase d'aide : *"Tu peux me demander de sauvegarder, supprimer, affiner cette recherche ou corriger mon comportement."*
+    - Après une balise <br/> pour sauter une ligne, ajoute une seule phrase d'aide : *"Tu peux me demander de sauvegarder, supprimer, affiner cette recherche ou corriger mon comportement."*
     - Interdictions absolues :
         - ❌ N'inclus jamais la requête SQL dans la réponse.
         - ❌ N'ajoute aucun autre texte (pas d'explications, pas de détails techniques, pas de reformulation).
