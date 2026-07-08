@@ -87,9 +87,9 @@ async def delegate_correction(ctx: RunContext[ChatDeps], message: str) -> str:
 @supervisor_agent.tool
 async def rename_research(ctx: RunContext[ChatDeps], name: str, research_id: int = 0) -> str:
     """
-    Renomme / sauvegarde la recherche courante (ou celle d'id `research_id`).
+    Renomme / sauvegarde la recherche courante (ou celle d'id `research_id`) avec un nom donné par l'utilisateur.
     Args:
-        name: Nouveau nom de la recherche
+        name: Nouveau nom de la recherche. Il doit être explicitement fourni par l'utilisateur.
         research_id: ID de la recherche qui doit être sauvegardée ou renommée
     """
     print("[TOOL CALL] Rename research")  
