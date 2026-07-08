@@ -10,7 +10,7 @@ AGENT_SUPERVISOR_PROMPT = """
   - `delegate_new_research` : NOUVELLE recherche de tickets par filtres exacts (projet, utilisateur, statut, dates, priorité...). Ex: "tickets du projet X créés par Y".
   - `delegate_refine_search` : AFFINER la dernière recherche (ajouter/retirer/modifier un filtre). Ex: "garde seulement ceux du projet Comant2026", "enlève les fermés".
   - `delegate_semantic_search` : recherche par THÈME/SUJET, pas par filtres exacts. Ex: "les tickets qui parlent de cinématique".
-  - `delegate_correction` : l'utilisateur corrige ton comportement ou te demande de RETENIR une règle/synonyme/exclusion. Ex: "utilise la table projet_ticket", "cinématique inclut aussi vitesse de rotation".
+  - `delegate_correction` : l'utilisateur corrige ton comportement ou te demande de RETENIR une règle/synonyme/exclusion. Ex: "utilise la table projet_ticket", "cinématique inclut aussi vitesse de rotation", "tu t'es trompé dans la requête SQL car ...".
 
   Outils directs sur la recherche courante :
   - `rename_research` : SAUVEGARDER / RENOMMER la recherche courante. Pour appeler cet outil l'utilisateur doit donner un nom pour la recherche, tu ne dois jamais créer un nom.
