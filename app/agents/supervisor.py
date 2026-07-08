@@ -30,9 +30,13 @@ async def delegate_conversation(ctx: RunContext[ChatDeps], user_message: str) ->
     return result.output
 
 async def delegate_new_research(ctx: RunContext[ChatDeps], request: str) -> str:
-    """Délègue une NOUVELLE recherche par filtres exacts à l'agent SQL, puis
-    persiste la recherche créée."""
+    """
+    Délègue une NOUVELLE recherche par filtres exacts à l'agent SQL, puis persiste la recherche créée.
+    Args:
+        request: Message exact envoyé par l'utilisateur, sans modification, sans reformulation, sans ajout de texte
+    """
     print("[DELEGATE] SQL research agent")
+    print(f"Message: {request}")
     ctx.deps.events.intention("recherche")
     ctx.deps.mode = "recherche"
     result = await sql_research_agent.run(request, deps=ctx.deps, usage=ctx.usage)
@@ -82,9 +86,16 @@ async def delegate_correction(ctx: RunContext[ChatDeps], message: str) -> str:
 
 @supervisor_agent.tool
 async def rename_research(ctx: RunContext[ChatDeps], name: str, research_id: int = 0) -> str:
-    """Renomme / sauvegarde la recherche courante (ou celle d'id `research_id`)."""
+    """
+    Renomme / sauvegarde la recherche courante (ou celle d'id `research_id`) avec un nom donné par l'utilisateur.
+    Args:
+        name: Nouveau nom de la recherche. Il doit être explicitement fourni par l'utilisateur.
+        research_id: ID de la recherche qui doit être sauvegardée ou renommée
+    """
     print("[TOOL CALL] Rename research")  
     rid = research_id or ctx.deps.research_id
+    print(f"Research ID: {rid}")
+    print(f"Name: {name}")
     if not rid:
         return "Aucune recherche courante à sauvegarder."
     await asyncio.to_thread(db_rename_research, rid, name, ctx.deps.user_id)
@@ -93,9 +104,14 @@ async def rename_research(ctx: RunContext[ChatDeps], name: str, research_id: int
 
 @supervisor_agent.tool
 async def delete_research(ctx: RunContext[ChatDeps], research_id: int = 0) -> str:
-    """Supprime la recherche courante (ou celle d'id `research_id`)."""
+    """
+    Supprime la recherche courante (ou celle d'id `research_id`).
+    Args:
+        research_id: ID de la recherche qui doit être supprimée
+    """
     print("[TOOL CALL] Delete research")  
     rid = research_id or ctx.deps.research_id
+    print(f"Research ID: {rid}")
     if not rid:
         return "Aucune recherche courante à supprimer."
     await asyncio.to_thread(db_delete_research, rid, ctx.deps.user_id)

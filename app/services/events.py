@@ -37,7 +37,7 @@ class EventSink:
         self.emit("research", research_id=research_id, sql=sql)
 
     def action(self, name: str, **data) -> None:
-        self.emit("action", name=name, **data)
+        self.emit("action", intention=name, **data)
 
     def correction(self, type: str, memory: str) -> None:
         self.emit("correction", type=type, memory=memory)

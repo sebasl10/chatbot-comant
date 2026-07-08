@@ -169,7 +169,7 @@ def build_recherche_prompt(schema: str, user_id: int | None) -> str:
         ---
         
         ## **Format de sortie** :
-        - Retourne **UNIQUEMENT** la requête SQL brute, sans guillemets, sans markdown, sans explication.
+        - Retourne **UNIQUEMENT** la requête SQL brute, sans guillemets, sans markdown, sans explication, SANS `.` à la fin.
         - **Ne jamais ajouter** de texte supplémentaire (ex: "Voici la requête :").
         - **Ne retourne jamais** une réponse de ce type: 
             ``sql

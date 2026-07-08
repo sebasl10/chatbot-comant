@@ -4,27 +4,17 @@ Remplace le duo (table MySQL ``ticket_embedding`` + cosine en Python) et le
 stockage Markdown des souvenirs, par un client Chroma persistant unique.
 
 Collections :
-- ``tickets``                : embeddings de tickets (réutilise les vecteurs déjà
-  calculés en base — voir ``app/scripts/migrate_tickets_to_chroma.py``).
-- ``memories``               : souvenirs/corrections, filtrables par métadonnées
-  ``{type, scope, user_id}`` et recherchables sémantiquement.
+- ``tickets``                : embeddings de tickets.
+- ``memories``               : souvenirs/corrections, filtrables par métadonnées ``{type, scope, user_id}`` et recherchables sémantiquement.
 - ``conversation_summaries`` : résumés de conversation.
-
-Choix de conception :
-- Espace de distance **cosinus** (parité avec l'ancien ``cosine_similarity``).
-  Chroma renvoie une *distance* ``d`` ; la similarité vaut ``s = 1 - d``.
-- Pour les **tickets**, on passe des embeddings explicites (à l'insertion comme à
-  la requête) afin de conserver l'asymétrie d'instruction query/document du
-  modèle qwen3-embedding (la requête reçoit un préfixe « Instruct: », pas le doc).
-- Pour les **mémoires/résumés**, une ``OllamaEmbeddingFunction`` laisse Chroma
-  embedder documents et requêtes avec le même modèle Ollama.
 """
-from __future__ import annotations
 
+from __future__ import annotations
 import requests
 from chromadb import HttpClient
 from chromadb.api.types import Documents, EmbeddingFunction, Embeddings
-
+import uuid
+from datetime import datetime
 from app.config import settings
 
 TICKETS = "tickets"
@@ -37,7 +27,9 @@ DEFAULT_HNSW_CONFIG = {
 }
 
 class OllamaEmbeddingFunction(EmbeddingFunction):
-    """Embeddings via l'endpoint /api/embed d'Ollama (même modèle que les tickets)."""
+    """
+    Embeddings via l'endpoint /api/embed d'Ollama (même modèle que les tickets).
+    """
 
     def __init__(self, url: str | None = None, model: str | None = None):
         self._url = url or settings.ollama_url_embedding
@@ -83,7 +75,8 @@ def summaries_collection():
 # ── Recherche sémantique de tickets ─────────────────────────────────────────
 
 def query_tickets(query_embedding: list[float], threshold: float = 0.5) -> list[int]:
-    """Renvoie les ``ticket_id`` dont la similarité cosinus >= ``threshold``,
+    """
+    Renvoie les ``ticket_id`` dont la similarité cosinus >= ``threshold``,
     triés par pertinence décroissante. ``query_embedding`` est déjà calculé par
     l'appelant (avec le préfixe d'instruction), pour la parité avec l'ancien code.
     """
@@ -116,11 +109,12 @@ def _memory_where(type: str, user_id: int | None) -> dict:
 
 
 def get_memories_text(type: str, user_id: int | None, query: str | None = None, k: int = 8) -> str:
-    """Renvoie les souvenirs d'un ``type`` sous forme de texte concaténé.
+    """
+    Renvoie les souvenirs d'un ``type`` sous forme de texte concaténé.
 
     - Sans ``query`` : tous les souvenirs du type (filtrés par métadonnées).
     - Avec ``query`` : les ``k`` souvenirs les plus proches sémantiquement.
-    Vide si aucun souvenir (parité avec l'ancien ``get_memories`` qui renvoyait "").
+    Vide si aucun souvenir
     """
     col = memories_collection()
     where = _memory_where(type, user_id)
@@ -133,17 +127,10 @@ def get_memories_text(type: str, user_id: int | None, query: str | None = None, 
     return "\n\n---\n\n".join(docs)
 
 
-def add_memory(
-    type: str,
-    content: str,
-    user_id: int | None,
-    username: str | None = None,
-    embedding: list[float] | None = None,
-) -> str:
-    """Ajoute un souvenir. ``embedding`` explicite optionnel (sinon calculé par l'EF)."""
-    import uuid
-    from datetime import datetime
-
+def add_memory(type: str, content: str, user_id: int | None, username: str | None = None, embedding: list[float] | None = None) -> str:
+    """
+    Ajoute un souvenir.
+    """
     scope = "global" if type == "expand_vocabulary" else "user"
     meta = {
         "type": type,
@@ -162,16 +149,10 @@ def add_memory(
 
 # ── Résumés de conversation ─────────────────────────────────────────────────
 
-def add_conversation_summary(
-    user_id: int,
-    conversation_id: int,
-    summary: str,
-    embedding: list[float] | None = None,
-) -> str:
-    """Enregistre un résumé de conversation (rappel de contexte inter-sessions)."""
-    import uuid
-    from datetime import datetime
-
+def add_conversation_summary(user_id: int, conversation_id: int, summary: str, embedding: list[float] | None = None) -> str:
+    """
+    Enregistre un résumé de conversation (rappel de contexte inter-sessions).
+    """
     meta = {
         "user_id": user_id,
         "conversation_id": conversation_id,
@@ -184,9 +165,10 @@ def add_conversation_summary(
     summaries_collection().add(**kwargs)
     return doc_id
 
-
 def search_conversation_summaries(user_id: int, query: str, k: int = 3) -> str:
-    """Renvoie les ``k`` résumés de conversation les plus pertinents pour l'utilisateur."""
+    """
+    Renvoie les ``k`` résumés de conversation les plus pertinents pour l'utilisateur.
+    """
     col = summaries_collection()
     if col.count() == 0:
         return ""

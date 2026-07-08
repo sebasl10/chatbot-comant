@@ -25,7 +25,11 @@ from app.services.database import get_db_schema
 from app.prompts.agents.agent_sql_search import SQL_AGENT_TOOLS_PROMPT
 
 
-sql_research_agent = Agent(get_agent_model(), deps_type=ChatDeps, retries=2)
+sql_research_agent = Agent(
+    get_agent_model(), 
+    deps_type=ChatDeps, 
+    retries=2
+)
 sql_research_agent.tool(validate_entities)
 sql_research_agent.tool(run_sql)
 
@@ -43,5 +47,7 @@ async def _system(ctx: RunContext[ChatDeps]) -> str:
     # Souvenirs de correction SQL de l'utilisateur, pertinents pour ce message.
     memories = await get_memory(ctx, "correction_sql")
     memory_block = f"\n\n## RÈGLES MÉMORISÉES (à respecter)\n{memories}" if memories else ""
+    
+    print(f"\n{'─' * 60}\n[SQL MEMORIES]\n{memories}\n{'─' * 60}")
 
     return base + SQL_AGENT_TOOLS_PROMPT + memory_block
