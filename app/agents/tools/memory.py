@@ -53,8 +53,7 @@ async def delete_memory(ctx: RunContext[ChatDeps]) -> dict:
     try:
         await asyncio.to_thread(vs.delete_memory, last_memory['id'], ctx.deps.user_id)
         ctx.deps.events.action("delete_memory", memory_id=last_memory['id'])
-        ctx.deps.last_memory_id = None
-        return {"ok": True, "message": "Souvenir supprimé."}
+        return {"ok": True, "message": "Souvenir supprimé.", "content": last_memory['content']}
     except Exception as e:
         return {"ok": False, "error": str(e)}
 
@@ -62,7 +61,7 @@ async def delete_memory(ctx: RunContext[ChatDeps]) -> dict:
 async def update_memory(ctx: RunContext[ChatDeps], new_content: str) -> dict:
     """
     Met à jour le dernier souvenir créé (utilise ctx.deps.last_memory_id).
-    Args:
+    Args:m
         new_content: Nouveau contenu du souvenir
     """
     print("[TOOL CALL] update_memory")
@@ -78,7 +77,7 @@ async def update_memory(ctx: RunContext[ChatDeps], new_content: str) -> dict:
         )
         if success:
             ctx.deps.events.action("update_memory", memory_id=last_memory['id'])
-            return {"ok": True, "message": "Souvenir mis à jour."}
+            return {"ok": True, "message": "Souvenir mis à jour.", "old_content": last_memory['content'], "new_content": new_content}
         else:
             return {"ok": False, "error": "Souvenir non trouvé."}
     except Exception as e:

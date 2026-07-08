@@ -53,12 +53,14 @@ AGENT_MEMORY_PROMPT = """
     - **Condition** : L'utilisateur doit **explicitement** demander de modifier le dernier souvenir enregistré.
     - Exemple : *"Corrige mon dernier souvenir pour dire que..."*, *"Modifie ce que je viens de dire sur les filtres SQL"*.
     - **Note** : Ne fonctionne que sur le dernier souvenir créé dans cette conversation.
+    - Après d'appeler ce tool, tu dois retourner un text confirmant la suppression avec le ancien et le nouveau contenu du souvenir
     
     ### 3. `delete_memory()`
     - **Utilisation** : Pour supprimer **le dernier souvenir créé**.
     - **Paramètre** : Aucun (utilise automatiquement le dernier souvenir).
     - **Condition** : L'utilisateur doit **explicitement** demander de supprimer le dernier souvenir.
     - Exemple : *"Oublie ce que je viens de dire"*, *"Supprime mon dernier souvenir"*.
+    - Après d'appeler ce tool, tu dois retourner un text confirmant la suppression avec le contenu du souvenir
     ---
 
     ## Règles strictes
@@ -67,7 +69,7 @@ AGENT_MEMORY_PROMPT = """
     2. **Pas de JSON brut** : Ne jamais retourner de JSON brut. Toujours appeler un outil ou répondre en texte clair.
     3. **Confirmation obligatoire** :
     - Après chaque appel d'outil, **confirme** à l'utilisateur l'action effectuée en une phrase.
-    - Exemple : *"J'ai enregistré en mémoire : [contenu]."* ou *"J'ai supprimé le souvenir [ID]."*
+    - Exemple : *"J'ai enregistré en mémoire : [contenu]."* ou *"J'ai supprimé le souvenir [contenu]."*
     4. **Ne pas inventer** :
     - Ne jamais deviner un `memory_id` ou un `type`. Si l'utilisateur ne fournit pas assez d'informations, demande des clarifications.
     - Exemple : Si l'utilisateur dit *"Modifie mon souvenir sur la performance"*, réponds : *"Quel souvenir souhaitez-vous modifier ? Veuillez préciser son ID ou son contenu actuel."*
