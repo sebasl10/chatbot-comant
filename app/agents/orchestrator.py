@@ -13,36 +13,11 @@ juste avant ``[STREAM_START]``.
 import asyncio
 import json
 from collections.abc import AsyncIterator
-
 from app.agents.deps import ChatDeps
+from app.agents.util.history_utils import _history_context
 from app.agents.supervisor import supervisor_agent
 from app.services.events import STREAM_START
 from app.services.database import update_intention
-
-
-def _history_context(historique: list[dict], limit: int = 6) -> str:
-    """
-    Formate l'historique au format JSON pour injection dans le prompt d'un LLM.
-    """
-    if not historique:
-        return ""
-
-    recent_messages = []
-    for msg in historique[-limit:]:
-        role = msg.get("sender_role") or msg.get("role") or "user"
-        content = msg.get("content") or msg.get("contenu") or ""
-        if content.strip():
-            recent_messages.append({"role": role, "content": content})
-
-    if not recent_messages:
-        return ""
-
-    return (
-        "Historique de la conversation (récent, format JSON) :\n"
-        + json.dumps(recent_messages, ensure_ascii=False, indent=2)
-        + "\n\n"
-    )
-
 
 async def _emit_events(deps: ChatDeps) -> str:
     """
@@ -64,7 +39,6 @@ async def run_chat_stream(message: str, deps: ChatDeps) -> AsyncIterator[str]:
 
     try:
         result = await supervisor_agent.run(prompt, deps=deps)
-        #print(f"\n{'─' * 60}\n[SUPERVISOR AGENT RESULT]\n{result}\n{'─' * 60}\n")
         yield await _emit_events(deps)
         yield STREAM_START
         
@@ -72,8 +46,6 @@ async def run_chat_stream(message: str, deps: ChatDeps) -> AsyncIterator[str]:
         for chunk in output.split(" "):
             yield chunk + " "
             await asyncio.sleep(0.05)
-        """ for msg in result.all_messages():
-            print(msg) """
         
         tail = await _emit_events(deps)
         if tail:
