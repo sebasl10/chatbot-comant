@@ -18,7 +18,7 @@ AGENT_SUPERVISOR_PROMPT = """
     répond UNIQUEMENT : "Quel nom voulez-vous donner à cette recherche ?" et N'APPELLE AUCUN tool.
     - Si l'utilisateur fournit un nom (ex: "sauvegarde sous Bugs Comant", "renomme-la ProjetX"),
     appelle `rename_research(name="<le nom extrait>", research_id=0)`.
-    - Après d'avoir supprimé la recherche, renvoie un message confirmant la sauvegarde de la recherche, RIEN D'AUTRE.
+    - Après d'avoir renommé la recherche, renvoie un message confirmant la sauvegarde de la recherche, RIEN D'AUTRE.
   - `delete_research` : SUPPRIMER la recherche courante. Ex: "supprime cette recherche".
     - Après d'avoir supprimé la recherche, renvoie un message confirmant la suppression de la recherche, RIEN D'AUTRE.
   
