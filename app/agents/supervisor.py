@@ -71,12 +71,17 @@ async def delegate_refine_search(ctx: RunContext[ChatDeps], request: str) -> str
     return result.output
 
 @supervisor_agent.tool
-async def delegate_semantic_search(ctx: RunContext[ChatDeps], subject: str) -> str:
-    """Délègue une recherche par thème/sujet à l'agent sémantique, puis persiste."""
+async def delegate_semantic_search(ctx: RunContext[ChatDeps], request: str) -> str:
+    """
+    Délègue une recherche par thème/sujet à l'agent sémantique, puis persiste.
+    Args:
+        request: Message exact envoyé par l'utilisateur, sans modification, sans reformulation, sans ajout de texte
+    """
     print("[DELEGATE] Semantic research agent")   
+    print(f"Message: {request}")
     ctx.deps.events.intention("recherche_semantique")
     ctx.deps.mode = "recherche"
-    result = await semantic_research_agent.run(subject, deps=ctx.deps, usage=ctx.usage)
+    result = await semantic_research_agent.run(request, deps=ctx.deps, usage=ctx.usage)
     if ctx.deps.last_sql:
         await persist_new_research(ctx.deps)
     return result.output
