@@ -43,4 +43,6 @@ async def save_memory(ctx: RunContext[ChatDeps], type: str, content: str) -> dic
         vs.add_memory, type, content, ctx.deps.user_id, ctx.deps.username
     )
     ctx.deps.events.correction(type=type, memory=content)
+    print(f"Type: {type}")
+    print(f"Content: {content}")
     return {"ok": True, "type": type}
