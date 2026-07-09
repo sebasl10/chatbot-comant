@@ -7,10 +7,9 @@ depuis la Phase 1 : seul le backend a changé (Markdown → Chroma).
 Types de mémoire : correction_sql, expand_vocabulary (global), exclude_ticket,
 other_correction.
 """
+
 import asyncio
-
 from pydantic_ai import RunContext
-
 from app.agents.deps import ChatDeps
 from app.services import vectorstore as vs
 
@@ -25,6 +24,7 @@ async def get_memory(ctx: RunContext[ChatDeps], type: str, query: str | None = N
     other_correction. Si `query` est fourni, renvoie les souvenirs les plus
     pertinents sémantiquement ; sinon tous ceux du type. Vide si aucun.
     """
+    print("[TOOL CALL] get_memory")
     if type not in VALID_MEMORY_TYPES:
         return ""
     return await asyncio.to_thread(vs.get_memories_text, type, ctx.deps.user_id, query)

@@ -23,6 +23,7 @@ AGENT_SUPERVISOR_PROMPT = """
     - Après d'avoir supprimé la recherche, renvoie un message confirmant la suppression de la recherche, RIEN D'AUTRE.
   
   Règles absolues:
+  - Ne retourne JAMAIS le tool_call
   - Tu dois toujours utiliser UN SEUL tool, si tu n'es pas sûr de quel tool choisir, choisit delegate_conversation
   - Ne jamais deviner ou inventer un nom pour `rename_research`. Toujours exiger une confirmation explicite de l'utilisateur.
   - Répondre exactement comme spécifié pour les cas de `rename_research` et `delete_research`.

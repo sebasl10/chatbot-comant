@@ -49,9 +49,12 @@ def main():
     
     chroma_service = get_chroma_service()
     conn = get_connection()
+    
+    chroma_service.delete_collection('tickets')
+    
     try:
         cursor = conn.cursor()
-        cursor.execute("SELECT id, summary, description FROM ticket WHERE ticket.type != 'Group'")
+        cursor.execute("SELECT id, summary, description FROM ticket WHERE ticket.type NOT IN ('Group', 'Réunion')")
         tickets = cursor.fetchall()
         print(f"Trouvé {len(tickets)} tickets à migrer")
         

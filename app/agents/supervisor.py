@@ -44,11 +44,26 @@ async def delegate_new_research(ctx: RunContext[ChatDeps], request: str) -> str:
         await persist_new_research(ctx.deps)
     return result.output
 
+async def delegate_semantic_search(ctx: RunContext[ChatDeps], request: str) -> str:
+    """
+    Délègue une recherche par thème/sujet à l'agent sémantique, puis persiste.
+    Args:
+        request: Message exact envoyé par l'utilisateur, sans modification, sans reformulation, sans ajout de texte
+    """
+    print("[DELEGATE] Semantic research agent")   
+    print(f"Message: {request}")
+    ctx.deps.events.intention("recherche_semantique")
+    ctx.deps.mode = "recherche"
+    result = await semantic_research_agent.run(request, deps=ctx.deps, usage=ctx.usage)
+    if ctx.deps.last_sql:
+        await persist_new_research(ctx.deps)
+    return result.output
+
 supervisor_agent = Agent(
     get_agent_model(), 
     deps_type=ChatDeps, 
     system_prompt=AGENT_SUPERVISOR_PROMPT,
-    output_type=[str, delegate_conversation, delegate_new_research]
+    output_type=[str, delegate_conversation, delegate_new_research, delegate_semantic_search]
 )
 
 @supervisor_agent.tool
@@ -68,22 +83,6 @@ async def delegate_refine_search(ctx: RunContext[ChatDeps], request: str) -> str
     result = await sql_research_agent.run(prompt, deps=ctx.deps, usage=ctx.usage)
     if ctx.deps.last_sql:
         await persist_affinage(ctx.deps)
-    return result.output
-
-@supervisor_agent.tool
-async def delegate_semantic_search(ctx: RunContext[ChatDeps], request: str) -> str:
-    """
-    Délègue une recherche par thème/sujet à l'agent sémantique, puis persiste.
-    Args:
-        request: Message exact envoyé par l'utilisateur, sans modification, sans reformulation, sans ajout de texte
-    """
-    print("[DELEGATE] Semantic research agent")   
-    print(f"Message: {request}")
-    ctx.deps.events.intention("recherche_semantique")
-    ctx.deps.mode = "recherche"
-    result = await semantic_research_agent.run(request, deps=ctx.deps, usage=ctx.usage)
-    if ctx.deps.last_sql:
-        await persist_new_research(ctx.deps)
     return result.output
 
 @supervisor_agent.tool

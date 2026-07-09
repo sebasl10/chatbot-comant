@@ -25,6 +25,7 @@ DEFAULT_HNSW_CONFIG = {
     "ef_construction": 1000,
     "ef_search": 1000
 }
+DEFAULT_THRESHOLD = 0.5
 
 class OllamaEmbeddingFunction(EmbeddingFunction):
     """
@@ -74,28 +75,35 @@ def summaries_collection():
 
 # ── Recherche sémantique de tickets ─────────────────────────────────────────
 
-def query_tickets(query_embedding: list[float]) -> list[int]:
+def query_tickets(query: list[float]) -> list[int]:
     """
     Renvoie les ``ticket_id`` dont la similarité cosinus >= ``threshold``,
-    triés par pertinence décroissante. ``query_embedding`` est déjà calculé par
-    l'appelant (avec le préfixe d'instruction), pour la parité avec l'ancien code.
+    triés par pertinence décroissante.
     """
     col = tickets_collection()
-    n = col.count()
+    #n = col.count()
+    n = 10
     if n == 0:
         return []
     res = col.query(
-        query_embeddings=[query_embedding],
+        query_texts=[query],
         n_results=n,
         include=["distances"],
     )
+    
     ids = res["ids"][0]
     distances = res["distances"][0]
-    max_distance = 1.0 - threshold
+    max_distance = 0.7
     out: list[int] = []
     for tid, dist in zip(ids, distances):
-        if dist <= max_distance:
-            out.append(int(tid))
+        out.append(int(tid))
+        """ if dist <= max_distance:
+            out.append(int(tid)) """
+            
+    print("===========================================")
+    print(out)
+    print("===========================================")
+    
     return out
 
 
