@@ -14,7 +14,7 @@ from app.agents.specialists.semantic_research import semantic_research_agent
 from app.agents.specialists.memory import memory_agent
 from app.agents.tools.research import persist_new_research, persist_affinage
 from app.services.database import get_sql, rename_research as db_rename_research, delete_research as db_delete_research
-from app.prompts.agents.agent_supervisor import AGENT_SUPERVISOR_PROMPT
+from app.agents.prompts.agent_supervisor import AGENT_SUPERVISOR_PROMPT
 
 async def delegate_conversation(ctx: RunContext[ChatDeps], user_message: str) -> str:
     """

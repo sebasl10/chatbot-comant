@@ -22,7 +22,7 @@ from app.agents.tools.memory import get_memory
 from app.prompts.recherche import build_recherche_prompt
 from app.prompts.affinage import build_affinage_prompt
 from app.services.database import get_db_schema
-from app.prompts.agents.agent_sql_search import SQL_AGENT_TOOLS_PROMPT
+from app.agents.prompts.agent_sql_search import SQL_AGENT_TOOLS_PROMPT
 
 
 sql_research_agent = Agent(

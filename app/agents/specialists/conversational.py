@@ -6,7 +6,7 @@ from pydantic_ai import Agent, RunContext
 
 from app.agents.deps import ChatDeps
 from app.agents.model import get_agent_model
-from app.prompts.agents.agent_conversational import AGENT_CONVERSATIONAL_PROMPT
+from app.agents.prompts.agent_conversational import AGENT_CONVERSATIONAL_PROMPT
 from app.agents.util.history_utils import _history_context
 
 conversational_agent = Agent(

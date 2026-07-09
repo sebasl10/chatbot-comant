@@ -16,7 +16,7 @@ from app.agents.model import get_agent_model
 from app.agents.tools.db import run_sql
 from app.agents.tools.memory import get_memory
 from app.agents.tools.semantic import semantic_ticket_search
-from app.prompts.agents.agent_semantic_research import AGENT_SEMANTIC_RESEARCH_PROMPT
+from app.agents.prompts.agent_semantic_research import AGENT_SEMANTIC_RESEARCH_PROMPT
 
 semantic_research_agent = Agent(get_agent_model(), deps_type=ChatDeps, retries=2)
 semantic_research_agent.tool(semantic_ticket_search)

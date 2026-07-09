@@ -74,7 +74,7 @@ def summaries_collection():
 
 # ── Recherche sémantique de tickets ─────────────────────────────────────────
 
-def query_tickets(query_embedding: list[float], threshold: float = 0.5) -> list[int]:
+def query_tickets(query_embedding: list[float]) -> list[int]:
     """
     Renvoie les ``ticket_id`` dont la similarité cosinus >= ``threshold``,
     triés par pertinence décroissante. ``query_embedding`` est déjà calculé par
