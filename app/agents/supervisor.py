@@ -53,12 +53,17 @@ supervisor_agent = Agent(
 
 @supervisor_agent.tool
 async def delegate_refine_search(ctx: RunContext[ChatDeps], request: str) -> str:
-    """Délègue l'AFFINAGE de la dernière recherche à l'agent SQL, puis met à jour
-    la recherche existante."""
+    """
+    Délègue l'AFFINAGE de la dernière recherche à l'agent SQL, puis met à jour
+    la recherche existante.
+    Args:
+        request: Message exact envoyé par l'utilisateur, sans modification, sans reformulation, sans ajout de texte
+    """
     print("[DELEGATE] SQL research agent (affinage)")
     ctx.deps.events.intention("affinage")
     ctx.deps.mode = "affinage"
     ctx.deps.previous_sql = _previous_sql(ctx.deps)
+    print(f"LAST SQL: {ctx.deps.previous_sql}")
     prompt = f"Requête SQL précédente : {ctx.deps.previous_sql}\nDemande d'affinage : {request}"
     result = await sql_research_agent.run(prompt, deps=ctx.deps, usage=ctx.usage)
     if ctx.deps.last_sql:
@@ -119,7 +124,9 @@ async def delete_research(ctx: RunContext[ChatDeps], research_id: int = 0) -> st
     return "Recherche supprimée."
 
 def _previous_sql(deps: ChatDeps) -> str:
-    """Retrouve la requête SQL à affiner : d'abord via research_id, sinon l'historique."""
+    """
+    Retrouve la requête SQL à affiner : d'abord via research_id, sinon l'historique.
+    """
     if deps.research_id:
         try:
             return get_sql(deps.research_id)

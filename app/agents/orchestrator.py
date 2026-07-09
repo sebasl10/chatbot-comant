@@ -21,21 +21,34 @@ from app.services.database import update_intention
 
 
 def _history_context(historique: list[dict], limit: int = 6) -> str:
-    """Résumé compact des derniers messages, injecté dans le prompt du superviseur."""
+    """
+    Formate l'historique au format JSON pour injection dans le prompt d'un LLM.
+    """
     if not historique:
         return ""
-    lines = []
+
+    recent_messages = []
     for msg in historique[-limit:]:
         role = msg.get("sender_role") or msg.get("role") or "user"
         content = msg.get("content") or msg.get("contenu") or ""
-        if content:
-            lines.append(f"- {role}: {content}")
-    return ("Contexte de conversation (récent) :\n" + "\n".join(lines) + "\n\n") if lines else ""
+        if content.strip():
+            recent_messages.append({"role": role, "content": content})
+
+    if not recent_messages:
+        return ""
+
+    return (
+        "Historique de la conversation (récent, format JSON) :\n"
+        + json.dumps(recent_messages, ensure_ascii=False, indent=2)
+        + "\n\n"
+    )
 
 
 async def _emit_events(deps: ChatDeps) -> str:
-    """Draine les événements, persiste l'intention choisie (compat legacy) et
-    renvoie leur sérialisation JSON (une ligne par événement)."""
+    """
+    Draine les événements, persiste l'intention choisie (compat legacy) et
+    renvoie leur sérialisation JSON (une ligne par événement).
+    """
     events = deps.events.drain()
     for e in events:
         if e["event"] == "intention" and deps.last_message_id:
