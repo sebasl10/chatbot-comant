@@ -16,6 +16,7 @@ from app.agents.specialists.memory import memory_agent
 from app.agents.tools.research import persist_new_research, persist_affinage
 from app.services.database import get_sql, rename_research as db_rename_research, delete_research as db_delete_research
 from app.agents.prompts.agent_supervisor import AGENT_SUPERVISOR_PROMPT
+from app.agents.util.history_utils import _history_context
 
 async def delegate_conversation(ctx: RunContext[ChatDeps], user_message: str) -> str:
     """
@@ -88,10 +89,13 @@ async def delegate_refine_search(ctx: RunContext[ChatDeps], request: str) -> str
 
 @supervisor_agent.tool
 async def delegate_correction(ctx: RunContext[ChatDeps], message: str) -> str:
-    """Délègue l'enregistrement d'une correction/souvenir à l'agent mémoire."""
+    """
+    Délègue l'enregistrement d'une correction/souvenir à l'agent mémoire.
+    """
     print("[DELEGATE] Memory agent")   
     ctx.deps.events.intention("correction")
-    result = await memory_agent.run(message, deps=ctx.deps, usage=ctx.usage)
+    prompt = _history_context(ctx.deps.historique) + message
+    result = await memory_agent.run(prompt, deps=ctx.deps, usage=ctx.usage)
     return result.output
 
 @supervisor_agent.tool

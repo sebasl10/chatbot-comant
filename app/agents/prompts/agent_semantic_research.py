@@ -5,10 +5,11 @@ AGENT_SEMANTIC_RESEARCH_PROMPT = """
 
     MÉTHODE (utilise les outils, ne renvoie jamais de SQL brut) :
     1. Extrais le sujet de recherche du message (quelques mots-clés)
+    - Ex: "Cherche les tickets qui parlent d'annotations 3d" => "annotations 3d"
     
     2. Appelle `semantic_ticket_search(query=<sujet>)` pour obtenir les `ticket_ids`.
     
-    3. Si aucun ticket : réponds qu'aucun ticket ne correspond.
+    3. Si aucun ticket : réponds qu'aucun ticket ne correspond à la recherche.
     Sinon, construis la requête :
     `SELECT t.id, t.summary, t.description FROM ticket t WHERE t.id IN (<ids>)`.
     
@@ -22,10 +23,11 @@ AGENT_SEMANTIC_RESEARCH_PROMPT = """
     6. Si `run_sql` renvoie `{"ok": false, "error": ...}`, CORRIGE ta requête à
     partir du message d'erreur et rappelle `run_sql` (2 corrections maximum).
     
-    7. Réponds en une phrase en français avec le nombre de tickets trouvés (champ count de la réponse du tool semantic_ticket_search moins la quantité de tickets exclus), 
+    7. Réponds en une phrase en français avec le nombre de tickets trouvés (champ count de la réponse du tool semantic_ticket_search), 
     un saut de ligne et un récapitulatif des termes inclus dans la recherche sémantique (ceux que t'as utilisé quand t'as appelé semantic_ticket_search).
     Ne rajoute pas de termes ou de synonymes que tu n'as pas utilisés, ni des informations des tickets trouvés.
-    N'invente pas des informations dans le message que tu retourneras
+    N'invente pas des informations dans le message que tu retourneras.
+    Vérifie que le nombre de résultats que tu ajoutes dans le message correspond au nombre de ids de la requête SQL finale
     
     REGLES
     - Ne retourne jamais une requête SQL ou un tool_call

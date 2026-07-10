@@ -503,3 +503,72 @@ def get_all_supervisor_examples() -> List[Dict[str, Any]]:
         })
     
     return results
+
+# Update / Delete memories
+
+def get_last_memory(user_id: int | None) -> dict | None:
+    """
+    Récupère le dernier souvenir (tous types confondus) créé par l'utilisateur.
+    Retourne None si aucun souvenir.
+    """
+    col = memories_collection()
+    where = {"user_id": user_id}
+    res = col.get(where=where, include=["documents", "metadatas"])
+
+    if not res.get("ids") or len(res["ids"]) == 0:
+        return None
+
+    # Trouver le souvenir le plus récent
+    ids = res["ids"]
+    docs = res["documents"]
+    metas = res["metadatas"]
+    last_index = 0
+    last_date = ""
+
+    for i, meta in enumerate(metas):
+        if isinstance(meta, dict) and "date" in meta:
+            if meta["date"] > last_date:
+                last_date = meta["date"]
+                last_index = i
+
+    return {
+        "id": ids[last_index],
+        "content": docs[last_index],
+        "metadata": metas[last_index]
+    }
+
+def delete_memory(memory_id: str, user_id: int | None) -> bool:
+    """
+    Supprime un souvenir par son ID.
+    """
+    col = memories_collection()
+    col.delete(ids=[memory_id])
+    return True
+
+
+def update_memory(memory_id: str, new_content: str, user_id: int | None, username: str | None = None) -> bool:
+    """
+    Met à jour un souvenir existant.
+    """
+    col = memories_collection()
+    # Conserver les métadonnées existantes
+    res = col.get(ids=[memory_id], include=["metadatas"])
+    if not res["ids"] or len(res["ids"]) == 0:
+        return False
+    
+    existing_meta = res["metadatas"][0] if res["metadatas"] and len(res["metadatas"]) > 0 else {}
+    if isinstance(existing_meta, dict):
+        # Mettre à jour la date
+        existing_meta["date"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        # Mettre à jour username si fourni
+        if username:
+            existing_meta["username"] = username
+    else:
+        existing_meta = {}
+    
+    col.update(
+        ids=[memory_id],
+        documents=[new_content],
+        metadatas=[existing_meta]
+    )
+    return True
