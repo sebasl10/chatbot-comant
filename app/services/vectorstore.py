@@ -75,36 +75,20 @@ def summaries_collection():
 
 # ── Recherche sémantique de tickets ─────────────────────────────────────────
 
-def query_tickets(query: list[float]) -> list[int]:
+def query_tickets(query: list[float], nb_results: int = 10) -> list[int]:
     """
-    Renvoie les ``ticket_id`` dont la similarité cosinus >= ``threshold``,
-    triés par pertinence décroissante.
+    Renvoie les {nb_results} ``ticket_id`` les plus similaires à {query}
     """
     col = tickets_collection()
-    #n = col.count()
-    n = 10
-    if n == 0:
-        return []
     res = col.query(
         query_texts=[query],
-        n_results=n,
+        n_results=nb_results,
         include=["distances"],
     )
     
     ids = res["ids"][0]
-    distances = res["distances"][0]
-    max_distance = 0.7
-    out: list[int] = []
-    for tid, dist in zip(ids, distances):
-        out.append(int(tid))
-        """ if dist <= max_distance:
-            out.append(int(tid)) """
-            
-    print("===========================================")
-    print(out)
-    print("===========================================")
     
-    return out
+    return ids
 
 
 # ── Mémoires (souvenirs / corrections) ──────────────────────────────────────

@@ -13,7 +13,7 @@ from app.services.vectorstore import tickets_collection, TICKETS
 
 def main():
     # ── CONFIGURATION ────────────────────────────────────────────────────────
-    query = "cinématique"  # ← MODIFIE TA QUERY ICI
+    query = "models Creo"  # ← MODIFIE TA QUERY ICI
     collection_name = TICKETS  # ou MEMORIES, CONVERSATION_SUMMARIES
     n_results = 10
     
