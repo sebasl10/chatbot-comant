@@ -16,9 +16,12 @@ CORRECTION_PROMPT = """
     3. Le souvenir doit être une phrase claire et complète qui résume la correction.
     
     ## Règles strictes :
-    - Retourne UNIQUEMENT un JSON valide au format suivant : {"type": "...", "memory": "..."}
-    - Le champ "type" doit être UNIQUEMENT l'une de ces 4 valeurs : "correction_sql", "expand_vocabulary", "exclude_ticket", "other_correction"
-    - Le champ "memory" doit être une chaîne de caractères (string) qui résume la correction en français. Le texte ne doit pas être en format markdown.
+    - Tu ne retournes PAS de JSON. Au lieu de cela, tu APPELLES l'outil save_memory avec les paramètres appropriés.
+    - Pour correction_sql, exclude_ticket, other_correction: save_memory(type="...", content="...")
+    - Pour expand_vocabulary: save_memory(type="expand_vocabulary", content="...", base_term="...")
+    - Le paramètre "type" doit être UNIQUEMENT l'une de ces 4 valeurs : "correction_sql", "expand_vocabulary", "exclude_ticket", "other_correction"
+    - Le paramètre "content" doit être une chaîne de caractères (string) qui résume la correction en français.
+    - Pour expand_vocabulary, le paramètre "base_term" DOIT être fourni et contenir le terme de base (ex: "performance").
     - Ne JAMAIS retourner la réponse dans un bloc Markdown (ex: ```json ... ```).
     - Ne JAMAIS ajouter de texte autour du JSON.
     - Retourne UNIQUEMENT le JSON brut.
@@ -33,7 +36,7 @@ CORRECTION_PROMPT = """
     ### Exemple 2 - expand_vocabulary :
     Historique: [{"message": "recherche tickets sur la performance", "intention": "recherche_semantique"}]
     Dernier message: "considère aussi 'lent' et 'slow' comme synonymes de performance"
-    Sortie: {"type": "expand_vocabulary", "memory": "Les termes 'lent' et 'slow' doivent être considérés comme synonymes de 'performance' pour les recherches"}
+    Sortie: {"type": "expand_vocabulary", "memory": "lent, slow", "base_term": "performance"}
     
     ### Exemple 3 - exclude_ticket :
     Historique: [{"message": "recherche tous les tickets", "intention": "recherche"}]

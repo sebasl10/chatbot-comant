@@ -106,7 +106,7 @@ def main():
         collection = vs.memories_collection()
         
         # Récupérer toutes les mémoires
-        print_section(f"Collection: mémoires (🧠)")
+        print_section(f"Collection: memories (🧠)")
         data = get_all_memories(collection)
         
         if data:
