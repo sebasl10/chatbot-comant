@@ -15,7 +15,7 @@ import json
 from collections.abc import AsyncIterator
 from app.agents.deps import ChatDeps
 from app.agents.util.history_utils import _history_context
-from app.agents.supervisor import supervisor_agent
+from app.agents.supervisor import build_user_prompt_with_few_shot, supervisor_agent
 from app.services.events import STREAM_START
 from app.services.database import update_intention
 
@@ -35,7 +35,11 @@ async def _emit_events(deps: ChatDeps) -> str:
 
 
 async def run_chat_stream(message: str, deps: ChatDeps) -> AsyncIterator[str]:
-    prompt = _history_context(deps.historique) + f"Message de l'utilisateur : {message}"
+    # Construire le message utilisateur avec les exemples few-shot
+    user_prompt_with_few_shot = build_user_prompt_with_few_shot(message)
+    
+    # Ajouter l'historique avant le message
+    prompt = _history_context(deps.historique) + user_prompt_with_few_shot
 
     try:
         result = await supervisor_agent.run(prompt, deps=deps)
