@@ -61,11 +61,21 @@ async def delegate_semantic_search(ctx: RunContext[ChatDeps], request: str) -> s
         await persist_new_research(ctx.deps)
     return result.output
 
+async def delegate_correction(ctx: RunContext[ChatDeps], message: str) -> str:
+    """
+    Délègue l'enregistrement d'une correction/souvenir à l'agent mémoire.
+    """
+    print("[DELEGATE] Memory agent")   
+    ctx.deps.events.intention("correction")
+    prompt = _history_context(ctx.deps.historique) + message
+    result = await memory_agent.run(prompt, deps=ctx.deps, usage=ctx.usage)
+    return result.output
+
 supervisor_agent = Agent(
     get_agent_model(), 
     deps_type=ChatDeps, 
     system_prompt=AGENT_SUPERVISOR_PROMPT,
-    output_type=[str, delegate_conversation, delegate_new_research, delegate_semantic_search]
+    output_type=[str, delegate_conversation, delegate_new_research, delegate_semantic_search, delegate_correction]
 )
 
 @supervisor_agent.tool
@@ -85,17 +95,6 @@ async def delegate_refine_search(ctx: RunContext[ChatDeps], request: str) -> str
     result = await sql_research_agent.run(prompt, deps=ctx.deps, usage=ctx.usage)
     if ctx.deps.last_sql:
         await persist_affinage(ctx.deps)
-    return result.output
-
-@supervisor_agent.tool
-async def delegate_correction(ctx: RunContext[ChatDeps], message: str) -> str:
-    """
-    Délègue l'enregistrement d'une correction/souvenir à l'agent mémoire.
-    """
-    print("[DELEGATE] Memory agent")   
-    ctx.deps.events.intention("correction")
-    prompt = _history_context(ctx.deps.historique) + message
-    result = await memory_agent.run(prompt, deps=ctx.deps, usage=ctx.usage)
     return result.output
 
 @supervisor_agent.tool

@@ -96,10 +96,13 @@ async def delete_memory(ctx: RunContext[ChatDeps]) -> dict:
     """
     print("[TOOL CALL] delete_memory")
     last_memory = vs.get_last_memory(ctx.deps.user_id)
-    print(f"Memory ID: {last_memory['id']}")
-    print(f"Memory Content: {last_memory['content']}")
+    
     if not last_memory:
         return {"ok": False, "error": "Aucun souvenir récent à supprimer."}
+    
+    print(f"Memory ID: {last_memory['id']}")
+    print(f"Memory Content: {last_memory['content']}")
+    
     try:
         await asyncio.to_thread(vs.delete_memory, last_memory['id'], ctx.deps.user_id)
         ctx.deps.events.action("delete_memory", memory_id=last_memory['id'])

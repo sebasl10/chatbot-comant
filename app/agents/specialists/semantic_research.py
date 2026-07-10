@@ -18,15 +18,7 @@ from app.agents.tools.memory import get_memory
 from app.agents.tools.semantic import semantic_ticket_search
 from app.agents.prompts.agent_semantic_research import AGENT_SEMANTIC_RESEARCH_PROMPT
 
-semantic_research_agent = Agent(get_agent_model(), deps_type=ChatDeps, retries=2)
+semantic_research_agent = Agent(get_agent_model(), deps_type=ChatDeps, retries=2, system_prompt=AGENT_SEMANTIC_RESEARCH_PROMPT)
 semantic_research_agent.tool(semantic_ticket_search)
 semantic_research_agent.tool(get_memory)
 semantic_research_agent.tool(run_sql)
-
-@semantic_research_agent.system_prompt
-async def _system_prompt(ctx: RunContext[ChatDeps]) -> str:
-    # Les synonymes sont maintenant utilisés automatiquement dans semantic_ticket_search
-    # via query_tickets_with_synonyms. On peut garder l'affichage pour information.
-    synonyms = await get_memory(ctx, "expand_vocabulary")
-    block = f"\n\n## SYNONYMES DISPONIBLES (vocabulaire métier)\n{synonyms}" if synonyms else ""
-    return AGENT_SEMANTIC_RESEARCH_PROMPT + block

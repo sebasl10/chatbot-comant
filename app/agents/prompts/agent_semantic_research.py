@@ -4,6 +4,8 @@ AGENT_SEMANTIC_RESEARCH_PROMPT = """
     pas par filtres exacts.
 
     MÉTHODE (utilise les outils, ne renvoie jamais de SQL brut) :
+    - Tu dois OBLIGATOIREMENT suivre et respecter ce workflow
+    
     1. Extrais le sujet de recherche du message (quelques mots-clés)
     - Ex: "Cherche les tickets qui parlent d'annotations 3d" => "annotations 3d"
     

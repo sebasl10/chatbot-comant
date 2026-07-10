@@ -126,7 +126,6 @@ def query_tickets(query: list[float] | str, nb_results: int = 10) -> list[int]:
     """
     col = tickets_collection()
     
-    # Si query est un string, calculer l'embedding avec préfixe d'instruction
     if isinstance(query, str):
         query_embedding = get_query_embedding(query)
     else:
@@ -151,14 +150,6 @@ def query_tickets_with_synonyms(query: str, nb_results_per_synonym: int = 10, fi
     Pour chaque synonyme trouvé pour le terme de base, fait une requête séparée
     avec un embedding calculé sur "cherche les tickets qui parlent de: <synonyme>".
     Fusionne tous les résultats, les trie par score, et retourne les N meilleurs.
-    
-    Args:
-        query: Le terme de recherche (peut être un terme de base ou un terme quelconque)
-        nb_results_per_synonym: Nombre de résultats à récupérer par synonyme (défaut: 10)
-        final_nb_results: Nombre final de résultats à retourner (défaut: 10)
-    
-    Returns:
-        Liste des ticket_ids triés par pertinence (meilleurs en premier)
     """
 
     synonyms = get_synonyms_for_term(query)
@@ -166,22 +157,19 @@ def query_tickets_with_synonyms(query: str, nb_results_per_synonym: int = 10, fi
     if not synonyms:
         return query_tickets(query, nb_results=final_nb_results)
     
-    # Préparer la liste de tous les embeddings à chercher
-    # Inclure le terme original + tous les synonymes
     all_terms = [query] + synonyms
     
-    # Calculer un embedding par terme avec le préfixe spécifique
     query_instruction = (
+        "Trouve les tickets pertinents pour une demande donnée en identifiant ceux qui mentionnent, décrivent ou traitent du sujet spécifié. "
+        "Inclus les tickets qui contiennent des termes directement liés ou des concepts sémantiquement proches."
         "Cherche les tickets qui parlent de: "
     )
     
     all_embeddings = []
     for term in all_terms:
-        # Calculer l'embedding avec le préfixe
         embedding = get_embedding(f"{query_instruction}{term}")
         all_embeddings.append(embedding)
     
-    # Faire une requête Chroma avec tous les embeddings
     col = tickets_collection()
     res = col.query(
         query_embeddings=all_embeddings,
@@ -189,7 +177,7 @@ def query_tickets_with_synonyms(query: str, nb_results_per_synonym: int = 10, fi
         include=["distances"]
     )
     
-    # Fusionner et trier tous les résultats
+    # Fusionner tous les résultats, les trier par distance et retoruner les n meilleurs
     all_results = []
     for i in range(len(all_embeddings)):
         ids = res["ids"][i]
@@ -200,11 +188,9 @@ def query_tickets_with_synonyms(query: str, nb_results_per_synonym: int = 10, fi
                 "distance": distances[j],
                 "term_index": i
             })
-    
-    # Trier par distance (plus petite = plus proche)
+
     all_results.sort(key=lambda x: x["distance"])
     
-    # Retourner les N meilleurs
     return [r["id"] for r in all_results[:final_nb_results]]
 
 
@@ -223,8 +209,7 @@ def get_synonyms_for_term(base_term: str) -> List[str]:
     Utilise le filtre where sur les métadonnées pour une recherche exacte.
     """
     col = memories_collection()
-    
-    # D'abord essayer avec base_term dans les métadonnées (nouveau format)
+
     where = {
         "$and":[
             {"type": "expand_vocabulary"},
@@ -234,49 +219,16 @@ def get_synonyms_for_term(base_term: str) -> List[str]:
     
     res = col.get(where=where, include=["documents", "metadatas"])
     docs = res.get("documents", [])
-    metadatas = res.get("metadatas", [])
     
-    # Retourner la liste des synonymes
     synonyms = []
     for doc in docs:
         if doc and doc.strip():
-            # Split par virgule et nettoyer
             terms = [t.strip() for t in doc.split(",") if t.strip()]
             synonyms.extend(terms)
     
+    print(f"[SYNONYMS] Synonymes trouvés pour '{base_term}': {synonyms}")
+    
     return synonyms
-
-def get_all_synonyms() -> List[Dict[str, Any]]:
-    """
-    Récupère tous les entrées expand_vocabulary.
-    
-    Returns:
-        Liste de dictionnaires avec base_term et synonyms pour chaque entrée
-    """
-    col = memories_collection()
-    
-    # Filtrer par type=expand_vocabulary
-    where = {"type": "expand_vocabulary"}
-    
-    res = col.get(where=where, include=["documents", "metadatas"])
-    docs = res.get("documents", [])
-    metadatas = res.get("metadatas", [])
-    
-    results = []
-    for i in range(len(docs)):
-        doc = docs[i]
-        meta = metadatas[i] if i < len(metadatas) else {}
-        
-        if doc and doc.strip():
-            base_term = meta.get("base_term", "inconnu")
-            terms = [t.strip() for t in doc.split(",") if t.strip()]
-            results.append({
-                "base_term": base_term,
-                "synonyms": terms
-            })
-    
-    return results
-
 
 def get_memories_text(type: str, user_id: int | None, query: str | None = None, k: int = 8) -> str:
     """
@@ -516,9 +468,8 @@ def get_last_memory(user_id: int | None) -> dict | None:
     res = col.get(where=where, include=["documents", "metadatas"])
 
     if not res.get("ids") or len(res["ids"]) == 0:
-        return None
+        return ''
 
-    # Trouver le souvenir le plus récent
     ids = res["ids"]
     docs = res["documents"]
     metas = res["metadatas"]
