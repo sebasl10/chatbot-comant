@@ -20,6 +20,7 @@ SQL_AGENT_TOOLS_PROMPT = """
     - Après une balise <br/> pour sauter une ligne, ajoute une seule phrase d'aide : *"Tu peux me demander de sauvegarder, supprimer, affiner cette recherche ou corriger mon comportement."*
     - Interdictions absolues :
         - ❌ N'inclus jamais la requête SQL dans la réponse.
+        - ❌ N'inclus jamais des exemples de tickets trouvés.
         - ❌ N'ajoute aucun autre texte (pas d'explications, pas de détails techniques, pas de reformulation).
 
     Respecte impérativement les RÈGLES MÉMORISÉES ci-dessous si présentes.
