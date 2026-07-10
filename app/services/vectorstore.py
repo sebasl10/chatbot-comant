@@ -7,9 +7,11 @@ Collections :
 - ``tickets``                : embeddings de tickets.
 - ``memories``               : souvenirs/corrections, filtrables par métadonnées ``{type, scope, user_id}`` et recherchables sémantiquement.
 - ``conversation_summaries`` : résumés de conversation.
+- ``supervisor_actions``     : exemples de requêtes utilisateur et actions correspondantes pour l'agent supervisor.
 """
 
 from __future__ import annotations
+from typing import Any, Dict, List
 import requests
 from chromadb import HttpClient
 from chromadb.api.types import Documents, EmbeddingFunction, Embeddings
@@ -20,6 +22,7 @@ from app.config import settings
 TICKETS = "tickets"
 MEMORIES = "memories"
 CONVERSATION_SUMMARIES = "conversation_summaries"
+SUPERVISOR_ACTIONS = "supervisor_actions"
 DEFAULT_HNSW_CONFIG = {
     "space": "cosine",
     "ef_construction": 1000,
@@ -70,6 +73,10 @@ def memories_collection():
 
 def summaries_collection():
     return _collection(CONVERSATION_SUMMARIES)
+
+
+def supervisor_actions_collection():
+    return _collection(SUPERVISOR_ACTIONS)
 
 
 # ── Recherche sémantique de tickets ─────────────────────────────────────────
@@ -177,3 +184,94 @@ def search_conversation_summaries(user_id: int, query: str, k: int = 3) -> str:
     )
     docs = res["documents"][0] if res["documents"] else []
     return "\n\n---\n\n".join(docs)
+
+
+# ── Exemples de supervision ─────────────────────────────────────────────────
+
+def add_supervisor_example(user_query: str, action: str, description: str = "") -> str:
+    """
+    Ajoute un exemple de requête utilisateur et l'action correspondante pour l'agent supervisor.
+    
+    Args:
+        user_query: La requête de l'utilisateur (sera le document)
+        action: L'action à entreprendre (ex: delegate_new_research, delegate_semantic_search)
+        description: Description optionnelle de l'exemple
+    
+    Returns:
+        L'ID du document ajouté
+    """
+    meta = {
+        "action": action,
+        "type": "supervisor_example",
+        "description": description,
+        "date": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+    }
+    doc_id = str(uuid.uuid4())
+    supervisor_actions_collection().add(
+        ids=[doc_id],
+        documents=[user_query],
+        metadatas=[meta]
+    )
+    return doc_id
+
+
+def get_supervisor_examples(query: str, n_results: int = 5) -> List[Dict[str, Any]]:
+    """
+    Recherche des exemples de supervision similaires à une requête utilisateur.
+    
+    Args:
+        query: La requête de l'utilisateur
+        n_results: Nombre maximum d'exemples à retourner
+    
+    Returns:
+        Liste de dictionnaires avec id, document (user_query), metadata (action, etc.)
+    """
+    col = supervisor_actions_collection()
+    if col.count() == 0:
+        return []
+    
+    res = col.query(
+        query_texts=[query],
+        n_results=n_results,
+        include=["documents", "metadatas"]
+    )
+    
+    results = []
+    ids = res.get("ids", [[ ]])[0]
+    documents = res.get("documents", [[ ]])[0]
+    metadatas = res.get("metadatas", [[ ]])[0]
+    
+    for i in range(len(ids)):
+        results.append({
+            "id": ids[i],
+            "user_query": documents[i],
+            "metadata": metadatas[i] if i < len(metadatas) else {},
+            "distance": res.get("distances", [[ ]])[0][i] if res.get("distances") else None
+        })
+    
+    return results
+
+
+def get_all_supervisor_examples() -> List[Dict[str, Any]]:
+    """
+    Récupère tous les exemples de supervision.
+    
+    Returns:
+        Liste complète des exemples avec leurs métadonnées
+    """
+    col = supervisor_actions_collection()
+    res = col.get(include=["documents", "metadatas"])
+    
+    results = []
+    ids = res.get("ids", [])
+    documents = res.get("documents", [])
+    metadatas = res.get("metadatas", [])
+    
+    for i in range(len(ids)):
+        results.append({
+            "id": ids[i],
+            "user_query": documents[i],
+            "metadata": metadatas[i] if i < len(metadatas) else {}
+        })
+    
+    return results
