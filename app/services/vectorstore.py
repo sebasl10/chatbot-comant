@@ -51,6 +51,44 @@ class OllamaEmbeddingFunction(EmbeddingFunction):
 
 _client: HttpClient | None = None
 
+# Initialiser la fonction d'embedding pour réutilisation
+_embedding_function: OllamaEmbeddingFunction | None = None
+
+
+def get_embedding_function() -> OllamaEmbeddingFunction:
+    """
+    Retourne ou initialise la fonction d'embedding.
+    """
+    global _embedding_function
+    if _embedding_function is None:
+        _embedding_function = OllamaEmbeddingFunction()
+    return _embedding_function
+
+
+def get_embedding(text: str) -> list[float]:
+    """
+    Calcule l'embedding d'un texte en utilisant le modèle configuré.
+    """
+    emb_fn = get_embedding_function()
+    embeddings = emb_fn([text])
+    return embeddings[0]
+
+
+def get_query_embedding(query: str, instruction_prefix: str = None) -> list[float]:
+    """
+    Calcule l'embedding d'une requête avec un préfixe d'instruction.
+
+    """
+    if instruction_prefix is None:
+        instruction_prefix = (
+            "Trouve les tickets pertinents pour une demande donnée en identifiant ceux qui mentionnent, décrivent ou traitent du sujet spécifié. "
+            "Inclus les tickets qui contiennent des termes directement liés ou des concepts sémantiquement proches."
+        )
+    
+    full_text = f"{instruction_prefix}\n\n{query}"
+    return get_embedding(full_text)
+
+
 def get_client() -> HttpClient:
     global _client
     if _client is None:
@@ -82,20 +120,28 @@ def supervisor_actions_collection():
 
 # ── Recherche sémantique de tickets ─────────────────────────────────────────
 
-def query_tickets(query: list[float], nb_results: int = 10) -> list[int]:
+def query_tickets(query: list[float] | str, nb_results: int = 10) -> list[int]:
     """
-    Renvoie les {nb_results} ``ticket_id`` les plus similaires à {query}
+    Renvoie les {nb_results} ``ticket_id`` les plus similaires à {query}.
     """
     col = tickets_collection()
+    
+    # Si query est un string, calculer l'embedding avec préfixe d'instruction
+    if isinstance(query, str):
+        query_embedding = get_query_embedding(query)
+    else:
+        query_embedding = query
+    
     res = col.query(
-        query_texts=[query],
+        query_embeddings=[query_embedding],
         n_results=nb_results,
         include=["distances"],
     )
     
     ids = res["ids"][0]
     
-    return ids
+    # Convertir en int (les ticket_ids sont stockés comme strings dans Chroma)
+    return [int(tid) for tid in ids]
 
 
 # ── Mémoires (souvenirs / corrections) ──────────────────────────────────────
@@ -112,13 +158,19 @@ def get_memories_text(type: str, user_id: int | None, query: str | None = None, 
     Renvoie les souvenirs d'un ``type`` sous forme de texte concaténé.
 
     - Sans ``query`` : tous les souvenirs du type (filtrés par métadonnées).
-    - Avec ``query`` : les ``k`` souvenirs les plus proches sémantiquement.
+    - Avec ``query`` : les ``k`` souvenirs les plus proches sémantiquement (avec préfixe d'instruction).
     Vide si aucun souvenir
     """
     col = memories_collection()
     where = _memory_where(type, user_id)
     if query:
-        res = col.query(query_texts=[query], n_results=k, where=where, include=["documents"])
+        # Calculer l'embedding avec préfixe pour les mémoires
+        memory_instruction = (
+            "Représente une question ou un contexte pour retrouver des souvenirs ou corrections pertinents. "
+            "Inclut les synonymes, concepts liés et variations sémantiques."
+        )
+        query_embedding = get_query_embedding(query, instruction_prefix=memory_instruction)
+        res = col.query(query_embeddings=[query_embedding], n_results=k, where=where, include=["documents"])
         docs = res["documents"][0] if res["documents"] else []
     else:
         res = col.get(where=where, include=["documents"])
@@ -167,12 +219,21 @@ def add_conversation_summary(user_id: int, conversation_id: int, summary: str, e
 def search_conversation_summaries(user_id: int, query: str, k: int = 3) -> str:
     """
     Renvoie les ``k`` résumés de conversation les plus pertinents pour l'utilisateur.
+    Utilise un embedding avec préfixe d'instruction pour améliorer la recherche.
     """
     col = summaries_collection()
     if col.count() == 0:
         return ""
+    
+    # Préfixe pour la recherche de résumés de conversation
+    summary_instruction = (
+        "Représente une requête pour retrouver des résumés de conversation pertinents. "
+        "Inclut le contexte conversationnel, les thèmes abordés et les concepts associés."
+    )
+    query_embedding = get_query_embedding(query, instruction_prefix=summary_instruction)
+    
     res = col.query(
-        query_texts=[query], n_results=k, where={"user_id": user_id}, include=["documents"]
+        query_embeddings=[query_embedding], n_results=k, where={"user_id": user_id}, include=["documents"]
     )
     docs = res["documents"][0] if res["documents"] else []
     return "\n\n---\n\n".join(docs)
@@ -210,35 +271,38 @@ def add_supervisor_example(user_query: str, action: str, description: str = "") 
 def get_supervisor_examples(query: str, n_results: int = 5) -> List[Dict[str, Any]]:
     """
     Recherche des exemples de supervision similaires à une requête utilisateur.
-    
-    Args:
-        query: La requête de l'utilisateur
-        n_results: Nombre maximum d'exemples à retourner
-    
-    Returns:
-        Liste de dictionnaires avec id, document (user_query), metadata (action, etc.)
+    Utilise un embedding avec préfixe d'instruction pour améliorer la recherche.
     """
     col = supervisor_actions_collection()
     if col.count() == 0:
         return []
     
+    # Préfixe spécifique pour la recherche d'exemples de supervision
+    supervisor_instruction = (
+        "Représente une requête utilisateur pour déterminer l'action appropriée à entreprendre. "
+        "Analyse la sémantique, l'intention et le contexte pour identifier des exemples similaires "
+        "qui aideront à prendre la bonne décision de délégation."
+    )
+    query_embedding = get_query_embedding(query, instruction_prefix=supervisor_instruction)
+    
     res = col.query(
-        query_texts=[query],
+        query_embeddings=[query_embedding],
         n_results=n_results,
-        include=["documents", "metadatas"]
+        include=["documents", "metadatas", "distances"]
     )
     
     results = []
     ids = res.get("ids", [[ ]])[0]
     documents = res.get("documents", [[ ]])[0]
     metadatas = res.get("metadatas", [[ ]])[0]
+    distances = res.get("distances", [[ ]])[0]
     
     for i in range(len(ids)):
         results.append({
             "id": ids[i],
             "user_query": documents[i],
             "metadata": metadatas[i] if i < len(metadatas) else {},
-            "distance": res.get("distances", [[ ]])[0][i] if res.get("distances") else None
+            "distance": distances[i] if i < len(distances) else None
         })
     
     return results

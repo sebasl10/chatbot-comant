@@ -8,14 +8,14 @@ Définis ta query dans la fonction main() ci-dessous.
 import sys
 sys.path.insert(0, '.')
 
-from app.services.vectorstore import tickets_collection, TICKETS
-
+from app.services.vectorstore import tickets_collection, TICKETS, get_query_embedding
 
 def main():
     # ── CONFIGURATION ────────────────────────────────────────────────────────
-    query = "models Creo"  # ← MODIFIE TA QUERY ICI
+    query = "cinématique"  # ← MODIFIE TA QUERY ICI
     collection_name = TICKETS  # ou MEMORIES, CONVERSATION_SUMMARIES
     n_results = 10
+    query_embedding = get_query_embedding(query)
     
     # ── EXÉCUTION ────────────────────────────────────────────────────────────
     collection = tickets_collection()
@@ -27,7 +27,7 @@ def main():
     
     # Recherche sémantique
     results = collection.query(
-        query_texts=[query],
+        query_embeddings=[query_embedding],
         n_results=n_results,
         include=["documents", "metadatas", "distances"]
     )

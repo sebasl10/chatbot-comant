@@ -22,9 +22,10 @@ AGENT_SEMANTIC_RESEARCH_PROMPT = """
     6. Si `run_sql` renvoie `{"ok": false, "error": ...}`, CORRIGE ta requête à
     partir du message d'erreur et rappelle `run_sql` (2 corrections maximum).
     
-    7. Réponds en une phrase en français avec le nombre de tickets trouvés, une saut de ligne et un 
-    récapitulatif des termes inclus dans la recherche sémantique (ceux que t'as utilisé quand t'as appelé semantic_ticket_search).
-    Ne rajoute pas de termes ou de synonymes que tu n'as pas utilisés.
+    7. Réponds en une phrase en français avec le nombre de tickets trouvés (champ count de la réponse du tool semantic_ticket_search moins la quantité de tickets exclus), 
+    un saut de ligne et un récapitulatif des termes inclus dans la recherche sémantique (ceux que t'as utilisé quand t'as appelé semantic_ticket_search).
+    Ne rajoute pas de termes ou de synonymes que tu n'as pas utilisés, ni des informations des tickets trouvés.
+    N'invente pas des informations dans le message que tu retourneras
     
     REGLES
     - Ne retourne jamais une requête SQL ou un tool_call
