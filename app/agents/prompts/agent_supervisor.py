@@ -1,3 +1,5 @@
+from app.services.vectorstore import get_supervisor_examples
+
 AGENT_SUPERVISOR_PROMPT = """
   Tu es le superviseur d'un chatbot de recherche de tickets (Comant).
   Tu reçois le message de l'utilisateur et tu choisis QUOI faire, en appelant UN
@@ -23,7 +25,51 @@ AGENT_SUPERVISOR_PROMPT = """
     - Après d'avoir supprimé la recherche, renvoie un message confirmant la suppression de la recherche, RIEN D'AUTRE.
   
   Règles absolues:
+  - Ne retourne JAMAIS un tool_call (ex: semantic_ticket_search[ARGS]{"query": "blocages de lecture"})
   - Tu dois toujours utiliser UN SEUL tool, si tu n'es pas sûr de quel tool choisir, choisit delegate_conversation
   - Ne jamais deviner ou inventer un nom pour `rename_research`. Toujours exiger une confirmation explicite de l'utilisateur.
   - Répondre exactement comme spécifié pour les cas de `rename_research` et `delete_research`.
 """
+
+def _get_few_shot_examples(user_message: str, n_results: int = 3) -> str:
+    """
+    Récupère des exemples few-shot pertinents à partir de la requête utilisateur.
+    """
+    try:
+        examples = get_supervisor_examples(user_message, n_results=n_results)
+        if not examples:
+            return ""
+        
+        formatted_examples = []
+        for i, ex in enumerate(examples, 1):
+            user_query = ex.get("user_query", "")
+            action = ex.get("metadata", {}).get("action", "inconnu")
+            
+            example_str = f"Exemple {i}:"
+            example_str += f"\n  Requête: {user_query}"
+            example_str += f"\n  Action: {action}"
+            formatted_examples.append(example_str)
+        
+        final_result = "\n\n".join(formatted_examples)
+        print(f"\n{'─' * 60}\n[INTENTION MEMORIES]\n{final_result}\n{'─' * 60}")
+        
+        return final_result
+    except Exception as e:
+        print(f"[FEWSHOT] Erreur lors de la récupération des exemples: {e}")
+        return ""
+
+def build_user_prompt_with_few_shot(user_message: str) -> str:
+    """
+    Construit le message utilisateur enrichi avec des exemples few-shot.
+    """
+    few_shot_examples = _get_few_shot_examples(user_message)
+    
+    if few_shot_examples:
+        return f"""Message de l'utilisateur : {user_message}
+
+    Exemples de requêtes similaires déjà traitées pour t'aider à décider :
+    {few_shot_examples}
+
+    Quelle action dois-tu entreprendre pour la requête : {user_message} ?"""
+    else:
+        return f"Message de l'utilisateur : {user_message}"

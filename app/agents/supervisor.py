@@ -15,41 +15,7 @@ from app.agents.specialists.semantic_research import semantic_research_agent
 from app.agents.specialists.memory import memory_agent
 from app.agents.tools.research import persist_new_research, persist_affinage
 from app.services.database import get_sql, rename_research as db_rename_research, delete_research as db_delete_research
-from app.prompts.agents.agent_supervisor import AGENT_SUPERVISOR_PROMPT
-from app.services.vectorstore import get_supervisor_examples
-
-
-def _get_few_shot_examples(user_message: str, n_results: int = 3) -> str:
-    """
-    Récupère des exemples few-shot pertinents à partir de la requête utilisateur.
-    
-    Args:
-        user_message: Le message de l'utilisateur
-        n_results: Nombre d'exemples à récupérer
-    
-    Returns:
-        Chaîne formatée avec les exemples ou vide si aucun trouvé
-    """
-    try:
-        examples = get_supervisor_examples(user_message, n_results=n_results)
-        if not examples:
-            return ""
-        
-        formatted_examples = []
-        for i, ex in enumerate(examples, 1):
-            user_query = ex.get("user_query", "")
-            action = ex.get("metadata", {}).get("action", "inconnu")
-            
-            example_str = f"Exemple {i}:"
-            example_str += f"\n  Requête: {user_query}"
-            example_str += f"\n  Action: {action}"
-            formatted_examples.append(example_str)
-        
-        return "\n\n".join(formatted_examples)
-    except Exception as e:
-        print(f"[FEWSHOT] Erreur lors de la récupération des exemples: {e}")
-        return ""
-
+from app.agents.prompts.agent_supervisor import AGENT_SUPERVISOR_PROMPT
 
 async def delegate_conversation(ctx: RunContext[ChatDeps], user_message: str) -> str:
     """
@@ -79,38 +45,27 @@ async def delegate_new_research(ctx: RunContext[ChatDeps], request: str) -> str:
         await persist_new_research(ctx.deps)
     return result.output
 
+async def delegate_semantic_search(ctx: RunContext[ChatDeps], request: str) -> str:
+    """
+    Délègue une recherche par thème/sujet à l'agent sémantique, puis persiste.
+    Args:
+        request: Message exact envoyé par l'utilisateur, sans modification, sans reformulation, sans ajout de texte
+    """
+    print("[DELEGATE] Semantic research agent")   
+    print(f"Message: {request}")
+    ctx.deps.events.intention("recherche_semantique")
+    ctx.deps.mode = "recherche"
+    result = await semantic_research_agent.run(request, deps=ctx.deps, usage=ctx.usage)
+    if ctx.deps.last_sql:
+        await persist_new_research(ctx.deps)
+    return result.output
+
 supervisor_agent = Agent(
     get_agent_model(), 
     deps_type=ChatDeps, 
     system_prompt=AGENT_SUPERVISOR_PROMPT,
-    output_type=[str, delegate_conversation, delegate_new_research]
+    output_type=[str, delegate_conversation, delegate_new_research, delegate_semantic_search]
 )
-
-
-def build_user_prompt_with_few_shot(user_message: str) -> str:
-    """
-    Construit le message utilisateur enrichi avec des exemples few-shot.
-    
-    Cette approche ajoute les exemples directement dans le message utilisateur
-    plutôt que dans le system prompt, ce qui permet d'utiliser l'agent existant.
-    
-    Args:
-        user_message: Le message de l'utilisateur
-    
-    Returns:
-        Le message utilisateur enrichi avec des exemples few-shot
-    """
-    few_shot_examples = _get_few_shot_examples(user_message)
-    
-    if few_shot_examples:
-        return f"""Message de l'utilisateur : {user_message}
-
-Exemples de requêtes similaires déjà traitées pour t'aider à décider :
-{few_shot_examples}
-
-Quelle action dois-tu entreprendre pour la requête : {user_message} ?"""
-    else:
-        return f"Message de l'utilisateur : {user_message}"
 
 @supervisor_agent.tool
 async def delegate_refine_search(ctx: RunContext[ChatDeps], request: str) -> str:
@@ -129,17 +84,6 @@ async def delegate_refine_search(ctx: RunContext[ChatDeps], request: str) -> str
     result = await sql_research_agent.run(prompt, deps=ctx.deps, usage=ctx.usage)
     if ctx.deps.last_sql:
         await persist_affinage(ctx.deps)
-    return result.output
-
-@supervisor_agent.tool
-async def delegate_semantic_search(ctx: RunContext[ChatDeps], subject: str) -> str:
-    """Délègue une recherche par thème/sujet à l'agent sémantique, puis persiste."""
-    print("[DELEGATE] Semantic research agent")   
-    ctx.deps.events.intention("recherche_semantique")
-    ctx.deps.mode = "recherche"
-    result = await semantic_research_agent.run(subject, deps=ctx.deps, usage=ctx.usage)
-    if ctx.deps.last_sql:
-        await persist_new_research(ctx.deps)
     return result.output
 
 @supervisor_agent.tool

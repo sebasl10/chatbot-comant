@@ -34,7 +34,7 @@ class ChromaEmbeddingFunction(EmbeddingFunction):
 
     @staticmethod
     def name() -> str:
-        return "my-ef"
+        return "ollama_embed"
 
     def get_config(self) -> Dict[str, Any]:
         return {"model": self.model}
@@ -318,6 +318,14 @@ class ChromaService:
             "total_memories": len(all_memories),
             "collection_name": name
         }
+    
+    def delete_collection(self, name: str):
+        try:
+            self.client.delete_collection(name)
+            print(f"Collection {name} deleted")
+        except:
+            print(f"ERROR: Collection {name} can not be deleted")
+            
 
 # Instance singleton par défaut
 def get_chroma_service(host: str = 'localhost', port: int = 8001, default_collection_name: str = "memories") -> ChromaService:

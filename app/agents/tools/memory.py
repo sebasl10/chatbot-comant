@@ -7,10 +7,9 @@ depuis la Phase 1 : seul le backend a changé (Markdown → Chroma).
 Types de mémoire : correction_sql, expand_vocabulary (global), exclude_ticket,
 other_correction.
 """
+
 import asyncio
-
 from pydantic_ai import RunContext
-
 from app.agents.deps import ChatDeps
 from app.services import vectorstore as vs
 
@@ -24,25 +23,68 @@ async def get_memory(ctx: RunContext[ChatDeps], type: str, query: str | None = N
     (synonymes/vocabulaire, global), exclude_ticket (tickets à exclure),
     other_correction. Si `query` est fourni, renvoie les souvenirs les plus
     pertinents sémantiquement ; sinon tous ceux du type. Vide si aucun.
+    
+    Pour expand_vocabulary : retourne les synonymes formatés pour le prompt.
     """
+    print("[TOOL CALL] get_memory")
+    print(f"  Type: {type}, Query: {query}")
+    
     if type not in VALID_MEMORY_TYPES:
         return ""
+    
+    # Pour expand_vocabulary, utiliser la nouvelle méthode
+    if type == "expand_vocabulary":
+        # Si query est fourni, chercher les synonymes pour ce terme
+        if query:
+            synonyms = await asyncio.to_thread(vs.get_synonyms_for_term, query)
+            print(f"  [SYNONYMS FOUND] Pour '{query}': {synonyms}")
+            if synonyms:
+                # Formater pour le prompt
+                return f"Synonymes pour '{query}': {', '.join(synonyms)}"
+            else:
+                print(f"  [NO SYNONYMS] Aucun synonyme trouvé pour '{query}'")
+                return ""
+        else:
+            # Sans query, retourner tous les expand_vocabulary
+            all_memories = await asyncio.to_thread(vs.get_all_synonyms)
+            print(f"  [ALL SYNONYMS] {len(all_memories)} entrées expand_vocabulary trouvés")
+            if all_memories:
+                formatted = "\n".join([f"{entry['base_term']}: {entry['synonyms']}" for entry in all_memories])
+                return f"Vocabulaire étendu:\n{formatted}"
+            return ""
+    
+    # Pour les autres types, utiliser l'ancienne méthode
     return await asyncio.to_thread(vs.get_memories_text, type, ctx.deps.user_id, query)
 
 
-async def save_memory(ctx: RunContext[ChatDeps], type: str, content: str) -> dict:
+async def save_memory(ctx: RunContext[ChatDeps], type: str, content: str, base_term: str | None = None) -> dict:
     """Enregistre un nouveau souvenir de `type` donné pour l'utilisateur.
 
     À utiliser quand l'utilisateur corrige le comportement du chatbot ou ajoute
     une règle/synonyme à retenir. Types valides : correction_sql, expand_vocabulary,
     exclude_ticket, other_correction.
+    
+    Pour expand_vocabulary:
+        - content : les synonymes séparés par des virgules (ex: "lent, slow, rapide")
+        - base_term : le terme de base (ex: "performance")
     """
     if type not in VALID_MEMORY_TYPES:
         return {"ok": False, "error": f"type invalide: {type}"}
-    await asyncio.to_thread(
-        vs.add_memory, type, content, ctx.deps.user_id, ctx.deps.username
-    )
-    ctx.deps.events.correction(type=type, memory=content)
-    print(f"Type: {type}")
-    print(f"Content: {content}")
+    
+    # Pour expand_vocabulary, utiliser la nouvelle structure
+    if type == "expand_vocabulary" and base_term:
+        # Convertir content en liste de synonymes
+        synonyms = [s.strip() for s in content.split(",") if s.strip()]
+        print(f"[SAVE MEMORY] expand_vocabulary - base_term: '{base_term}', synonyms: {synonyms}")
+        await asyncio.to_thread(
+            vs.add_synonyms, base_term, synonyms, ctx.deps.user_id, ctx.deps.username
+        )
+        ctx.deps.events.correction(type=type, memory=f"{base_term}: {content}")
+    else:
+        print(f"[SAVE MEMORY] type: {type}, content: {content}")
+        await asyncio.to_thread(
+            vs.add_memory, type, content, ctx.deps.user_id, ctx.deps.username
+        )
+        ctx.deps.events.correction(type=type, memory=content)
+    
     return {"ok": True, "type": type}

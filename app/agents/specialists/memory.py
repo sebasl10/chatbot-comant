@@ -18,9 +18,15 @@ from app.prompts.correction import CORRECTION_PROMPT
 _ADDENDUM = """
 
 ## MÉTHODE (IMPORTANT — prioritaire sur tout format JSON décrit ci-dessus)
-Au lieu de renvoyer du JSON, tu APPELLES l'outil `save_memory(type, content)` :
+Au lieu de renvoyer du JSON, tu APPELLES l'outil `save_memory` :
 - `type` : correction_sql | expand_vocabulary | exclude_ticket | other_correction
 - `content` : le souvenir reformulé de façon claire et réutilisable.
+- `base_term` : **UNIQUEMENT pour expand_vocabulary** - le terme de base (ex: "performance"). Obligatoire pour ce type.
+
+Exemple d'appel :
+- save_memory(type="expand_vocabulary", content="lent, slow, rapide", base_term="performance")
+- save_memory(type="correction_sql", content="toujours filtrer par status=Ouvert")
+
 Puis confirme à l'utilisateur, en une phrase, ce que tu as enregistré.
 """
 

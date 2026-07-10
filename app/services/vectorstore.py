@@ -28,6 +28,7 @@ DEFAULT_HNSW_CONFIG = {
     "ef_construction": 1000,
     "ef_search": 1000
 }
+DEFAULT_THRESHOLD = 0.5
 
 class OllamaEmbeddingFunction(EmbeddingFunction):
     """
@@ -49,6 +50,44 @@ class OllamaEmbeddingFunction(EmbeddingFunction):
 
 
 _client: HttpClient | None = None
+
+# Initialiser la fonction d'embedding pour réutilisation
+_embedding_function: OllamaEmbeddingFunction | None = None
+
+
+def get_embedding_function() -> OllamaEmbeddingFunction:
+    """
+    Retourne ou initialise la fonction d'embedding.
+    """
+    global _embedding_function
+    if _embedding_function is None:
+        _embedding_function = OllamaEmbeddingFunction()
+    return _embedding_function
+
+
+def get_embedding(text: str) -> list[float]:
+    """
+    Calcule l'embedding d'un texte en utilisant le modèle configuré.
+    """
+    emb_fn = get_embedding_function()
+    embeddings = emb_fn([text])
+    return embeddings[0]
+
+
+def get_query_embedding(query: str, instruction_prefix: str = None) -> list[float]:
+    """
+    Calcule l'embedding d'une requête avec un préfixe d'instruction.
+
+    """
+    if instruction_prefix is None:
+        instruction_prefix = (
+            "Trouve les tickets pertinents pour une demande donnée en identifiant ceux qui mentionnent, décrivent ou traitent du sujet spécifié. "
+            "Inclus les tickets qui contiennent des termes directement liés ou des concepts sémantiquement proches."
+        )
+    
+    full_text = f"{instruction_prefix}\n\n{query}"
+    return get_embedding(full_text)
+
 
 def get_client() -> HttpClient:
     global _client
@@ -81,29 +120,92 @@ def supervisor_actions_collection():
 
 # ── Recherche sémantique de tickets ─────────────────────────────────────────
 
-def query_tickets(query_embedding: list[float], threshold: float = 0.5) -> list[int]:
+def query_tickets(query: list[float] | str, nb_results: int = 10) -> list[int]:
     """
-    Renvoie les ``ticket_id`` dont la similarité cosinus >= ``threshold``,
-    triés par pertinence décroissante. ``query_embedding`` est déjà calculé par
-    l'appelant (avec le préfixe d'instruction), pour la parité avec l'ancien code.
+    Renvoie les {nb_results} ``ticket_id`` les plus similaires à {query}.
     """
     col = tickets_collection()
-    n = col.count()
-    if n == 0:
-        return []
+    
+    # Si query est un string, calculer l'embedding avec préfixe d'instruction
+    if isinstance(query, str):
+        query_embedding = get_query_embedding(query)
+    else:
+        query_embedding = query
+    
     res = col.query(
         query_embeddings=[query_embedding],
-        n_results=n,
+        n_results=nb_results,
         include=["distances"],
     )
+    
     ids = res["ids"][0]
-    distances = res["distances"][0]
-    max_distance = 1.0 - threshold
-    out: list[int] = []
-    for tid, dist in zip(ids, distances):
-        if dist <= max_distance:
-            out.append(int(tid))
-    return out
+    
+    # Convertir en int (les ticket_ids sont stockés comme strings dans Chroma)
+    return [int(tid) for tid in ids]
+
+
+def query_tickets_with_synonyms(query: str, nb_results_per_synonym: int = 10, final_nb_results: int = 10) -> list[int]:
+    """
+    Recherche des tickets en tenant compte des synonymes expand_vocabulary.
+    
+    Pour chaque synonyme trouvé pour le terme de base, fait une requête séparée
+    avec un embedding calculé sur "cherche les tickets qui parlent de: <synonyme>".
+    Fusionne tous les résultats, les trie par score, et retourne les N meilleurs.
+    
+    Args:
+        query: Le terme de recherche (peut être un terme de base ou un terme quelconque)
+        nb_results_per_synonym: Nombre de résultats à récupérer par synonyme (défaut: 10)
+        final_nb_results: Nombre final de résultats à retourner (défaut: 10)
+    
+    Returns:
+        Liste des ticket_ids triés par pertinence (meilleurs en premier)
+    """
+
+    synonyms = get_synonyms_for_term(query)
+
+    if not synonyms:
+        return query_tickets(query, nb_results=final_nb_results)
+    
+    # Préparer la liste de tous les embeddings à chercher
+    # Inclure le terme original + tous les synonymes
+    all_terms = [query] + synonyms
+    
+    # Calculer un embedding par terme avec le préfixe spécifique
+    query_instruction = (
+        "Cherche les tickets qui parlent de: "
+    )
+    
+    all_embeddings = []
+    for term in all_terms:
+        # Calculer l'embedding avec le préfixe
+        embedding = get_embedding(f"{query_instruction}{term}")
+        all_embeddings.append(embedding)
+    
+    # Faire une requête Chroma avec tous les embeddings
+    col = tickets_collection()
+    res = col.query(
+        query_embeddings=all_embeddings,
+        n_results=nb_results_per_synonym,
+        include=["distances"]
+    )
+    
+    # Fusionner et trier tous les résultats
+    all_results = []
+    for i in range(len(all_embeddings)):
+        ids = res["ids"][i]
+        distances = res["distances"][i]
+        for j in range(len(ids)):
+            all_results.append({
+                "id": int(ids[j]),
+                "distance": distances[j],
+                "term_index": i
+            })
+    
+    # Trier par distance (plus petite = plus proche)
+    all_results.sort(key=lambda x: x["distance"])
+    
+    # Retourner les N meilleurs
+    return [r["id"] for r in all_results[:final_nb_results]]
 
 
 # ── Mémoires (souvenirs / corrections) ──────────────────────────────────────
@@ -115,18 +217,85 @@ def _memory_where(type: str, user_id: int | None) -> dict:
     return {"$and": [{"type": type}, {"$or": [{"user_id": user_id}, {"scope": "global"}]}]}
 
 
+def get_synonyms_for_term(base_term: str) -> List[str]:
+    """
+    Récupère tous les termes liés/synonymes pour un terme de base donné.
+    Utilise le filtre where sur les métadonnées pour une recherche exacte.
+    """
+    col = memories_collection()
+    
+    # D'abord essayer avec base_term dans les métadonnées (nouveau format)
+    where = {
+        "$and":[
+            {"type": "expand_vocabulary"},
+            {"base_term": base_term}
+        ]
+    }
+    
+    res = col.get(where=where, include=["documents", "metadatas"])
+    docs = res.get("documents", [])
+    metadatas = res.get("metadatas", [])
+    
+    # Retourner la liste des synonymes
+    synonyms = []
+    for doc in docs:
+        if doc and doc.strip():
+            # Split par virgule et nettoyer
+            terms = [t.strip() for t in doc.split(",") if t.strip()]
+            synonyms.extend(terms)
+    
+    return synonyms
+
+def get_all_synonyms() -> List[Dict[str, Any]]:
+    """
+    Récupère tous les entrées expand_vocabulary.
+    
+    Returns:
+        Liste de dictionnaires avec base_term et synonyms pour chaque entrée
+    """
+    col = memories_collection()
+    
+    # Filtrer par type=expand_vocabulary
+    where = {"type": "expand_vocabulary"}
+    
+    res = col.get(where=where, include=["documents", "metadatas"])
+    docs = res.get("documents", [])
+    metadatas = res.get("metadatas", [])
+    
+    results = []
+    for i in range(len(docs)):
+        doc = docs[i]
+        meta = metadatas[i] if i < len(metadatas) else {}
+        
+        if doc and doc.strip():
+            base_term = meta.get("base_term", "inconnu")
+            terms = [t.strip() for t in doc.split(",") if t.strip()]
+            results.append({
+                "base_term": base_term,
+                "synonyms": terms
+            })
+    
+    return results
+
+
 def get_memories_text(type: str, user_id: int | None, query: str | None = None, k: int = 8) -> str:
     """
     Renvoie les souvenirs d'un ``type`` sous forme de texte concaténé.
 
     - Sans ``query`` : tous les souvenirs du type (filtrés par métadonnées).
-    - Avec ``query`` : les ``k`` souvenirs les plus proches sémantiquement.
+    - Avec ``query`` : les ``k`` souvenirs les plus proches sémantiquement (avec préfixe d'instruction).
     Vide si aucun souvenir
     """
     col = memories_collection()
     where = _memory_where(type, user_id)
     if query:
-        res = col.query(query_texts=[query], n_results=k, where=where, include=["documents"])
+        # Calculer l'embedding avec préfixe pour les mémoires
+        memory_instruction = (
+            "Représente une question ou un contexte pour retrouver des souvenirs ou corrections pertinents. "
+            "Inclut les synonymes, concepts liés et variations sémantiques."
+        )
+        query_embedding = get_query_embedding(query, instruction_prefix=memory_instruction)
+        res = col.query(query_embeddings=[query_embedding], n_results=k, where=where, include=["documents"])
         docs = res["documents"][0] if res["documents"] else []
     else:
         res = col.get(where=where, include=["documents"])
@@ -134,9 +303,41 @@ def get_memories_text(type: str, user_id: int | None, query: str | None = None, 
     return "\n\n---\n\n".join(docs)
 
 
-def add_memory(type: str, content: str, user_id: int | None, username: str | None = None, embedding: list[float] | None = None) -> str:
+def add_synonyms(base_term: str, synonyms: List[str], user_id: int | None = None, username: str | None = None) -> str:
+    """
+    Ajoute un ensemble de synonymes pour un terme de base (type expand_vocabulary).
+    
+    Args:
+        base_term: Le terme de base (ex: "performance")
+        synonyms: Liste des termes liés/synonymes (ex: ["lent", "slow", "rapide"])
+        user_id: ID de l'utilisateur (optionnel, car expand_vocabulary est global)
+        username: Nom de l'utilisateur
+    
+    Returns:
+        L'ID du document ajouté
+    """
+    # Convertir la liste en chaîne séparée par des virgules
+    content = ", ".join(synonyms)
+    
+    return add_memory(
+        type="expand_vocabulary",
+        content=content,
+        user_id=user_id,
+        username=username,
+        base_term=base_term
+    )
+
+
+def add_memory(type: str, content: str, user_id: int | None, username: str | None = None, embedding: list[float] | None = None, base_term: str | None = None) -> str:
     """
     Ajoute un souvenir.
+    
+    Pour le type 'expand_vocabulary' :
+        - content : les termes liés/synonymes (ex: "lent, slow, performance")
+        - base_term : le terme de base (ex: "performance") - **REQUIS** - stocké dans les métadonnées
+    Pour les autres types :
+        - content : le souvenir/correction
+        - base_term : non utilisé
     """
     scope = "global" if type == "expand_vocabulary" else "user"
     meta = {
@@ -146,6 +347,21 @@ def add_memory(type: str, content: str, user_id: int | None, username: str | Non
         "username": username or "",
         "date": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
     }
+    
+    # Pour expand_vocabulary, ajouter le terme de base dans les métadonnées
+    if type == "expand_vocabulary":
+        if not base_term:
+            # Essayer d'extraire base_term du content si format "base: syn1, syn2"
+            if ":" in content:
+                base_term = content.split(":")[0].strip()
+                print(f"[WARNING] base_term extrait du content: '{base_term}'")
+            else:
+                raise ValueError(
+                    f"Pour type='expand_vocabulary', base_term est requis. "
+                    f"Content: '{content}'"
+                )
+        meta["base_term"] = base_term
+    
     doc_id = str(uuid.uuid4())
     kwargs = {"ids": [doc_id], "documents": [content], "metadatas": [meta]}
     if embedding is not None:
@@ -175,12 +391,21 @@ def add_conversation_summary(user_id: int, conversation_id: int, summary: str, e
 def search_conversation_summaries(user_id: int, query: str, k: int = 3) -> str:
     """
     Renvoie les ``k`` résumés de conversation les plus pertinents pour l'utilisateur.
+    Utilise un embedding avec préfixe d'instruction pour améliorer la recherche.
     """
     col = summaries_collection()
     if col.count() == 0:
         return ""
+    
+    # Préfixe pour la recherche de résumés de conversation
+    summary_instruction = (
+        "Représente une requête pour retrouver des résumés de conversation pertinents. "
+        "Inclut le contexte conversationnel, les thèmes abordés et les concepts associés."
+    )
+    query_embedding = get_query_embedding(query, instruction_prefix=summary_instruction)
+    
     res = col.query(
-        query_texts=[query], n_results=k, where={"user_id": user_id}, include=["documents"]
+        query_embeddings=[query_embedding], n_results=k, where={"user_id": user_id}, include=["documents"]
     )
     docs = res["documents"][0] if res["documents"] else []
     return "\n\n---\n\n".join(docs)
@@ -218,35 +443,38 @@ def add_supervisor_example(user_query: str, action: str, description: str = "") 
 def get_supervisor_examples(query: str, n_results: int = 5) -> List[Dict[str, Any]]:
     """
     Recherche des exemples de supervision similaires à une requête utilisateur.
-    
-    Args:
-        query: La requête de l'utilisateur
-        n_results: Nombre maximum d'exemples à retourner
-    
-    Returns:
-        Liste de dictionnaires avec id, document (user_query), metadata (action, etc.)
+    Utilise un embedding avec préfixe d'instruction pour améliorer la recherche.
     """
     col = supervisor_actions_collection()
     if col.count() == 0:
         return []
     
+    # Préfixe spécifique pour la recherche d'exemples de supervision
+    supervisor_instruction = (
+        "Représente une requête utilisateur pour déterminer l'action appropriée à entreprendre. "
+        "Analyse la sémantique, l'intention et le contexte pour identifier des exemples similaires "
+        "qui aideront à prendre la bonne décision de délégation."
+    )
+    query_embedding = get_query_embedding(query, instruction_prefix=supervisor_instruction)
+    
     res = col.query(
-        query_texts=[query],
+        query_embeddings=[query_embedding],
         n_results=n_results,
-        include=["documents", "metadatas"]
+        include=["documents", "metadatas", "distances"]
     )
     
     results = []
     ids = res.get("ids", [[ ]])[0]
     documents = res.get("documents", [[ ]])[0]
     metadatas = res.get("metadatas", [[ ]])[0]
+    distances = res.get("distances", [[ ]])[0]
     
     for i in range(len(ids)):
         results.append({
             "id": ids[i],
             "user_query": documents[i],
             "metadata": metadatas[i] if i < len(metadatas) else {},
-            "distance": res.get("distances", [[ ]])[0][i] if res.get("distances") else None
+            "distance": distances[i] if i < len(distances) else None
         })
     
     return results
