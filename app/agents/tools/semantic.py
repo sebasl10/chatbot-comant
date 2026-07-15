@@ -32,22 +32,27 @@ async def semantic_ticket_search(ctx: RunContext[ChatDeps], query: str) -> dict:
 
 async def get_vocabulary_for_term(ctx: RunContext[ChatDeps], term: str) -> dict:
     """
-    Récupère le vocabulaire (synonymes) associé à un terme donné.
-    Utilisé pour répondre à des questions comme "Quel est le vocabulaire que tu connais pour X ?"
-    ou "Quels sont les termes liés à X ?".
+    Récupère le vocabulaire (synonymes) associé à un terme donné avec ses métadonnées.
+    Utilisé pour répondre à des questions comme :
+    - "Quel est le vocabulaire que tu connais pour X ?"
+    - "Quels sont les termes liés à X ?"
+    - "Qui a ajouté le terme X ?"
+    - "Qui t'a dit que X doit être inclus ?"
     
     Args:
         term: Le terme de base pour lequel on veut récupérer les synonymes
     
     Returns:
         dict avec les clés:
-        - term: le terme de base
+        - base_term: le terme de base
         - synonyms: liste des synonymes/termes liés
+        - metadata: dict avec username, date, user_id, etc. (ou None)
         - count: nombre de synonymes trouvés
     """
     print("[TOOL CALL] get_vocabulary_for_term")
     print(f"Term: {term}")
     
-    synonyms = await asyncio.to_thread(vs.get_synonyms_for_term, term)
+    result = await asyncio.to_thread(vs.get_vocabulary_for_term, term)
+    print(f"[RESULTS] Vocabulaire pour '{term}': {result}")
     
-    return {"term": term, "synonyms": synonyms, "count": len(synonyms)}
+    return result

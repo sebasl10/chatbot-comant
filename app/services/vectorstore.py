@@ -238,6 +238,49 @@ def get_synonyms_for_term(base_term: str) -> List[str]:
     
     return synonyms
 
+
+def get_vocabulary_for_term(base_term: str) -> Dict[str, Any]:
+    """
+    Récupère le vocabulaire (synonymes) pour un terme de base avec ses métadonnées.
+    Utilisé pour répondre à des questions comme "Qui a ajouté le terme X ?".
+    
+    Returns:
+        dict avec les clés:
+        - base_term: le terme de base
+        - synonyms: liste des synonymes
+        - metadata: dict avec username, date, user_id, etc. (ou None si non trouvé)
+    """
+    col = memories_collection()
+
+    where = {
+        "$and":[
+            {"type": "expand_vocabulary"},
+            {"base_term": base_term}
+        ]
+    }
+    
+    res = col.get(where=where, include=["documents", "metadatas"])
+    docs = res.get("documents", [])
+    metadatas = res.get("metadatas", [])
+    
+    synonyms = []
+    metadata = None
+    
+    for i, doc in enumerate(docs):
+        if doc and doc.strip():
+            terms = [t.strip() for t in doc.split(",") if t.strip()]
+            synonyms.extend(terms)
+            # Prendre les métadonnées du premier document trouvé
+            if i < len(metadatas) and metadata is None:
+                metadata = metadatas[i]
+    
+    return {
+        "base_term": base_term,
+        "synonyms": synonyms,
+        "metadata": metadata,
+        "count": len(synonyms)
+    }
+
 def get_memories_text(type: str, user_id: int | None, query: str | None = None, k: int = 8) -> str:
     """
     Renvoie les souvenirs d'un ``type`` sous forme de texte concaténé.

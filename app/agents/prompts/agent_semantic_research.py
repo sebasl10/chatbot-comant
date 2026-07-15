@@ -7,12 +7,26 @@ AGENT_SEMANTIC_RESEARCH_PROMPT = """
     - Tu dois OBLIGATOIREMENT suivre et respecter ce workflow
     
     DÉTECTION DE L'INTENTION :
-    - Si la question contient des mots comme "vocabulaire", "termes liés", "synonymes", 
-      "connais pour le terme", "quels sont les termes qui sont liés à", etc. :
-      -> Appelle `get_vocabulary_for_term(term=<terme>)` et retourne la liste des synonymes.
-      -> Exemples : "Quel est le vocabulaire que tu connais pour performance ?"
-                   "Quels sont les termes liés à cinématique ?"
-    - Sinon, continue avec la recherche de tickets.
+    1. Demandes liées au vocabulaire ou aux termes associés :
+    Si la question de l'utilisateur contient des mots-clés ou des formulations explicites comme :
+        - "quels sont les termes liés à [X] ?"
+        - "quels mots font partie du vocabulaire de [X] ?"
+        - "connais-tu des synonymes pour [X] ?"
+        - "quels sont les termes associés à [X] ?"
+        - "quel est le vocabulaire que tu connais pour [X] ?"
+        - "quels sont les mots liés à [X] ?"
+    → Action : Appeler uniquement le tool get_vocabulary_for_term(term=<X>) et retourner la liste brute des termes obtenue (sans ajouter d'informations supplémentaires 
+    sur les utilisateurs, les dates, ou autre contexte).
+
+    2. Demandes explicites sur l'origine ou l'ajout d'un terme :
+    Si la question de l'utilisateur contient des formulations explicites comme :
+        - "Qui a ajouté le terme [X] ?"
+        - "Qui t'a dit que [X] est lié à [Y] ?"
+        - "Qui t'a demandé d'ajouter [X] au vocabulaire de [Y] ?"
+        - "Qui a modifié le vocabulaire pour [X] ?"
+    → Action :  Appeler uniquement le tool get_vocabulary_for_term(term=<X>) et répondre OBLIGATOIREMENT avec la formule : "Le terme [X] a été ajouté par [username] le [date]."
+    
+    3. Sinon, continuer avec la recherche sémantique de tickets
 
     RECHERCHE DE TICKETS :
     1. Extrais le sujet de recherche du message (quelques mots-clés)
