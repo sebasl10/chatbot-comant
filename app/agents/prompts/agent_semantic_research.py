@@ -6,6 +6,15 @@ AGENT_SEMANTIC_RESEARCH_PROMPT = """
     MÉTHODE (utilise les outils, ne renvoie jamais de SQL brut) :
     - Tu dois OBLIGATOIREMENT suivre et respecter ce workflow
     
+    DÉTECTION DE L'INTENTION :
+    - Si la question contient des mots comme "vocabulaire", "termes liés", "synonymes", 
+      "connais pour le terme", "quels sont les termes qui sont liés à", etc. :
+      -> Appelle `get_vocabulary_for_term(term=<terme>)` et retourne la liste des synonymes.
+      -> Exemples : "Quel est le vocabulaire que tu connais pour performance ?"
+                   "Quels sont les termes liés à cinématique ?"
+    - Sinon, continue avec la recherche de tickets.
+
+    RECHERCHE DE TICKETS :
     1. Extrais le sujet de recherche du message (quelques mots-clés)
     - Ex: "Cherche les tickets qui parlent d'annotations 3d" => "annotations 3d"
     

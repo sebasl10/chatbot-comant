@@ -1,9 +1,9 @@
-"""Script pour ajouter un exemple manuellement à la collection supervisor_actions.
+"""
+Script pour ajouter un exemple manuellement à la collection supervisor_actions.
 
 Usage :
-    python -m app.scripts.add_supervisor_example --query "Ma requête" --action delegate_semantic_search
-
-    python -m app.scripts.add_supervisor_example --query "Autre requête" --action delegate_new_research --description "Description optionnelle"
+    Add an example: python -m app.scripts.add_supervisor_example add --query "Ma requête" --action delegate_semantic_search
+    List all examples: python -m app.scripts.add_supervisor_example list
 
 Actions disponibles :
 - delegate_new_research : Recherche par filtres exacts (SQL)
@@ -16,7 +16,6 @@ Actions disponibles :
 import argparse
 from app.services.vectorstore import add_supervisor_example, get_all_supervisor_examples
 from app.config import settings
-
 
 def add_example(query: str, action: str, description: str = ""):
     """Ajoute un nouvel exemple à la collection."""

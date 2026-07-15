@@ -1,4 +1,5 @@
-"""Initialisation de la collection Chroma supervisor_actions avec des exemples de base.
+"""
+Initialisation de la collection Chroma supervisor_actions avec des exemples de base.
 
 Ce script crée la collection supervisor_actions et y ajoute des exemples initiaux
 pour aider l'agent supervisor à déterminer quelle action entreprendre en fonction
@@ -179,7 +180,7 @@ def list_examples():
         print("  Aucun exemple trouvé.")
         return
     
-    res = collection.get(include=["documents", "metadatas", "ids"])
+    res = collection.get(include=["documents", "metadatas"])
     
     ids = res.get("ids", [])
     documents = res.get("documents", [])
