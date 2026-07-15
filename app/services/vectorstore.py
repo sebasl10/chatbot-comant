@@ -281,6 +281,50 @@ def get_vocabulary_for_term(base_term: str) -> Dict[str, Any]:
         "count": len(synonyms)
     }
 
+
+def remove_term_from_vocabulary(term: str, base_term: str) -> Dict[str, Any]:
+    """
+    Supprime une entrée de vocabulaire spécifique.
+    
+    Cherche tous les documents de type expand_vocabulary avec base_term dans les métadonnées,
+    puis supprime l'entrée dont le document est exactement égal au terme à supprimer.
+    """
+    col = memories_collection()
+
+    where = {
+        "$and":[
+            {"type": "expand_vocabulary"},
+            {"base_term": base_term}
+        ]
+    }
+    
+    res = col.get(where=where, include=["documents", "ids"])
+    docs = res.get("documents", [])
+    ids = res.get("ids", [])
+    
+    doc_id_to_delete = None
+    for i, doc in enumerate(docs):
+        if doc and doc.strip() == term.strip():
+            doc_id_to_delete = ids[i] if i < len(ids) else None
+            break
+    
+    if doc_id_to_delete is None:
+        return {
+            "success": False,
+            "message": f"Aucune entrée trouvée avec le document '{term}' pour le terme de base '{base_term}'",
+            "base_term": base_term,
+            "removed_term": term
+        }
+    
+    col.delete(ids=[doc_id_to_delete])
+    
+    return {
+        "success": True,
+        "message": f"L'entrée '{term}' a été supprimée du vocabulaire de '{base_term}'",
+        "base_term": base_term,
+        "removed_term": term
+    }
+
 def get_memories_text(type: str, user_id: int | None, query: str | None = None, k: int = 8) -> str:
     """
     Renvoie les souvenirs d'un ``type`` sous forme de texte concaténé.

@@ -25,8 +25,16 @@ AGENT_SEMANTIC_RESEARCH_PROMPT = """
         - "Qui t'a demandé d'ajouter [X] au vocabulaire de [Y] ?"
         - "Qui a modifié le vocabulaire pour [X] ?"
     → Action :  Appeler uniquement le tool get_vocabulary_for_term(term=<X>) et répondre OBLIGATOIREMENT avec la formule : "Le terme [X] a été ajouté par [username] le [date]."
+   
+    3. Demandes de suppression de termes du vocabulaire :
+    Si la question de l'utilisateur contient des formulations explicites comme :
+        - "supprime [X] du vocabulaire lié à [Y]"
+        - "[X] ne doit pas être lié à [Y]"
+        - "enlève [X] du vocabulaire de [Y]"
+        - "retire [X] des termes associés à [Y]"
+    → Action : Appeler uniquement le tool remove_term_from_vocabulary(term=<X>, base_term=<Y>)
     
-    3. Sinon, continuer avec la recherche sémantique de tickets
+    4. Sinon, continuer avec la recherche sémantique de tickets
 
     RECHERCHE DE TICKETS :
     1. Extrais le sujet de recherche du message (quelques mots-clés)

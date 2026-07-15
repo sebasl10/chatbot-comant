@@ -15,6 +15,7 @@ AGENT_SUPERVISOR_PROMPT = """
       - Recherche par THÈME/SUJET, pas par filtres exacts. Ex: "les tickets qui parlent de cinématique". 
       - Appeler également si l'utilisateur demande les termes ou le vocabulaire lié à un sujet pour la recherche sémantique.
       - Appeler si l'utilisateur demande qui a ajouté un terme au vocabulaire lié à un autre terme ou sujet. Ex: "qui t'a dit que X est lié à Y?", "Qui t'a dit que le terme X fait partie du vocabulaire de Y ?"
+      - Appeler si l'utilisateur veut supprimer ou exclure un terme du vocabulaire lié à un autre terme ou sujet. Ex: "supprime X du vocabulaire lié à Y', "X ne doit pas être lié à Y", "X ne doit pas être inclu dans les recherches de Y"
   - `delegate_correction` : 
       - L'utilisateur corrige ton comportement ou te demande de RETENIR une règle/synonyme/exclusion. Ex: "utilise la table projet_ticket", "cinématique inclut aussi vitesse de rotation".
       - Utiliser également si l'utilisateur demande de supprimer ou mettre à jour un souvenir.

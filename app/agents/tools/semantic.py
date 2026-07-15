@@ -56,3 +56,30 @@ async def get_vocabulary_for_term(ctx: RunContext[ChatDeps], term: str) -> dict:
     print(f"[RESULTS] Vocabulaire pour '{term}': {result}")
     
     return result
+
+
+async def remove_term_from_vocabulary(ctx: RunContext[ChatDeps], term: str, base_term: str) -> dict:
+    """
+    Supprime un terme spécifique du vocabulaire associé à un terme de base.
+    Utilisé pour répondre à des questions comme :
+    - "supprime X du vocabulaire lié à Y"
+    - "X ne doit pas être lié à Y"
+    
+    Args:
+        term: Le terme à supprimer (ex: "lent")
+        base_term: Le terme de base dont on veut supprimer le synonyme (ex: "performance")
+    
+    Returns:
+        dict avec les clés:
+        - success: bool indiquant si la suppression a réussi
+        - message: message de confirmation ou d'erreur
+        - base_term: le terme de base
+        - removed_term: le terme supprimé
+    """
+    print("[TOOL CALL] remove_term_from_vocabulary")
+    print(f"Term to remove: {term}, Base term: {base_term}")
+    
+    result = await asyncio.to_thread(vs.remove_term_from_vocabulary, term, base_term)
+    print(f"[RESULTS] Suppression de '{term}' du vocabulaire de '{base_term}': {result}")
+    
+    return result
