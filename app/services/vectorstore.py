@@ -298,13 +298,14 @@ def remove_term_from_vocabulary(term: str, base_term: str) -> Dict[str, Any]:
         ]
     }
     
-    res = col.get(where=where, include=["documents", "ids"])
+    res = col.get(where=where, include=["documents"])
     docs = res.get("documents", [])
     ids = res.get("ids", [])
     
     doc_id_to_delete = None
     for i, doc in enumerate(docs):
-        if doc and doc.strip() == term.strip():
+        clean_doc = doc.strip().strip('"\'')
+        if clean_doc == term.strip():
             doc_id_to_delete = ids[i] if i < len(ids) else None
             break
     
