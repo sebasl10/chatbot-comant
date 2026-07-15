@@ -143,19 +143,26 @@ def query_tickets(query: list[float] | str, nb_results: int = 10) -> list[int]:
     return [int(tid) for tid in ids]
 
 
-def query_tickets_with_synonyms(query: str, nb_results_per_synonym: int = 10, final_nb_results: int = 10) -> list[int]:
+def query_tickets_with_synonyms(query: str, nb_results_per_synonym: int = 10, final_nb_results: int = 10) -> dict:
     """
     Recherche des tickets en tenant compte des synonymes expand_vocabulary.
     
     Pour chaque synonyme trouvé pour le terme de base, fait une requête séparée
     avec un embedding calculé sur "cherche les tickets qui parlent de: <synonyme>".
     Fusionne tous les résultats, les trie par score, et retourne les N meilleurs.
+    
+    Returns:
+        dict avec les clés:
+        - ticket_ids: liste des IDs de tickets trouvés
+        - synonyms: liste de tous les termes utilisés (query + synonymes)
+        - count: nombre de tickets trouvés
     """
 
     synonyms = get_synonyms_for_term(query)
 
     if not synonyms:
-        return query_tickets(query, nb_results=final_nb_results)
+        ticket_ids = query_tickets(query, nb_results=final_nb_results)
+        return {"ticket_ids": ticket_ids, "synonyms": [query], "count": len(ticket_ids)}
     
     all_terms = [query] + synonyms
     
@@ -191,7 +198,8 @@ def query_tickets_with_synonyms(query: str, nb_results_per_synonym: int = 10, fi
 
     all_results.sort(key=lambda x: x["distance"])
     
-    return [r["id"] for r in all_results[:final_nb_results]]
+    ticket_ids = [r["id"] for r in all_results[:final_nb_results]]
+    return {"ticket_ids": ticket_ids, "synonyms": all_terms, "count": len(ticket_ids)}
 
 
 # ── Mémoires (souvenirs / corrections) ──────────────────────────────────────

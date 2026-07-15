@@ -6,11 +6,8 @@ Séquence d'outils typique :
     → construire "SELECT ... WHERE t.id IN (ids)"
     → (optionnel) exclure les tickets mémorisés (get_memory 'exclude_ticket')
     → run_sql
-
-Les synonymes ``expand_vocabulary`` (globaux) sont maintenant utilisés directement
-dans la recherche sémantique via query_tickets_with_synonyms.
 """
-from pydantic_ai import Agent, RunContext
+from pydantic_ai import Agent
 from app.agents.deps import ChatDeps
 from app.agents.model import get_agent_model
 from app.agents.tools.db import run_sql
