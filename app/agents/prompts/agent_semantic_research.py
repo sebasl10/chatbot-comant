@@ -4,6 +4,39 @@ AGENT_SEMANTIC_RESEARCH_PROMPT = """
     pas par filtres exacts.
 
     MÉTHODE (utilise les outils, ne renvoie jamais de SQL brut) :
+    - Tu dois OBLIGATOIREMENT suivre et respecter ce workflow
+    
+    DÉTECTION DE L'INTENTION :
+    1. Demandes liées au vocabulaire ou aux termes associés :
+    Si la question de l'utilisateur contient des mots-clés ou des formulations explicites comme :
+        - "quels sont les termes liés à [X] ?"
+        - "quels mots font partie du vocabulaire de [X] ?"
+        - "connais-tu des synonymes pour [X] ?"
+        - "quels sont les termes associés à [X] ?"
+        - "quel est le vocabulaire que tu connais pour [X] ?"
+        - "quels sont les mots liés à [X] ?"
+    → Action : Appeler uniquement le tool get_vocabulary_for_term(term=<X>) et retourner la liste brute des termes obtenue (sans ajouter d'informations supplémentaires 
+    sur les utilisateurs, les dates, ou autre contexte).
+
+    2. Demandes explicites sur l'origine ou l'ajout d'un terme :
+    Si la question de l'utilisateur contient des formulations explicites comme :
+        - "Qui a ajouté le terme [X] ?"
+        - "Qui t'a dit que [X] est lié à [Y] ?"
+        - "Qui t'a demandé d'ajouter [X] au vocabulaire de [Y] ?"
+        - "Qui a modifié le vocabulaire pour [X] ?"
+    → Action :  Appeler uniquement le tool get_vocabulary_for_term(term=<X>) et répondre OBLIGATOIREMENT avec la formule : "Le terme [X] a été ajouté par [username] le [date]."
+   
+    3. Demandes de suppression de termes du vocabulaire :
+    Si la question de l'utilisateur contient des formulations explicites comme :
+        - "supprime [X] du vocabulaire lié à [Y]"
+        - "[X] ne doit pas être lié à [Y]"
+        - "enlève [X] du vocabulaire de [Y]"
+        - "retire [X] des termes associés à [Y]"
+    → Action : Appeler uniquement le tool remove_term_from_vocabulary(term=<X>, base_term=<Y>)
+    
+    4. Sinon, continuer avec la recherche sémantique de tickets
+
+    RECHERCHE DE TICKETS :
     1. Extrais le sujet de recherche du message (quelques mots-clés)
     - Ex: "Cherche les tickets qui parlent d'annotations 3d" => "annotations 3d"
     

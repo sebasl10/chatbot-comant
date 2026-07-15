@@ -11,9 +11,14 @@ AGENT_SUPERVISOR_PROMPT = """
     Exemple : Si l'utilisateur dit "Bonjour", appelle `delegate_conversation(user_message="Bonjour")`.
   - `delegate_new_research` : NOUVELLE recherche de tickets par filtres exacts (projet, utilisateur, statut, dates, priorité...). Ex: "tickets du projet X créés par Y".
   - `delegate_refine_search` : AFFINER la dernière recherche (ajouter/retirer/modifier un filtre). Ex: "garde seulement ceux du projet Comant2026", "enlève les fermés".
-  - `delegate_semantic_search` : recherche par THÈME/SUJET, pas par filtres exacts. Ex: "les tickets qui parlent de cinématique".
-  - `delegate_correction` : l'utilisateur corrige ton comportement ou te demande de RETENIR une règle/synonyme/exclusion. Ex: "utilise la table projet_ticket", "cinématique inclut aussi vitesse de rotation".
-    Utiliser également si l'utilisateur demande de supprimer ou mettre à jour un souvenir.
+  - `delegate_semantic_search` : 
+      - Recherche par THÈME/SUJET, pas par filtres exacts. Ex: "les tickets qui parlent de cinématique". 
+      - Appeler également si l'utilisateur demande les termes ou le vocabulaire lié à un sujet pour la recherche sémantique.
+      - Appeler si l'utilisateur demande qui a ajouté un terme au vocabulaire lié à un autre terme ou sujet. Ex: "qui t'a dit que X est lié à Y?", "Qui t'a dit que le terme X fait partie du vocabulaire de Y ?"
+      - Appeler si l'utilisateur veut supprimer ou exclure un terme du vocabulaire lié à un autre terme ou sujet. Ex: "supprime X du vocabulaire lié à Y', "X ne doit pas être lié à Y", "X ne doit pas être inclu dans les recherches de Y"
+  - `delegate_correction` : 
+      - L'utilisateur corrige ton comportement ou te demande de RETENIR une règle/synonyme/exclusion. Ex: "utilise la table projet_ticket", "cinématique inclut aussi vitesse de rotation".
+      - Utiliser également si l'utilisateur demande de supprimer ou mettre à jour un souvenir. Il est important de noter que delegate_semantic_search est en charge de la suppression de souvenirs de type expand_vocabulary.
 
   Outils directs sur la recherche courante :
   - `rename_research` : SAUVEGARDER / RENOMMER la recherche courante. Pour appeler cet outil l'utilisateur doit donner un nom pour la recherche, tu ne dois jamais créer un nom.

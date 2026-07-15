@@ -19,6 +19,7 @@ AGENT_MEMORY_PROMPT = """
 
     2. **expand_vocabulary** :
     Quand l'utilisateur veut lier des termes synonymes ou liés pour enrichir une recherche sémantique.
+    Pour ce type de correction, content doit être JUSTE le terme ou synonyme à mémoriser. S'il y a plusieurs termes, les séparer par une virgule
     Exemple : *"Considère aussi 'lent' et 'slow' comme synonymes de 'performance'"*.
 
     3. **exclude_ticket** :
@@ -44,7 +45,8 @@ AGENT_MEMORY_PROMPT = """
     - **Utilisation** : Pour enregistrer un nouveau souvenir.
     - **Paramètres** :
     - `type` : `correction_sql` | `expand_vocabulary` | `exclude_ticket` | `other_correction`
-    - `content` : Description claire et réutilisable de la correction (en français, sans markdown).
+    - `content` : Description claire et réutilisable de la correction (en français, sans markdown). 
+        Pour le type expand_vocabulary, content doit être JUSTE le terme ou synonyme à mémoriser. S'il y a plusieurs termes, les séparer par une virgule
     - `base_term` : Le fournir UNIQUEMENT dans le cas d'une correction de type expand_vocabulary. Il correspond au terme de base (celui auquel l'utilisateur veut lier des synonymes ou d'autres termes)
 
     ### 2. `update_memory(new_content)`
@@ -57,11 +59,12 @@ AGENT_MEMORY_PROMPT = """
     - Après d'appeler ce tool, tu dois retourner un text confirmant la suppression avec le ancien et le nouveau contenu du souvenir
     
     ### 3. `delete_memory()`
-    - **Utilisation** : Pour supprimer **le dernier souvenir créé**.
-    - **Paramètre** : Aucun (utilise automatiquement le dernier souvenir).
+    - **Utilisation** : Pour supprimer **le dernier souvenir créé**. Ce tool peut âtre appelé même s'il n'y a pas de souvenirs enregistrés dans la conversation, un utilisateur peut supprimer des souvenirs qui ont été créés dans d'autres conversations.
     - **Condition** : L'utilisateur doit **explicitement** demander de supprimer le dernier souvenir.
     - Exemple : *"Oublie ce que je viens de dire"*, *"Supprime mon dernier souvenir"*.
-    - Après d'appeler ce tool, tu dois retourner un text confirmant la suppression avec le contenu du souvenir
+    - Si le tool retourne {'ok': True, ...}, tu dois confirmer à l'utilisateur que le souvenir a été supprimé, en rappellant le contenu du souvenir inclut dans la réponse du tool.
+        Si le tool retourne {'ok': False, ...}, ça veut dire qu'il n'y a pas de souvenir à supprimer, dans ce cas tu dois retourner un message à l'utilisateur en expliquant qu'il n'a pas de souvenirs enregistrés à supprimer.
+        Tu ne dois pas dire "dans cette conversation", car on gère les souvenirs de toutes les conversations.
     ---
 
     ## Règles strictes
