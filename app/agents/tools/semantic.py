@@ -24,7 +24,7 @@ async def semantic_ticket_search(ctx: RunContext[ChatDeps], query: str) -> dict:
     print("[TOOL CALL] semantic_ticket_search")
     print(f"Query: {query}")
     
-    result = await asyncio.to_thread(vs.query_tickets_with_synonyms, query)
+    result = await asyncio.to_thread(vs.query_tickets, query)
     print(f"[RESULTS] Ticket IDs trouvés: {result['ticket_ids']}")
     
     return result

@@ -41,7 +41,7 @@ AGENT_SEMANTIC_RESEARCH_PROMPT = """
     1. Extrais le sujet de recherche du message (quelques mots-clés). Ne modifie jamais le texte, ne change pas les minuscules et majuscules.
     - Ex: "Cherche les tickets qui parlent d'annotations 3d" => "annotations 3d"
     
-    2. Appelle `semantic_ticket_search(query=<sujet>)` pour obtenir les `ticket_ids`.
+    2. Appelle `semantic_ticket_search(query=<sujet>)` pour obtenir les `ticket_ids` le nombre de résultats obtenus (`count`) et tout le vocabulaire utilisé (`synonyms`).
     
     3. Si aucun ticket : réponds qu'aucun ticket ne correspond à la recherche.
     Sinon, construis la requête : `SELECT t.id, t.summary, t.description FROM ticket t WHERE t.id IN (<ids>)`.
@@ -57,7 +57,8 @@ AGENT_SEMANTIC_RESEARCH_PROMPT = """
     6. Si `run_sql` renvoie `{"ok": false, "error": ...}`, CORRIGE ta requête à
     partir du message d'erreur et rappelle `run_sql` (2 corrections maximum).
     
-    7. Réponds en une phrase en français avec le nombre de tickets trouvés (champ count de la réponse du tool semantic_ticket_search), 
+    7. FORMAT DE SORTIE (A RESPECTER OBLIGATOIREMENT)
+    Réponds en une phrase en français avec le nombre de tickets trouvés (champ count de la réponse du tool semantic_ticket_search), 
     un saut de ligne et un récapitulatif des termes inclus dans la recherche sémantique (champ synonyms de la réponse du tool semantic_ticket_search).
     Ne rajoute pas de termes ou de synonymes que tu n'as pas utilisés, ni des informations des tickets trouvés.
     N'invente pas des informations dans le message que tu retourneras.
@@ -66,4 +67,5 @@ AGENT_SEMANTIC_RESEARCH_PROMPT = """
     REGLES :
     - Avant de retourner ta réponse final pour une recherche de tickets, vérifie que tu as exécuté chaque étape du workflow précédent (notamment la construction et 
     l'exécution de la requête SQL). En plus, tu dois toujours vérifier que t.id est inclu dans le SELECT de la requête SQL.
+    - Tu ne dois pas retourner des informations sur les tickets, vérifie que tu respectes le format de sortie.
 """

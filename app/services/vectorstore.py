@@ -120,51 +120,12 @@ def supervisor_actions_collection():
 
 # ── Recherche sémantique de tickets ─────────────────────────────────────────
 
-def query_tickets(query: list[float] | str, nb_results: int = 10) -> list[int]:
+def query_tickets(query: list[float] | str, threshold: float = 0.45, use_synonyms: bool = True) -> dict:
     """
-    Renvoie les {nb_results} ``ticket_id`` les plus similaires à {query}.
+    Recherche des tickets sémantiquement proches de la query.
+    Récupère toujours 5000 résultats puis filtre ceux avec distance <= threshold.
     """
     col = tickets_collection()
-    
-    if isinstance(query, str):
-        query_embedding = get_query_embedding(query)
-    else:
-        query_embedding = query
-    
-    res = col.query(
-        query_embeddings=[query_embedding],
-        n_results=nb_results,
-        include=["distances"],
-    )
-    
-    ids = res["ids"][0]
-    
-    # Convertir en int (les ticket_ids sont stockés comme strings dans Chroma)
-    return [int(tid) for tid in ids]
-
-
-def query_tickets_with_synonyms(query: str, nb_results_per_synonym: int = 10, final_nb_results: int = 10) -> dict:
-    """
-    Recherche des tickets en tenant compte des synonymes expand_vocabulary.
-    
-    Pour chaque synonyme trouvé pour le terme de base, fait une requête séparée
-    avec un embedding calculé sur "cherche les tickets qui parlent de: <synonyme>".
-    Fusionne tous les résultats, les trie par score, et retourne les N meilleurs.
-    
-    Returns:
-        dict avec les clés:
-        - ticket_ids: liste des IDs de tickets trouvés
-        - synonyms: liste de tous les termes utilisés (query + synonymes)
-        - count: nombre de tickets trouvés
-    """
-
-    synonyms = get_synonyms_for_term(query)
-
-    if not synonyms:
-        ticket_ids = query_tickets(query, nb_results=final_nb_results)
-        return {"ticket_ids": ticket_ids, "synonyms": [query], "count": len(ticket_ids)}
-    
-    all_terms = [query] + synonyms
     
     query_instruction = (
         "Trouve les tickets pertinents pour une demande donnée en identifiant ceux qui mentionnent, décrivent ou traitent du sujet spécifié. "
@@ -174,18 +135,29 @@ def query_tickets_with_synonyms(query: str, nb_results_per_synonym: int = 10, fi
     )
     
     all_embeddings = []
-    for term in all_terms:
-        embedding = get_embedding(f"{query_instruction}{term}")
-        all_embeddings.append(embedding)
+    terms_used = []
     
-    col = tickets_collection()
+    if use_synonyms and isinstance(query, str):
+        synonyms = get_synonyms_for_term(query)
+        if synonyms:
+            all_terms = [query] + synonyms
+            for term in all_terms:
+                all_embeddings.append(get_embedding(f"{query_instruction}{term}"))
+            terms_used = all_terms
+    
+    if not all_embeddings:
+        if isinstance(query, str):
+            all_embeddings = [get_query_embedding(query)]
+            terms_used = [query]
+        else:
+            all_embeddings = [query]
+    
     res = col.query(
         query_embeddings=all_embeddings,
-        n_results=nb_results_per_synonym,
+        n_results=3000,
         include=["distances"]
     )
     
-    # Fusionner tous les résultats, les trier par distance et retoruner les n meilleurs
     all_results = []
     for i in range(len(all_embeddings)):
         ids = res["ids"][i]
@@ -194,13 +166,17 @@ def query_tickets_with_synonyms(query: str, nb_results_per_synonym: int = 10, fi
             all_results.append({
                 "id": int(ids[j]),
                 "distance": distances[j],
-                "term_index": i
             })
-
-    all_results.sort(key=lambda x: x["distance"])
     
-    ticket_ids = [r["id"] for r in all_results[:final_nb_results]]
-    return {"ticket_ids": ticket_ids, "synonyms": all_terms, "count": len(ticket_ids)}
+    all_results.sort(key=lambda x: x["distance"])
+    filtered_results = [r for r in all_results if r["distance"] <= threshold]
+    ticket_ids = [r["id"] for r in filtered_results]
+    
+    return {
+        "ticket_ids": ticket_ids,
+        "synonyms": terms_used,
+        "count": len(ticket_ids)
+    }
 
 
 # ── Mémoires (souvenirs / corrections) ──────────────────────────────────────
@@ -305,8 +281,8 @@ def remove_term_from_vocabulary(term: str, base_term: str) -> Dict[str, Any]:
     
     doc_id_to_delete = None
     for i, doc in enumerate(docs):
-        clean_doc = doc.strip().strip('"\'')
-        if clean_doc == term.strip():
+        clean_doc = doc.strip().strip('"\'').lower()
+        if clean_doc == term.strip().lower():
             doc_id_to_delete = ids[i] if i < len(ids) else None
             break
     
