@@ -43,7 +43,7 @@ async def delegate_new_research(ctx: RunContext[ChatDeps], request: str) -> str:
     ctx.deps.mode = "recherche"
     result = await sql_research_agent.run(request, deps=ctx.deps, usage=ctx.usage)
     if ctx.deps.last_sql:
-        await persist_new_research(ctx.deps)
+        await persist_new_research(ctx.deps, False)
     return result.output
 
 async def delegate_semantic_search(ctx: RunContext[ChatDeps], request: str) -> str:
@@ -58,7 +58,7 @@ async def delegate_semantic_search(ctx: RunContext[ChatDeps], request: str) -> s
     ctx.deps.mode = "recherche"
     result = await semantic_research_agent.run(request, deps=ctx.deps, usage=ctx.usage)
     if ctx.deps.last_sql:
-        await persist_new_research(ctx.deps)
+        await persist_new_research(ctx.deps, True)
     return result.output
 
 async def delegate_correction(ctx: RunContext[ChatDeps], message: str) -> str:
