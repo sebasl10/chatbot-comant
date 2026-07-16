@@ -169,6 +169,7 @@ def query_tickets_with_synonyms(query: str, nb_results_per_synonym: int = 10, fi
     query_instruction = (
         "Trouve les tickets pertinents pour une demande donnée en identifiant ceux qui mentionnent, décrivent ou traitent du sujet spécifié. "
         "Inclus les tickets qui contiennent des termes directement liés ou des concepts sémantiquement proches."
+        "Donne la priorité aux tickets qui contiennent exactement le sujet."
         "Cherche les tickets qui parlent de: "
     )
     

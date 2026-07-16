@@ -138,7 +138,7 @@ def update_conversation_name(conversation_id: int, name: str):
     finally:
         conn.close()
 
-def create_research(user_id: int, sql: str) -> int:
+def create_research(user_id: int, sql: str, isSemantic: bool = False) -> int:
     now = datetime.datetime.now()
     name = f"Recherche_{now.strftime('%Y-%m-%d_%H-%M-%S')}"
     defaultColumns = ["Type/Priorité", "Code", "Statut", "Titre", "Tags", "Projets", "Produit", "Composant", "Assigné(e)", "Créateur", "Modifié le"]
@@ -148,10 +148,10 @@ def create_research(user_id: int, sql: str) -> int:
     try:
         with conn.cursor() as cursor:
             query = f"""
-                INSERT INTO research (creator_id, name, filters, columns, sql_request)
-                VALUES (%s, %s, '[]', %s, %s)
+                INSERT INTO research (creator_id, name, filters, columns, sql_request, is_semantic)
+                VALUES (%s, %s, '[]', %s, %s, %s)
             """
-            cursor.execute(query, (user_id, name, defaultColumns_json, sql))
+            cursor.execute(query, (user_id, name, defaultColumns_json, sql, isSemantic))
             conn.commit()
             research_id = cursor.lastrowid
             return research_id

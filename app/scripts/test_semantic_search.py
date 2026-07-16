@@ -13,9 +13,16 @@ from app.services.vectorstore import tickets_collection, TICKETS, get_query_embe
 def main():
     # ── CONFIGURATION ────────────────────────────────────────────────────────
     query = "cinématique"  # ← MODIFIE TA QUERY ICI
-    collection_name = TICKETS  # ou MEMORIES, CONVERSATION_SUMMARIES
+    collection_name = TICKETS 
     n_results = 10
-    query_embedding = get_query_embedding(query)
+    threshold= 0.43
+    query_instruction = (
+        "Trouve les tickets pertinents pour une demande donnée en identifiant ceux qui mentionnent, décrivent ou traitent du sujet spécifié. "
+        "Inclus les tickets qui contiennent des termes directement liés ou des concepts sémantiquement proches."
+        "Donne la priorité aux tickets qui contiennent exactement le sujet."
+        "Cherche les tickets qui parlent de: "
+    )
+    query_embedding = get_query_embedding(f"{query_instruction}{query}")
     
     # ── EXÉCUTION ────────────────────────────────────────────────────────────
     collection = tickets_collection()
@@ -28,7 +35,7 @@ def main():
     # Recherche sémantique
     results = collection.query(
         query_embeddings=[query_embedding],
-        n_results=n_results,
+        n_results=5000,
         include=["documents", "metadatas", "distances"]
     )
     
@@ -37,9 +44,15 @@ def main():
         print("Aucun résultat trouvé.")
         return
     
-    for i, (id, doc, meta, dist) in enumerate(
-        zip(results["ids"][0], results["documents"][0], results["metadatas"][0], results["distances"][0])
-    ):
+    filtered_results = [
+        (id, doc, meta, dist) 
+        for id, doc, meta, dist in zip(
+            results["ids"][0], results["documents"][0], results["metadatas"][0], results["distances"][0]
+        )
+        if dist < threshold
+    ]
+    
+    for i, (id, doc, meta, dist) in enumerate(filtered_results):
         print(f"\n[{i+1}] Distance: {dist:.4f}")
         print(f"   ID: {id}")
         print(f"   Contenu: {doc[:200]}..." if len(doc) > 200 else f"   Contenu: {doc}")

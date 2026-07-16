@@ -23,8 +23,7 @@ async def db_schema(ctx: RunContext[ChatDeps]) -> str:
 
 async def run_sql(ctx: RunContext[ChatDeps], sql: str) -> dict:
     """
-    Exécute une requête SELECT et renvoie le nombre de résultats + un
-    échantillon de lignes.
+    Exécute une requête SELECT et renvoie le nombre de résultats
 
     IMPORTANT : en cas d'erreur SQL, renvoie ``{"ok": False, "error": ...}``
     SANS lever d'exception. L'agent doit alors CORRIGER sa requête à partir du
@@ -42,4 +41,4 @@ async def run_sql(ctx: RunContext[ChatDeps], sql: str) -> dict:
 
     ctx.deps.last_sql = sql
     ctx.deps.last_count = len(rows)
-    return {"ok": True, "count": len(rows), "sample": rows[:_MAX_SAMPLE]}
+    return {"ok": True, "count": len(rows)}

@@ -12,8 +12,6 @@ import json
 from bs4 import BeautifulSoup
 from app.services.database import get_connection
 from app.services.chroma_service import get_chroma_service
-from chromadb import HttpClient
-
 
 def remove_html_tags(text):
     """Nettoie le texte en supprimant les balises HTML."""
@@ -54,7 +52,7 @@ def main():
     
     try:
         cursor = conn.cursor()
-        cursor.execute("SELECT id, summary, description FROM ticket WHERE ticket.type NOT IN ('Group', 'Réunion')")
+        cursor.execute("SELECT id, summary, description FROM ticket WHERE ticket.type IN ('Bug', 'Dev', 'Suggestion', 'Requête', 'Documentation')")
         tickets = cursor.fetchall()
         print(f"Trouvé {len(tickets)} tickets à migrer")
         
