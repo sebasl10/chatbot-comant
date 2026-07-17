@@ -259,6 +259,25 @@ def get_vocabulary_for_term(base_term: str) -> Dict[str, Any]:
     }
 
 
+def get_all_synonyms() -> List[Dict[str, Any]]:
+    """
+    Récupère toutes les entrées de vocabulaire étendu (type expand_vocabulary),
+    groupées par terme de base.
+    """
+    col = memories_collection()
+
+    res = col.get(where={"type": "expand_vocabulary"}, include=["documents", "metadatas"])
+    docs = res.get("documents", [])
+    metadatas = res.get("metadatas", [])
+
+    entries = []
+    for doc, meta in zip(docs, metadatas):
+        base_term = meta.get("base_term") if isinstance(meta, dict) else None
+        entries.append({"base_term": base_term, "synonyms": doc})
+
+    return entries
+
+
 def remove_term_from_vocabulary(term: str, base_term: str) -> Dict[str, Any]:
     """
     Supprime une entrée de vocabulaire spécifique.

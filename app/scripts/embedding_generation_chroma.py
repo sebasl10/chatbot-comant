@@ -11,7 +11,7 @@ Ce script:
 import json
 from bs4 import BeautifulSoup
 from app.services.database import get_connection
-from app.services.chroma_service import get_chroma_service
+from app.services import vectorstore
 
 def remove_html_tags(text):
     """Nettoie le texte en supprimant les balises HTML."""
@@ -44,11 +44,10 @@ def get_ticket_text(ticket, comments_by_ticket):
 def main():
     """Exécute la migration des tickets vers Chroma avec embeddings pré-calculés."""
     print("=== Début de la migration des tickets vers Chroma ===\n")
-    
-    chroma_service = get_chroma_service()
+
     conn = get_connection()
-    
-    chroma_service.delete_collection('tickets')
+
+    vectorstore.get_client().delete_collection('tickets')
     
     try:
         cursor = conn.cursor()
@@ -100,11 +99,10 @@ def main():
             
             # Si le batch est plein, on l'ajoute
             if len(current_batch['ids']) >= batch_size:
-                chroma_service.add_memories(
-                    "tickets",
-                    texts=current_batch['documents'],
+                vectorstore.tickets_collection().add(
+                    ids=current_batch['ids'],
+                    documents=current_batch['documents'],
                     metadatas=current_batch['metadatas'],
-                    custom_ids=current_batch['ids'],
                 )
                 migrated_count += len(current_batch['ids'])
                 print(f"✅ Batch de {len(current_batch['ids'])} tickets ajouté")
@@ -118,11 +116,10 @@ def main():
         
         # Ajoute le dernier batch s'il n'est pas vide
         if current_batch['ids']:
-            chroma_service.add_memories(
-                "tickets",
-                texts=current_batch['documents'],
+            vectorstore.tickets_collection().add(
+                ids=current_batch['ids'],
+                documents=current_batch['documents'],
                 metadatas=current_batch['metadatas'],
-                custom_ids=current_batch['ids'],
             )
             migrated_count += len(current_batch['ids'])
             print(f"✅ Dernier batch de {len(current_batch['ids'])} tickets ajouté")
@@ -134,8 +131,7 @@ def main():
         print(f"Total traité: {migrated_count + skipped_count}")
         
         # Vérifie la collection
-        collection_stats = chroma_service.get_collection_stats("tickets")
-        print(f"Collection 'tickets': {collection_stats['total_memories']} documents")
+        print(f"Collection 'tickets': {vectorstore.tickets_collection().count()} documents")
         
         print("\n✅ Migration terminée avec succès !")
         

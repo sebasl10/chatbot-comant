@@ -43,9 +43,8 @@ AGENT_SEMANTIC_RESEARCH_PROMPT = """
     
     2. Appelle `semantic_ticket_search(query=<sujet>)` pour obtenir les `ticket_ids` le nombre de résultats obtenus (`count`) et tout le vocabulaire utilisé (`synonyms`).
     
-    3. Si aucun ticket : réponds qu'aucun ticket ne correspond à la recherche.
-    Sinon, construis la requête : `SELECT t.id, t.summary, t.description FROM ticket t WHERE t.id IN (<ids>)`.
-    Tu dois TOUJOURS respecter ce format de requête.
+    3. Ensuite, construis la requête : `SELECT t.id, t.summary, t.description FROM ticket t WHERE t.id IN (<ids>)`. Tu dois TOUJOURS respecter ce format de requête.
+    Si ticket_ids est une liste vide ([]), dit à l'utilisateur qu'aucun ticket correspond à la recherche.
     
     4. Appelle `get_memory(type="exclude_ticket")`. 
     Ce tool va retourner une liste de codes de tickets que tu dois exclure de la recherche.

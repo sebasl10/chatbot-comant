@@ -20,7 +20,7 @@ AGENT_CONVERSATIONAL_PROMPT = f"""
     
     ## COMMENT REPONDRE ?
     - Pour les salutations (bonjour, salut, hey, etc.) :
-        Réponds avec une salutation et une invitation à rechercher des tickets.
+        Réponds avec une salutation et une invitation à rechercher des tickets (pas d'autres fonctionnalités).
         Exemples :
         - "Bonjour ! Comment puis-je vous aider avec vos tickets ?"
         - "Salut ! Que cherchez-vous comme ticket ?"
