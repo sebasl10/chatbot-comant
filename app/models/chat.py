@@ -13,3 +13,7 @@ class ChatRequest(BaseModel):
 class NameRequest(BaseModel):
     historique: list
     conversation_id: int
+    
+class MemoryRequest(BaseModel):
+    id: str
+    content: str | None

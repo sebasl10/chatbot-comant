@@ -580,7 +580,7 @@ def get_last_memory(user_id: int | None) -> dict | None:
         "metadata": metas[last_index]
     }
 
-def delete_memory(memory_id: str, user_id: int | None) -> bool:
+def delete_memory(memory_id: str) -> bool:
     """
     Supprime un souvenir par son ID.
     """
@@ -589,21 +589,19 @@ def delete_memory(memory_id: str, user_id: int | None) -> bool:
     return True
 
 
-def update_memory(memory_id: str, new_content: str, user_id: int | None, username: str | None = None) -> bool:
+def update_memory(memory_id: str, new_content: str, username: str | None = None) -> bool:
     """
     Met à jour un souvenir existant.
     """
     col = memories_collection()
-    # Conserver les métadonnées existantes
+    
     res = col.get(ids=[memory_id], include=["metadatas"])
     if not res["ids"] or len(res["ids"]) == 0:
         return False
     
     existing_meta = res["metadatas"][0] if res["metadatas"] and len(res["metadatas"]) > 0 else {}
     if isinstance(existing_meta, dict):
-        # Mettre à jour la date
         existing_meta["date"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        # Mettre à jour username si fourni
         if username:
             existing_meta["username"] = username
     else:
@@ -615,3 +613,25 @@ def update_memory(memory_id: str, new_content: str, user_id: int | None, usernam
         metadatas=[existing_meta]
     )
     return True
+
+def get_all_memories() -> dict:
+    """
+    Recupère tous les souvenirs de la collection memories
+    """
+    col = memories_collection()
+    res = col.get(include=["documents", "metadatas"])
+    memories = []
+    for i, doc_id in enumerate(res['ids']):
+        memory = {
+            "text": res['documents'][i],
+            "id": doc_id,
+            "user_id": res['metadatas'][i]['user_id'],
+            "date": res['metadatas'][i]['date'],
+            "type": res['metadatas'][i]['type'],
+            "scope": res['metadatas'][i]['scope'],
+            "username": res['metadatas'][i]['username']
+        }
+        memories.append(memory)
+
+    return {'memories': memories}
+    
