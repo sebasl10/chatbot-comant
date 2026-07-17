@@ -13,12 +13,10 @@ class Settings(BaseSettings):
     db_user: str
     db_password: str
 
-    # ── Architecture agent (Pydantic AI + Ollama tool calling) ──────────────
-    # Endpoint OpenAI-compatible d'Ollama, utilisé par Pydantic AI pour le tool calling natif
     ollama_openai_base_url: str = "http://localhost:11434/v1"
     chroma_http_url: str = "http://localhost:8001"
 
     class Config:
-        env_file = ".env" # Surcharge via .env
+        env_file = ".env" 
 
 settings = Settings()

@@ -31,6 +31,9 @@ async def run_sql(ctx: RunContext[ChatDeps], sql: str) -> dict:
 
     En cas de succès, la requête est mémorisée dans les deps pour permettre à la
     couche de délégation de créer/mettre à jour la recherche persistée.
+    
+    Args:
+        sql: Requête SQL créée à partir de la requête de l'utilisateur
     """
     print("[TOOL CALL] run_sql")
     print(f"SQL: {sql}")
