@@ -17,7 +17,8 @@ VALID_MEMORY_TYPES = ("correction_sql", "expand_vocabulary", "exclude_ticket", "
 
 
 async def get_memory(ctx: RunContext[ChatDeps], type: str, query: str | None = None) -> str:
-    """Récupère les souvenirs mémorisés de l'utilisateur pour un `type` donné.
+    """
+    Récupère les souvenirs mémorisés de l'utilisateur pour un `type` donné.
 
     Types valides : correction_sql (règles de correction SQL), expand_vocabulary
     (synonymes/vocabulaire, global), exclude_ticket (tickets à exclure),
@@ -32,26 +33,25 @@ async def get_memory(ctx: RunContext[ChatDeps], type: str, query: str | None = N
     if type not in VALID_MEMORY_TYPES:
         return ""
     
-    # Pour expand_vocabulary, utiliser la nouvelle méthode
+    """     
     if type == "expand_vocabulary":
-        # Si query est fourni, chercher les synonymes pour ce terme
         if query:
-            synonyms = await asyncio.to_thread(vs.get_synonyms_for_term, query)
+            vocabulary = await asyncio.to_thread(vs.get_vocabulary_for_term, query)
+            synonyms = vocabulary["synonyms"]
             print(f"  [SYNONYMS FOUND] Pour '{query}': {synonyms}")
             if synonyms:
-                # Formater pour le prompt
                 return f"Synonymes pour '{query}': {', '.join(synonyms)}"
             else:
                 print(f"  [NO SYNONYMS] Aucun synonyme trouvé pour '{query}'")
                 return ""
         else:
-            # Sans query, retourner tous les expand_vocabulary
             all_memories = await asyncio.to_thread(vs.get_all_synonyms)
             print(f"  [ALL SYNONYMS] {len(all_memories)} entrées expand_vocabulary trouvés")
             if all_memories:
                 formatted = "\n".join([f"{entry['base_term']}: {entry['synonyms']}" for entry in all_memories])
                 return f"Vocabulaire étendu:\n{formatted}"
-            return ""
+            return "" 
+    """
     
     # Pour les autres types, utiliser l'ancienne méthode
     return await asyncio.to_thread(vs.get_memories_text, type, ctx.deps.user_id, query)

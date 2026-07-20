@@ -1,4 +1,5 @@
-"""Base vectorielle Chroma — tickets, mémoires, résumés de conversation.
+"""
+Base vectorielle Chroma — tickets, mémoires, résumés de conversation.
 
 Remplace le duo (table MySQL ``ticket_embedding`` + cosine en Python) et le
 stockage Markdown des souvenirs, par un client Chroma persistant unique.
@@ -18,6 +19,7 @@ from chromadb.api.types import Documents, EmbeddingFunction, Embeddings
 import uuid
 from datetime import datetime
 from app.config import settings
+from app.services.database import get_username
 
 TICKETS = "tickets"
 MEMORIES = "memories"
@@ -73,22 +75,6 @@ def get_embedding(text: str) -> list[float]:
     embeddings = emb_fn([text])
     return embeddings[0]
 
-
-def get_query_embedding(query: str, instruction_prefix: str = None) -> list[float]:
-    """
-    Calcule l'embedding d'une requête avec un préfixe d'instruction.
-
-    """
-    if instruction_prefix is None:
-        instruction_prefix = (
-            "Trouve les tickets pertinents pour une demande donnée en identifiant ceux qui mentionnent, décrivent ou traitent du sujet spécifié. "
-            "Inclus les tickets qui contiennent des termes directement liés ou des concepts sémantiquement proches."
-        )
-    
-    full_text = f"{instruction_prefix}\n\n{query}"
-    return get_embedding(full_text)
-
-
 def get_client() -> HttpClient:
     global _client
     if _client is None:
@@ -123,7 +109,7 @@ def supervisor_actions_collection():
 def query_tickets(query: list[float] | str, threshold: float = 0.45, use_synonyms: bool = True) -> dict:
     """
     Recherche des tickets sémantiquement proches de la query.
-    Récupère toujours 5000 résultats puis filtre ceux avec distance <= threshold.
+    Récupère toujours 3000 résultats puis filtre ceux avec distance <= threshold.
     """
     col = tickets_collection()
     
@@ -137,8 +123,8 @@ def query_tickets(query: list[float] | str, threshold: float = 0.45, use_synonym
     all_embeddings = []
     terms_used = []
     
-    if use_synonyms and isinstance(query, str):
-        synonyms = get_synonyms_for_term(query)
+    if use_synonyms:
+        synonyms = get_vocabulary_for_term(query)["synonyms"]
         if synonyms:
             all_terms = [query] + synonyms
             for term in all_terms:
@@ -146,11 +132,8 @@ def query_tickets(query: list[float] | str, threshold: float = 0.45, use_synonym
             terms_used = all_terms
     
     if not all_embeddings:
-        if isinstance(query, str):
-            all_embeddings = [get_query_embedding(query)]
-            terms_used = [query]
-        else:
-            all_embeddings = [query]
+        all_embeddings = [get_embedding(f"{query_instruction}{term}")]
+        terms_used = [query]
     
     res = col.query(
         query_embeddings=all_embeddings,
@@ -177,44 +160,6 @@ def query_tickets(query: list[float] | str, threshold: float = 0.45, use_synonym
         "synonyms": terms_used,
         "count": len(ticket_ids)
     }
-
-
-# ── Mémoires (souvenirs / corrections) ──────────────────────────────────────
-
-def _memory_where(type: str, user_id: int | None) -> dict:
-    # expand_vocabulary est global (partagé) ; les autres types sont par utilisateur.
-    if type == "expand_vocabulary" or user_id is None:
-        return {"type": type}
-    return {"$and": [{"type": type}, {"$or": [{"user_id": user_id}, {"scope": "global"}]}]}
-
-
-def get_synonyms_for_term(base_term: str) -> List[str]:
-    """
-    Récupère tous les termes liés/synonymes pour un terme de base donné.
-    Utilise le filtre where sur les métadonnées pour une recherche exacte.
-    """
-    col = memories_collection()
-
-    where = {
-        "$and":[
-            {"type": "expand_vocabulary"},
-            {"base_term": base_term}
-        ]
-    }
-    
-    res = col.get(where=where, include=["documents", "metadatas"])
-    docs = res.get("documents", [])
-    
-    synonyms = []
-    for doc in docs:
-        if doc and doc.strip():
-            terms = [t.strip() for t in doc.split(",") if t.strip()]
-            synonyms.extend(terms)
-    
-    print(f"[SYNONYMS] Synonymes trouvés pour '{base_term}': {synonyms}")
-    
-    return synonyms
-
 
 def get_vocabulary_for_term(base_term: str) -> Dict[str, Any]:
     """
@@ -251,32 +196,29 @@ def get_vocabulary_for_term(base_term: str) -> Dict[str, Any]:
             if i < len(metadatas) and metadata is None:
                 metadata = metadatas[i]
     
+    print(f"[SYNONYMS] Synonymes trouvés pour '{base_term}': {synonyms}")
+    
     return {
         "base_term": base_term,
         "synonyms": synonyms,
         "metadata": metadata,
         "count": len(synonyms)
     }
-
-
-def get_all_synonyms() -> List[Dict[str, Any]]:
+    
+def add_synonyms(base_term: str, synonyms: List[str], user_id: int | None = None, username: str | None = None) -> str:
     """
-    Récupère toutes les entrées de vocabulaire étendu (type expand_vocabulary),
-    groupées par terme de base.
+    Ajoute un ensemble de synonymes pour un terme de base (type expand_vocabulary).
     """
-    col = memories_collection()
-
-    res = col.get(where={"type": "expand_vocabulary"}, include=["documents", "metadatas"])
-    docs = res.get("documents", [])
-    metadatas = res.get("metadatas", [])
-
-    entries = []
-    for doc, meta in zip(docs, metadatas):
-        base_term = meta.get("base_term") if isinstance(meta, dict) else None
-        entries.append({"base_term": base_term, "synonyms": doc})
-
-    return entries
-
+    # Convertir la liste en chaîne séparée par des virgules
+    content = ", ".join(synonyms)
+    
+    return add_memory(
+        type="expand_vocabulary",
+        content=content,
+        user_id=user_id,
+        username=username,
+        base_term=base_term
+    )
 
 def remove_term_from_vocabulary(term: str, base_term: str) -> Dict[str, Any]:
     """
@@ -322,6 +264,14 @@ def remove_term_from_vocabulary(term: str, base_term: str) -> Dict[str, Any]:
         "removed_term": term
     }
 
+
+# ── Gérer les souvenirs ──────────────────────────────────────
+
+def _memory_where(type: str, user_id: int | None) -> dict:
+    if type == "expand_vocabulary" or user_id is None:
+        return {"type": type}
+    return {"$and": [{"type": type}, {"$or": [{"user_id": user_id}, {"scope": "global"}]}]}
+
 def get_memories_text(type: str, user_id: int | None, query: str | None = None, k: int = 8) -> str:
     """
     Renvoie les souvenirs d'un ``type`` sous forme de texte concaténé.
@@ -338,7 +288,7 @@ def get_memories_text(type: str, user_id: int | None, query: str | None = None, 
             "Représente une question ou un contexte pour retrouver des souvenirs ou corrections pertinents. "
             "Inclut les synonymes, concepts liés et variations sémantiques."
         )
-        query_embedding = get_query_embedding(query, instruction_prefix=memory_instruction)
+        query_embedding = get_embedding(f"{memory_instruction}\n{query}")
         res = col.query(query_embeddings=[query_embedding], n_results=k, where=where, include=["documents"])
         docs = res["documents"][0] if res["documents"] else []
     else:
@@ -346,33 +296,7 @@ def get_memories_text(type: str, user_id: int | None, query: str | None = None, 
         docs = res.get("documents", []) or []
     return "\n\n---\n\n".join(docs)
 
-
-def add_synonyms(base_term: str, synonyms: List[str], user_id: int | None = None, username: str | None = None) -> str:
-    """
-    Ajoute un ensemble de synonymes pour un terme de base (type expand_vocabulary).
-    
-    Args:
-        base_term: Le terme de base (ex: "performance")
-        synonyms: Liste des termes liés/synonymes (ex: ["lent", "slow", "rapide"])
-        user_id: ID de l'utilisateur (optionnel, car expand_vocabulary est global)
-        username: Nom de l'utilisateur
-    
-    Returns:
-        L'ID du document ajouté
-    """
-    # Convertir la liste en chaîne séparée par des virgules
-    content = ", ".join(synonyms)
-    
-    return add_memory(
-        type="expand_vocabulary",
-        content=content,
-        user_id=user_id,
-        username=username,
-        base_term=base_term
-    )
-
-
-def add_memory(type: str, content: str, user_id: int | None, username: str | None = None, embedding: list[float] | None = None, base_term: str | None = None) -> str:
+def add_memory(type: str, content: str, user_id: int | None, embedding: list[float] | None = None, base_term: str | None = None) -> str:
     """
     Ajoute un souvenir.
     
@@ -384,6 +308,7 @@ def add_memory(type: str, content: str, user_id: int | None, username: str | Non
         - base_term : non utilisé
     """
     scope = "global" if type == "expand_vocabulary" else "user"
+    username = get_username(user_id)
     meta = {
         "type": type,
         "scope": scope,
@@ -394,16 +319,6 @@ def add_memory(type: str, content: str, user_id: int | None, username: str | Non
     
     # Pour expand_vocabulary, ajouter le terme de base dans les métadonnées
     if type == "expand_vocabulary":
-        if not base_term:
-            # Essayer d'extraire base_term du content si format "base: syn1, syn2"
-            if ":" in content:
-                base_term = content.split(":")[0].strip()
-                print(f"[WARNING] base_term extrait du content: '{base_term}'")
-            else:
-                raise ValueError(
-                    f"Pour type='expand_vocabulary', base_term est requis. "
-                    f"Content: '{content}'"
-                )
         meta["base_term"] = base_term
     
     doc_id = str(uuid.uuid4())
@@ -413,6 +328,175 @@ def add_memory(type: str, content: str, user_id: int | None, username: str | Non
     memories_collection().add(**kwargs)
     return doc_id
 
+def delete_memory(memory_id: str) -> bool:
+    """
+    Supprime un souvenir par son ID.
+    """
+    col = memories_collection()
+    col.delete(ids=[memory_id])
+    return True
+
+
+def update_memory(memory_id: str, new_content: str, username: str | None = None) -> bool:
+    """
+    Met à jour un souvenir existant.
+    """
+    col = memories_collection()
+    
+    res = col.get(ids=[memory_id], include=["metadatas"])
+    if not res["ids"] or len(res["ids"]) == 0:
+        return False
+    
+    existing_meta = res["metadatas"][0] if res["metadatas"] and len(res["metadatas"]) > 0 else {}
+    if isinstance(existing_meta, dict):
+        existing_meta["date"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        if username:
+            existing_meta["username"] = username
+    else:
+        existing_meta = {}
+    
+    col.update(
+        ids=[memory_id],
+        documents=[new_content],
+        metadatas=[existing_meta]
+    )
+    return True
+
+def get_all_memories() -> dict:
+    """
+    Recupère tous les souvenirs de la collection memories
+    """
+    col = memories_collection()
+    res = col.get(include=["documents", "metadatas"])
+    memories = []
+    for i, doc_id in enumerate(res['ids']):
+        memory = {
+            "text": res['documents'][i],
+            "id": doc_id,
+            "user_id": res['metadatas'][i]['user_id'],
+            "date": res['metadatas'][i]['date'],
+            "type": res['metadatas'][i]['type'],
+            "scope": res['metadatas'][i]['scope'],
+            "username": res['metadatas'][i]['username'],
+            
+        }
+        
+        if res['metadatas'][i].get('base_term'):
+            memory["base_term"] = res['metadatas'][i]['base_term']
+            
+        memories.append(memory)
+
+    return {'memories': memories}
+
+def get_last_memory(user_id: int | None) -> dict | None:
+    """
+    Récupère le dernier souvenir (tous types confondus) créé par l'utilisateur.
+    Retourne None si aucun souvenir.
+    """
+    col = memories_collection()
+    where = {"user_id": user_id}
+    res = col.get(where=where, include=["documents", "metadatas"])
+
+    if not res.get("ids") or len(res["ids"]) == 0:
+        return ''
+
+    ids = res["ids"]
+    docs = res["documents"]
+    metas = res["metadatas"]
+    last_index = 0
+    last_date = ""
+
+    for i, meta in enumerate(metas):
+        if isinstance(meta, dict) and "date" in meta:
+            if meta["date"] > last_date:
+                last_date = meta["date"]
+                last_index = i
+
+    return {
+        "id": ids[last_index],
+        "content": docs[last_index],
+        "metadata": metas[last_index]
+    }
+
+# ── Exemples de comportement pour l'agent superviseur ─────────────────────────────────────────────────
+
+def add_supervisor_example(user_query: str, action: str) -> str:
+    """
+    Ajoute un exemple de requête utilisateur et l'action correspondante pour l'agent supervisor.
+    """
+    meta = {
+        "action": action,
+        "type": "supervisor_example",
+        "date": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+    }
+    doc_id = str(uuid.uuid4())
+    supervisor_actions_collection().add(
+        ids=[doc_id],
+        documents=[user_query],
+        metadatas=[meta]
+    )
+    return doc_id
+
+def get_supervisor_examples(query: str, n_results: int = 5) -> List[Dict[str, Any]]:
+    """
+    Recherche des exemples de supervision similaires à une requête utilisateur.
+    Utilise un embedding avec préfixe d'instruction pour améliorer la recherche.
+    """
+    col = supervisor_actions_collection()
+    if col.count() == 0:
+        return []
+    
+    # Préfixe spécifique pour la recherche d'exemples de supervision
+    supervisor_instruction = (
+        "Représente une requête utilisateur pour déterminer l'action appropriée à entreprendre. "
+        "Analyse la sémantique, l'intention et le contexte pour identifier des exemples similaires "
+        "qui aideront à prendre la bonne décision de délégation."
+    )
+    query_embedding = get_embedding(f"{supervisor_instruction}\n{query}")
+    
+    res = col.query(
+        query_embeddings=[query_embedding],
+        n_results=n_results,
+        include=["documents", "metadatas", "distances"]
+    )
+    
+    results = []
+    ids = res.get("ids", [[ ]])[0]
+    documents = res.get("documents", [[ ]])[0]
+    metadatas = res.get("metadatas", [[ ]])[0]
+    distances = res.get("distances", [[ ]])[0]
+    
+    for i in range(len(ids)):
+        results.append({
+            "id": ids[i],
+            "user_query": documents[i],
+            "metadata": metadatas[i] if i < len(metadatas) else {},
+            "distance": distances[i] if i < len(distances) else None
+        })
+    
+    return results
+
+
+def get_all_supervisor_examples() -> List[Dict[str, Any]]:
+    """
+    Récupère tous les exemples de supervision.
+    """
+    col = supervisor_actions_collection()
+    res = col.get(include=["documents", "metadatas"])
+    
+    results = []
+    ids = res.get("ids", [])
+    documents = res.get("documents", [])
+    metadatas = res.get("metadatas", [])
+    
+    for i in range(len(ids)):
+        results.append({
+            "id": ids[i],
+            "user_query": documents[i],
+            "metadata": metadatas[i] if i < len(metadatas) else {}
+        })
+    
+    return results
 
 # ── Résumés de conversation ─────────────────────────────────────────────────
 
@@ -446,172 +530,10 @@ def search_conversation_summaries(user_id: int, query: str, k: int = 3) -> str:
         "Représente une requête pour retrouver des résumés de conversation pertinents. "
         "Inclut le contexte conversationnel, les thèmes abordés et les concepts associés."
     )
-    query_embedding = get_query_embedding(query, instruction_prefix=summary_instruction)
     
+    query_embedding = get_embedding(f"{summary_instruction}\n{query}")
     res = col.query(
         query_embeddings=[query_embedding], n_results=k, where={"user_id": user_id}, include=["documents"]
     )
     docs = res["documents"][0] if res["documents"] else []
     return "\n\n---\n\n".join(docs)
-
-
-# ── Exemples de supervision ─────────────────────────────────────────────────
-
-def add_supervisor_example(user_query: str, action: str, description: str = "") -> str:
-    """
-    Ajoute un exemple de requête utilisateur et l'action correspondante pour l'agent supervisor.
-    
-    Args:
-        user_query: La requête de l'utilisateur (sera le document)
-        action: L'action à entreprendre (ex: delegate_new_research, delegate_semantic_search)
-        description: Description optionnelle de l'exemple
-    
-    Returns:
-        L'ID du document ajouté
-    """
-    meta = {
-        "action": action,
-        "type": "supervisor_example",
-        "description": description,
-        "date": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-    }
-    doc_id = str(uuid.uuid4())
-    supervisor_actions_collection().add(
-        ids=[doc_id],
-        documents=[user_query],
-        metadatas=[meta]
-    )
-    return doc_id
-
-
-def get_supervisor_examples(query: str, n_results: int = 5) -> List[Dict[str, Any]]:
-    """
-    Recherche des exemples de supervision similaires à une requête utilisateur.
-    Utilise un embedding avec préfixe d'instruction pour améliorer la recherche.
-    """
-    col = supervisor_actions_collection()
-    if col.count() == 0:
-        return []
-    
-    # Préfixe spécifique pour la recherche d'exemples de supervision
-    supervisor_instruction = (
-        "Représente une requête utilisateur pour déterminer l'action appropriée à entreprendre. "
-        "Analyse la sémantique, l'intention et le contexte pour identifier des exemples similaires "
-        "qui aideront à prendre la bonne décision de délégation."
-    )
-    query_embedding = get_query_embedding(query, instruction_prefix=supervisor_instruction)
-    
-    res = col.query(
-        query_embeddings=[query_embedding],
-        n_results=n_results,
-        include=["documents", "metadatas", "distances"]
-    )
-    
-    results = []
-    ids = res.get("ids", [[ ]])[0]
-    documents = res.get("documents", [[ ]])[0]
-    metadatas = res.get("metadatas", [[ ]])[0]
-    distances = res.get("distances", [[ ]])[0]
-    
-    for i in range(len(ids)):
-        results.append({
-            "id": ids[i],
-            "user_query": documents[i],
-            "metadata": metadatas[i] if i < len(metadatas) else {},
-            "distance": distances[i] if i < len(distances) else None
-        })
-    
-    return results
-
-
-def get_all_supervisor_examples() -> List[Dict[str, Any]]:
-    """
-    Récupère tous les exemples de supervision.
-    
-    Returns:
-        Liste complète des exemples avec leurs métadonnées
-    """
-    col = supervisor_actions_collection()
-    res = col.get(include=["documents", "metadatas"])
-    
-    results = []
-    ids = res.get("ids", [])
-    documents = res.get("documents", [])
-    metadatas = res.get("metadatas", [])
-    
-    for i in range(len(ids)):
-        results.append({
-            "id": ids[i],
-            "user_query": documents[i],
-            "metadata": metadatas[i] if i < len(metadatas) else {}
-        })
-    
-    return results
-
-# Update / Delete memories
-
-def get_last_memory(user_id: int | None) -> dict | None:
-    """
-    Récupère le dernier souvenir (tous types confondus) créé par l'utilisateur.
-    Retourne None si aucun souvenir.
-    """
-    col = memories_collection()
-    where = {"user_id": user_id}
-    res = col.get(where=where, include=["documents", "metadatas"])
-
-    if not res.get("ids") or len(res["ids"]) == 0:
-        return ''
-
-    ids = res["ids"]
-    docs = res["documents"]
-    metas = res["metadatas"]
-    last_index = 0
-    last_date = ""
-
-    for i, meta in enumerate(metas):
-        if isinstance(meta, dict) and "date" in meta:
-            if meta["date"] > last_date:
-                last_date = meta["date"]
-                last_index = i
-
-    return {
-        "id": ids[last_index],
-        "content": docs[last_index],
-        "metadata": metas[last_index]
-    }
-
-def delete_memory(memory_id: str, user_id: int | None) -> bool:
-    """
-    Supprime un souvenir par son ID.
-    """
-    col = memories_collection()
-    col.delete(ids=[memory_id])
-    return True
-
-
-def update_memory(memory_id: str, new_content: str, user_id: int | None, username: str | None = None) -> bool:
-    """
-    Met à jour un souvenir existant.
-    """
-    col = memories_collection()
-    # Conserver les métadonnées existantes
-    res = col.get(ids=[memory_id], include=["metadatas"])
-    if not res["ids"] or len(res["ids"]) == 0:
-        return False
-    
-    existing_meta = res["metadatas"][0] if res["metadatas"] and len(res["metadatas"]) > 0 else {}
-    if isinstance(existing_meta, dict):
-        # Mettre à jour la date
-        existing_meta["date"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        # Mettre à jour username si fourni
-        if username:
-            existing_meta["username"] = username
-    else:
-        existing_meta = {}
-    
-    col.update(
-        ids=[memory_id],
-        documents=[new_content],
-        metadatas=[existing_meta]
-    )
-    return True
