@@ -15,5 +15,10 @@ class NameRequest(BaseModel):
     conversation_id: int
     
 class MemoryRequest(BaseModel):
-    id: str
-    content: str | None
+    id: str | None = None
+    content: str | None = None
+    base_term: str | None = None
+    type: str | None = None
+    scope: str | None = None
+    user_id: int | None = None
+    
