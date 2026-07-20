@@ -106,7 +106,7 @@ def supervisor_actions_collection():
 
 # ── Recherche sémantique de tickets ─────────────────────────────────────────
 
-def query_tickets(query: list[float] | str, threshold: float = 0.45, use_synonyms: bool = True) -> dict:
+def query_tickets(query: str, threshold: float = 0.45, use_synonyms: bool = True) -> dict:
     """
     Recherche des tickets sémantiquement proches de la query.
     Récupère toujours 3000 résultats puis filtre ceux avec distance <= threshold.
@@ -132,7 +132,7 @@ def query_tickets(query: list[float] | str, threshold: float = 0.45, use_synonym
             terms_used = all_terms
     
     if not all_embeddings:
-        all_embeddings = [get_embedding(f"{query_instruction}{term}")]
+        all_embeddings = [get_embedding(f"{query_instruction}{query}")]
         terms_used = [query]
     
     res = col.query(
