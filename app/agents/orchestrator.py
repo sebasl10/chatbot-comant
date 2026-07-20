@@ -22,6 +22,7 @@ from app.agents.supervisor import supervisor_agent
 from app.services.events import STREAM_START
 from app.services.database import update_intention
 from app.agents.prompts.agent_supervisor import build_user_prompt_with_few_shot
+from app.agents.util.output_guard import looks_like_leaked_tool_call
 
 
 async def _emit_events(deps: ChatDeps) -> str:
@@ -85,6 +86,12 @@ async def run_chat_stream(message: str, deps: ChatDeps) -> AsyncIterator[str]:
         yield STREAM_START
         
         output = result.output
+        if looks_like_leaked_tool_call(output):
+            print(f"[GUARD] Sortie ressemblant à un appel d'outil non exécuté, filtrée : {output!r}")
+            output = (
+                "Désolé, une erreur technique est survenue pendant le traitement de votre "
+                "demande. Pouvez-vous reformuler votre message ?"
+            )
         for chunk in output.split(" "):
             yield chunk + " "
             await asyncio.sleep(0.05)
