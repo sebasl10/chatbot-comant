@@ -5,15 +5,13 @@ Certains modèles locaux (ex. Ministral servi via Ollama) émettent parfois leur
 appel d'outil natif directement dans le texte de réponse au lieu de passer par
 le mécanisme structuré de tool-calling de l'API OpenAI-compatible, par ex. :
 
-    semantic_ticket_search[ARGS]{"query": "..."}
+semantic_ticket_search[ARGS]{"query": "..."}
 
-Ce texte ne doit jamais être affiché à l'utilisateur. On force d'abord le
-modèle à corriger le tir via ``ModelRetry`` (invisible pour l'utilisateur),
-et l'orchestrateur applique en plus un filet de sécurité final avant de
-streamer la réponse (voir ``orchestrator.py``).
+Ce texte ne doit jamais être affiché à l'utilisateur. On force le
+modèle à corriger le tir via ``ModelRetry``.
 """
-import re
 
+import re
 from pydantic_ai import Agent, ModelRetry
 
 _LEAK_PATTERNS = [
