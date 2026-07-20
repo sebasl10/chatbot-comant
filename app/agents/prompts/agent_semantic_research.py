@@ -41,22 +41,21 @@ AGENT_SEMANTIC_RESEARCH_PROMPT = """
     1. Extrais le sujet de recherche du message (quelques mots-clés). Ne modifie jamais le texte, ne change pas les minuscules et majuscules.
     - Ex: "Cherche les tickets qui parlent d'annotations 3d" => "annotations 3d"
     
-    2. Appelle `semantic_ticket_search(query=<sujet>)` pour obtenir les `ticket_ids` le nombre de résultats obtenus (`count`) et tout le vocabulaire utilisé (`synonyms`).
+    2. Appelle `semantic_ticket_search(query=<sujet>)` pour obtenir la requête SQL (`sql_query`), le nombre de résultats (`count`) et le vocabulaire utilisé (`synonyms`).
+    La requête SQL est déjà construite au format : `SELECT t.id, t.summary, t.description FROM ticket t WHERE t.id IN (<ids>)`.
+    Si sql_query contient `WHERE t.id IN ()`, dit à l'utilisateur qu'aucun ticket correspond à la recherche.
     
-    3. Ensuite, construis la requête : `SELECT t.id, t.summary, t.description FROM ticket t WHERE t.id IN (<ids>)`. Tu dois TOUJOURS respecter ce format de requête.
-    Si ticket_ids est une liste vide ([]), dit à l'utilisateur qu'aucun ticket correspond à la recherche.
-    
-    4. Appelle `get_memory(type="exclude_ticket")`. 
+    3. Appelle `get_memory(type="exclude_ticket")`. 
     Ce tool va retourner une liste de codes de tickets que tu dois exclure de la recherche.
-    Si des codes de tickets doivent être exclus, ajoute ` AND t.code NOT IN ('CODE1', 'CODE2')` à la requête.
+    Si des codes de tickets doivent être exclus, ajoute ` AND t.code NOT IN ('CODE1', 'CODE2')` à la requête SQL reçue.
     Si la liste est vide ou s'il n'y a pas de codes à exclure, n'ajoute pas cette condition.
     
-    5. Appelle OBLIGATOIREMENT `run_sql` avec la requête finale.
+    4. Appelle OBLIGATOIREMENT `run_sql` avec la requête finale.
     
-    6. Si `run_sql` renvoie `{"ok": false, "error": ...}`, CORRIGE ta requête à
+    5. Si `run_sql` renvoie `{"ok": false, "error": ...}`, CORRIGE ta requête à
     partir du message d'erreur et rappelle `run_sql` (2 corrections maximum).
     
-    7. FORMAT DE SORTIE (A RESPECTER OBLIGATOIREMENT)
+    6. FORMAT DE SORTIE (A RESPECTER OBLIGATOIREMENT)
     Réponds en une phrase en français avec le nombre de tickets trouvés (champ count de la réponse du tool semantic_ticket_search), 
     un saut de ligne et un récapitulatif des termes inclus dans la recherche sémantique (champ synonyms de la réponse du tool semantic_ticket_search).
     Ne rajoute pas de termes ou de synonymes que tu n'as pas utilisés, ni des informations des tickets trouvés.
@@ -64,7 +63,7 @@ AGENT_SEMANTIC_RESEARCH_PROMPT = """
     Vérifie que le nombre de résultats que tu ajoutes dans le message correspond au nombre de ids de la requête SQL finale
     
     REGLES :
-    - Avant de retourner ta réponse final pour une recherche de tickets, vérifie que tu as exécuté chaque étape du workflow précédent (notamment la construction et 
-    l'exécution de la requête SQL). En plus, tu dois toujours vérifier que t.id est inclu dans le SELECT de la requête SQL.
+    - Avant de retourner ta réponse final pour une recherche de tickets, vérifie que tu as exécuté chaque étape du workflow précédent (notamment la réception de la requête SQL et 
+    son exécution avec run_sql). En plus, tu dois toujours vérifier que t.id est inclu dans le SELECT de la requête SQL.
     - Tu ne dois pas retourner des informations sur les tickets, vérifie que tu respectes le format de sortie.
 """

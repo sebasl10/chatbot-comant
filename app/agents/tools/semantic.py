@@ -10,14 +10,14 @@ from app.services import vectorstore as vs
 async def semantic_ticket_search(ctx: RunContext[ChatDeps], query: str) -> dict:
     """
     Recherche des tickets sémantiquement proches de `query` (sujet/thème).
-    Renvoie les `ticket_id` triés par pertinence décroissante ainsi que les synonymes utilisés.
+    Renvoie la requête SQL construite, les synonymes utilisés et le count.
     
     Args:
         query: Message exact envoyé par l'utilisateur, sans modification, sans reformulation, sans ajout de texte
     
     Returns:
         dict avec les clés:
-        - ticket_ids: liste des IDs de tickets trouvés
+        - sql_query: requête SQL au format SELECT t.id, t.summary, t.description FROM ticket t WHERE t.id IN (<ids>)
         - synonyms: liste de tous les termes utilisés (query + synonymes)
         - count: nombre de tickets trouvés
     """
@@ -27,7 +27,18 @@ async def semantic_ticket_search(ctx: RunContext[ChatDeps], query: str) -> dict:
     result = await asyncio.to_thread(vs.query_tickets, query)
     print(f"[RESULTS] Ticket IDs trouvés: {result['ticket_ids']}")
     
-    return result
+    ticket_ids = result['ticket_ids']
+    if ticket_ids:
+        ids_str = ", ".join(str(tid) for tid in ticket_ids)
+        sql_query = f"SELECT t.id, t.summary, t.description FROM ticket t WHERE t.id IN ({ids_str})"
+    else:
+        sql_query = "SELECT t.id, t.summary, t.description FROM ticket t WHERE t.id IN ()"
+    
+    return {
+        "sql_query": sql_query,
+        "synonyms": result["synonyms"],
+        "count": result["count"]
+    }
 
 
 async def get_vocabulary_for_term(ctx: RunContext[ChatDeps], term: str) -> dict:
