@@ -17,6 +17,7 @@ from app.agents.tools.research import persist_new_research, persist_affinage
 from app.services.database import get_sql, rename_research as db_rename_research, delete_research as db_delete_research
 from app.agents.prompts.agent_supervisor import AGENT_SUPERVISOR_PROMPT
 from app.agents.util.history_utils import _history_context
+from app.agents.util.output_guard import guard_against_tool_call_leak
 
 async def delegate_conversation(ctx: RunContext[ChatDeps], user_message: str) -> str:
     """
@@ -72,11 +73,13 @@ async def delegate_correction(ctx: RunContext[ChatDeps], message: str) -> str:
     return result.output
 
 supervisor_agent = Agent(
-    get_agent_model(), 
-    deps_type=ChatDeps, 
+    get_agent_model(),
+    deps_type=ChatDeps,
     system_prompt=AGENT_SUPERVISOR_PROMPT,
-    output_type=[str, delegate_conversation, delegate_new_research, delegate_semantic_search, delegate_correction]
+    output_type=[str, delegate_conversation, delegate_new_research, delegate_semantic_search, delegate_correction],
+    retries=2,
 )
+guard_against_tool_call_leak(supervisor_agent)
 
 @supervisor_agent.tool
 async def delegate_refine_search(ctx: RunContext[ChatDeps], request: str) -> str:

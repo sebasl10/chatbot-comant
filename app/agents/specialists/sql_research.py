@@ -23,15 +23,17 @@ from app.prompts.recherche import build_recherche_prompt
 from app.prompts.affinage import build_affinage_prompt
 from app.services.database import get_db_schema
 from app.agents.prompts.agent_sql_search import SQL_AGENT_TOOLS_PROMPT
+from app.agents.util.output_guard import guard_against_tool_call_leak
 
 
 sql_research_agent = Agent(
-    get_agent_model(), 
-    deps_type=ChatDeps, 
+    get_agent_model(),
+    deps_type=ChatDeps,
     retries=2
 )
 sql_research_agent.tool(validate_entities)
 sql_research_agent.tool(run_sql)
+guard_against_tool_call_leak(sql_research_agent)
 
 
 @sql_research_agent.system_prompt
