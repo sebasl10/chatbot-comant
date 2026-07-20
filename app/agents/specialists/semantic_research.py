@@ -1,28 +1,51 @@
 """
 SemanticResearchAgent — recherche par thème/sujet (sémantique).
 
-Séquence d'outils typique :
-    semantic_ticket_search(sujet) → ids (utilise automatiquement les synonymes expand_vocabulary)
-    → construire "SELECT ... WHERE t.id IN (ids)"
-    → (optionnel) exclure les tickets mémorisés (get_memory 'exclude_ticket')
-    → run_sql
-    
-    Pour les questions de vocabulaire :
-    get_vocabulary_for_term(terme) → liste des synonymes
+Deux capabilities chargées à la demande (load_capability) selon l'intention détectée
+par le prompt de base, pour éviter de mélanger vocabulaire et recherche de tickets
+dans le même contexte :
+
+    - "vocabulary"    : get_vocabulary_for_term / remove_term_from_vocabulary.
+    - "ticket_search" : semantic_ticket_search(sujet) → sql_query déjà construite → run_sql.
 """
 from pydantic_ai import Agent
+from pydantic_ai.capabilities import Capability
 from app.agents.deps import ChatDeps
 from app.agents.model import get_agent_model
 from app.agents.tools.db import run_sql
-from app.agents.tools.memory import get_memory
 from app.agents.tools.semantic import semantic_ticket_search, get_vocabulary_for_term, remove_term_from_vocabulary
-from app.agents.prompts.agent_semantic_research import AGENT_SEMANTIC_RESEARCH_PROMPT
+from app.agents.prompts.agent_semantic_research import (
+    BASE_SEMANTIC_RESEARCH_PROMPT,
+    VOCABULARY_CAPABILITY_DESCRIPTION,
+    VOCABULARY_CAPABILITY_INSTRUCTIONS,
+    TICKET_SEARCH_CAPABILITY_DESCRIPTION,
+    TICKET_SEARCH_CAPABILITY_INSTRUCTIONS,
+)
 from app.agents.util.output_guard import guard_against_tool_call_leak
 
-semantic_research_agent = Agent(get_agent_model(), deps_type=ChatDeps, retries=2, system_prompt=AGENT_SEMANTIC_RESEARCH_PROMPT)
-semantic_research_agent.tool(semantic_ticket_search)
-semantic_research_agent.tool(get_vocabulary_for_term)
-semantic_research_agent.tool(remove_term_from_vocabulary)
-semantic_research_agent.tool(get_memory)
-semantic_research_agent.tool(run_sql)
+vocabulary_capability = Capability(
+    id="vocabulary",
+    description=VOCABULARY_CAPABILITY_DESCRIPTION,
+    instructions=VOCABULARY_CAPABILITY_INSTRUCTIONS,
+    defer_loading=True,
+)
+vocabulary_capability.tool(get_vocabulary_for_term)
+vocabulary_capability.tool(remove_term_from_vocabulary)
+
+ticket_search_capability = Capability(
+    id="ticket_search",
+    description=TICKET_SEARCH_CAPABILITY_DESCRIPTION,
+    instructions=TICKET_SEARCH_CAPABILITY_INSTRUCTIONS,
+    defer_loading=True,
+)
+ticket_search_capability.tool(semantic_ticket_search)
+ticket_search_capability.tool(run_sql)
+
+semantic_research_agent = Agent(
+    get_agent_model(),
+    deps_type=ChatDeps,
+    retries=2,
+    system_prompt=BASE_SEMANTIC_RESEARCH_PROMPT,
+    capabilities=[vocabulary_capability, ticket_search_capability],
+)
 guard_against_tool_call_leak(semantic_research_agent)
