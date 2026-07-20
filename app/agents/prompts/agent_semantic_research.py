@@ -70,11 +70,12 @@ TICKET_SEARCH_CAPABILITY_INSTRUCTIONS = """
     4. Si `run_sql` renvoie `{"ok": false, "error": ...}`, CORRIGE la requête SQL à partir du message d'erreur et rappelle `run_sql` (2 corrections maximum).
 
     5. FORMAT DE SORTIE (A RESPECTER OBLIGATOIREMENT)
-    Réponds en une phrase en français avec le nombre de tickets trouvés (champ count de la réponse du tool semantic_ticket_search),
+    Réponds en une phrase en français avec le nombre de tickets trouvés (champ count de la réponse du tool run_sql),
     un saut de ligne et un récapitulatif des termes inclus dans la recherche sémantique (champ synonyms de la réponse du tool semantic_ticket_search).
+    Tu dois également indiquer que les résultats sont triés par ordre décroissant de similarité.
     Ne rajoute pas de termes ou de synonymes que tu n'as pas utilisés, ni des informations des tickets trouvés.
     N'invente pas des informations dans le message que tu retourneras.
-    Vérifie que le nombre de résultats que tu ajoutes dans le message correspond au nombre de ids de la requête SQL finale
+    Vérifie que le nombre de résultats que tu ajoutes dans le message correspond au nombre de ids de la requête SQL finale.
 
     REGLES :
     - Avant de retourner ta réponse final pour une recherche de tickets, vérifie que tu as exécuté chaque étape du workflow précédent (notamment la réception de la requête SQL et

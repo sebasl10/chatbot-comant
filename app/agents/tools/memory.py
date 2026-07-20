@@ -76,15 +76,11 @@ async def save_memory(ctx: RunContext[ChatDeps], type: str, content: str, base_t
         # Convertir content en liste de synonymes
         synonyms = [s.strip() for s in content.split(",") if s.strip()]
         print(f"[SAVE MEMORY] expand_vocabulary - base_term: '{base_term}', synonyms: {synonyms}")
-        await asyncio.to_thread(
-            vs.add_synonyms, base_term, synonyms, ctx.deps.user_id, ctx.deps.username
-        )
+        await asyncio.to_thread(vs.add_synonyms, base_term, synonyms, ctx.deps.user_id, ctx.deps.username)
         ctx.deps.events.correction(type=type, memory=f"{base_term}: {content}")
     else:
         print(f"[SAVE MEMORY] type: {type}, content: {content}")
-        await asyncio.to_thread(
-            vs.add_memory, type, content, ctx.deps.user_id, ctx.deps.username
-        )
+        await asyncio.to_thread(vs.add_memory, type, content, ctx.deps.user_id, ctx.deps.username)
         ctx.deps.events.correction(type=type, memory=content)
     
     return {"ok": True, "type": type}
