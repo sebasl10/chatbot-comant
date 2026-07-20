@@ -45,17 +45,11 @@ AGENT_SEMANTIC_RESEARCH_PROMPT = """
     La requête SQL est déjà construite au format : `SELECT t.id, t.summary, t.description FROM ticket t WHERE t.id IN (<ids>)`.
     Si sql_query contient `WHERE t.id IN ()`, dit à l'utilisateur qu'aucun ticket correspond à la recherche.
     
-    3. Appelle `get_memory(type="exclude_ticket")`. 
-    Ce tool va retourner une liste de codes de tickets que tu dois exclure de la recherche.
-    Si des codes de tickets doivent être exclus, ajoute ` AND t.code NOT IN ('CODE1', 'CODE2')` à la requête SQL reçue.
-    Si la liste est vide ou s'il n'y a pas de codes à exclure, n'ajoute pas cette condition.
+    3. Appelle OBLIGATOIREMENT `run_sql` avec la requête SQL reçue.
     
-    4. Appelle OBLIGATOIREMENT `run_sql` avec la requête finale.
+    4. Si `run_sql` renvoie `{"ok": false, "error": ...}`, CORRIGE la requête SQL à partir du message d'erreur et rappelle `run_sql` (2 corrections maximum).
     
-    5. Si `run_sql` renvoie `{"ok": false, "error": ...}`, CORRIGE ta requête à
-    partir du message d'erreur et rappelle `run_sql` (2 corrections maximum).
-    
-    6. FORMAT DE SORTIE (A RESPECTER OBLIGATOIREMENT)
+    5. FORMAT DE SORTIE (A RESPECTER OBLIGATOIREMENT)
     Réponds en une phrase en français avec le nombre de tickets trouvés (champ count de la réponse du tool semantic_ticket_search), 
     un saut de ligne et un récapitulatif des termes inclus dans la recherche sémantique (champ synonyms de la réponse du tool semantic_ticket_search).
     Ne rajoute pas de termes ou de synonymes que tu n'as pas utilisés, ni des informations des tickets trouvés.

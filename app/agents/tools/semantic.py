@@ -25,14 +25,14 @@ async def semantic_ticket_search(ctx: RunContext[ChatDeps], query: str) -> dict:
     print(f"Query: {query}")
     
     result = await asyncio.to_thread(vs.query_tickets, query)
-    print(f"[RESULTS] Ticket IDs trouvés: {result['ticket_ids']}")
-    
     ticket_ids = result['ticket_ids']
     if ticket_ids:
         ids_str = ", ".join(str(tid) for tid in ticket_ids)
         sql_query = f"SELECT t.id, t.summary, t.description FROM ticket t WHERE t.id IN ({ids_str})"
     else:
         sql_query = "SELECT t.id, t.summary, t.description FROM ticket t WHERE t.id IN ()"
+        
+    print(f"[SQL RESULT] {sql_query}")
     
     return {
         "sql_query": sql_query,
