@@ -20,4 +20,7 @@ class MemoryRequest(BaseModel):
     type: str | None = None
     scope: str | None = None
     user_id: int | None = None
+
+class EmbeddingRequest(BaseModel):
+    ticket_id: int
     
