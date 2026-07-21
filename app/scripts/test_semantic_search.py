@@ -8,21 +8,15 @@ Définis ta query dans la fonction main() ci-dessous.
 import sys
 sys.path.insert(0, '.')
 
-from app.services.vectorstore import tickets_collection, TICKETS, get_query_embedding
+from app.services.vectorstore import tickets_collection, TICKETS, get_embedding
 
 def main():
     # ── CONFIGURATION ────────────────────────────────────────────────────────
     query = "cinématique"  # ← MODIFIE TA QUERY ICI
     collection_name = TICKETS 
-    n_results = 10
-    threshold= 0.43
-    query_instruction = (
-        "Trouve les tickets pertinents pour une demande donnée en identifiant ceux qui mentionnent, décrivent ou traitent du sujet spécifié. "
-        "Inclus les tickets qui contiennent des termes directement liés ou des concepts sémantiquement proches."
-        "Donne la priorité aux tickets qui contiennent exactement le sujet."
-        "Cherche les tickets qui parlent de: "
-    )
-    query_embedding = get_query_embedding(f"{query_instruction}{query}")
+    threshold= 0.55
+    query_instruction = "Given a technical term or topic, retrieve customer support tickets that mention or relate to it, even briefly."
+    query_embedding = get_embedding(f"Instruct: {query_instruction}\nQuery: {query}")
     
     # ── EXÉCUTION ────────────────────────────────────────────────────────────
     collection = tickets_collection()
@@ -35,7 +29,7 @@ def main():
     # Recherche sémantique
     results = collection.query(
         query_embeddings=[query_embedding],
-        n_results=5000,
+        n_results=3000,
         include=["documents", "metadatas", "distances"]
     )
     
@@ -55,7 +49,7 @@ def main():
     for i, (id, doc, meta, dist) in enumerate(filtered_results):
         print(f"\n[{i+1}] Distance: {dist:.4f}")
         print(f"   ID: {id}")
-        print(f"   Contenu: {doc[:200]}..." if len(doc) > 200 else f"   Contenu: {doc}")
+        #print(f"   Contenu: {doc[:200]}..." if len(doc) > 200 else f"   Contenu: {doc}")
 
 
 if __name__ == "__main__":

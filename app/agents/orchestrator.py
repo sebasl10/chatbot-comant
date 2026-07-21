@@ -30,11 +30,9 @@ async def _emit_events(deps: ChatDeps) -> str:
     Draine les événements, persiste l'intention choisie (compat legacy) et
     renvoie leur sérialisation JSON (une ligne par événement).
     
-    Les événements d'intention qui ont été envoyés comme early events ne sont PAS inclus
-    dans le retour, car ils sont déjà envoyés au front.
+    Tous les événements (y compris les intentions envoyées comme early events) sont inclus
+    dans le retour pour être envoyés à la FNI.
     """
-    # Sauvegarder les early intentions AVANT de drainer (car drain() vide le set)
-    early_intentions = set(deps.events._early_emitted_intentions)
     events = deps.events.drain()
     for e in events:
         if e["event"] == "intention" and deps.last_message_id:
@@ -42,12 +40,7 @@ async def _emit_events(deps: ChatDeps) -> str:
                 await asyncio.to_thread(update_intention, deps.last_message_id, e["intention"])
             except Exception:
                 pass 
-    # Filtrer les intentions qui ont été envoyées comme early events
-    filtered_events = [
-        e for e in events 
-        if not (e["event"] == "intention" and e["intention"] in early_intentions)
-    ]
-    return "".join(json.dumps(e, ensure_ascii=False) + "\n" for e in filtered_events)
+    return "".join(json.dumps(e, ensure_ascii=False) + "\n" for e in events)
 
 
 async def run_chat_stream(message: str, deps: ChatDeps) -> AsyncIterator[str]:

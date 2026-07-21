@@ -30,7 +30,6 @@ DEFAULT_HNSW_CONFIG = {
     "ef_construction": 1000,
     "ef_search": 1000
 }
-DEFAULT_THRESHOLD = 0.5
 
 class OllamaEmbeddingFunction(EmbeddingFunction):
     """
@@ -106,33 +105,37 @@ def supervisor_actions_collection():
 
 # ── Recherche sémantique de tickets ─────────────────────────────────────────
 
-def query_tickets(query: list[float] | str, threshold: float = 0.45, use_synonyms: bool = True) -> dict:
+def query_tickets(query: list[float] | str, threshold: float = 0.55, use_synonyms: bool = True) -> dict:
     """
     Recherche des tickets sémantiquement proches de la query.
     Récupère toujours 3000 résultats puis filtre ceux avec distance <= threshold.
     """
     col = tickets_collection()
     
-    query_instruction = (
+    """ query_instruction = (
         "Trouve les tickets pertinents pour une demande donnée en identifiant ceux qui mentionnent, décrivent ou traitent du sujet spécifié. "
         "Inclus les tickets qui contiennent des termes directement liés ou des concepts sémantiquement proches."
         "Donne la priorité aux tickets qui contiennent exactement le sujet."
-        "Cherche les tickets qui parlent de: "
-    )
+    ) """
+    #query_instruction = "Given a search query, retrieve support tickets that discuss the specified topic or technical concept."
+    query_instruction = "Given a technical term or topic, retrieve customer support tickets that mention or relate to it, even briefly."
     
     all_embeddings = []
     terms_used = []
+    
     
     if use_synonyms:
         synonyms = get_vocabulary_for_term(query)["synonyms"]
         if synonyms:
             all_terms = [query] + synonyms
             for term in all_terms:
-                all_embeddings.append(get_embedding(f"{query_instruction}{term}"))
+                # all_embeddings.append(get_embedding(f"Instruct: {query_instruction}\nQuery: Cherche les tickets qui parlent de {term}"))
+                all_embeddings.append(get_embedding(f"Instruct: {query_instruction}\nQuery: {term}"))
             terms_used = all_terms
     
     if not all_embeddings:
-        all_embeddings = [get_embedding(f"{query_instruction}{query}")]
+        #all_embeddings = [get_embedding(f"Instruct: {query_instruction}\nQuery: Cherche les tickets qui parlent de {query}")]
+        all_embeddings = [get_embedding(f"Instruct: {query_instruction}\nQuery: {query}")]
         terms_used = [query]
     
     res = col.query(
@@ -216,7 +219,6 @@ def add_synonyms(base_term: str, synonyms: List[str], user_id: int | None = None
         type="expand_vocabulary",
         content=content,
         user_id=user_id,
-        username=username,
         base_term=base_term
     )
 
@@ -288,7 +290,7 @@ def get_memories_text(type: str, user_id: int | None, query: str | None = None, 
             "Représente une question ou un contexte pour retrouver des souvenirs ou corrections pertinents. "
             "Inclut les synonymes, concepts liés et variations sémantiques."
         )
-        query_embedding = get_embedding(f"{memory_instruction}\n{query}")
+        query_embedding = get_embedding(f"Instruct: {memory_instruction}\nQuery: {query}")
         res = col.query(query_embeddings=[query_embedding], n_results=k, where=where, include=["documents"])
         docs = res["documents"][0] if res["documents"] else []
     else:
@@ -452,7 +454,7 @@ def get_supervisor_examples(query: str, n_results: int = 5) -> List[Dict[str, An
         "Analyse la sémantique, l'intention et le contexte pour identifier des exemples similaires "
         "qui aideront à prendre la bonne décision de délégation."
     )
-    query_embedding = get_embedding(f"{supervisor_instruction}\n{query}")
+    query_embedding = get_embedding(f"Instruct: {supervisor_instruction}\nQuery: {query}")
     
     res = col.query(
         query_embeddings=[query_embedding],
@@ -531,7 +533,7 @@ def search_conversation_summaries(user_id: int, query: str, k: int = 3) -> str:
         "Inclut le contexte conversationnel, les thèmes abordés et les concepts associés."
     )
     
-    query_embedding = get_embedding(f"{summary_instruction}\n{query}")
+    query_embedding = get_embedding(f"Instruct: {summary_instruction}\nQuery: {query}")
     res = col.query(
         query_embeddings=[query_embedding], n_results=k, where={"user_id": user_id}, include=["documents"]
     )

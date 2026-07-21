@@ -209,18 +209,19 @@ def get_sql(research_id: int) -> str:
             conn.close()
 
 def rename_research(research_id: int, name: str, user_id: int | None = None) -> None:
-    """Renomme une recherche (équivaut à « sauvegarder »). Si ``user_id`` est
-    fourni, la mise à jour est restreinte au créateur (sécurité)."""
+    """
+    Renomme une recherche (équivaut à « sauvegarder »).
+    """
     conn = get_connection()
     try:
         with conn.cursor() as cursor:
             if user_id is not None:
                 cursor.execute(
-                    "UPDATE research SET name = %s WHERE id = %s AND creator_id = %s",
-                    (name, research_id, user_id),
+                    "UPDATE research SET name = %s, saved = %s WHERE id = %s AND creator_id = %s",
+                    (name, True, research_id, user_id),
                 )
             else:
-                cursor.execute("UPDATE research SET name = %s WHERE id = %s", (name, research_id))
+                cursor.execute("UPDATE research SET name = %s, saved = %s WHERE id = %s", (name, True, research_id))
             conn.commit()
     except Exception as e:
         conn.rollback()

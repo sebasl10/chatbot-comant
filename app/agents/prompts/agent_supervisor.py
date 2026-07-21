@@ -68,14 +68,15 @@ def build_user_prompt_with_few_shot(user_message: str) -> str:
     """
     Construit le message utilisateur enrichi avec des exemples few-shot.
     """
+    return f"Message de l'utilisateur : {user_message}"
+
     few_shot_examples = _get_few_shot_examples(user_message)
     
     if few_shot_examples:
-        return f"""Message de l'utilisateur : {user_message}
-
-    Exemples de requêtes similaires déjà traitées pour t'aider à décider :
-    {few_shot_examples}
-
-    Quelle action dois-tu entreprendre pour la requête : {user_message} ?"""
+        return f"""
+            Message de l'utilisateur : {user_message}
+            Exemples de requêtes similaires déjà traitées pour t'aider à décider :
+            {few_shot_examples}
+            Quelle action dois-tu entreprendre pour la requête : {user_message} ?"""
     else:
         return f"Message de l'utilisateur : {user_message}"

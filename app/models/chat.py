@@ -7,7 +7,6 @@ class ChatRequest(BaseModel):
     user_id: int
     historique: list[dict] = []
     last_message_id: int
-    intention: str
     research_id: int
 
 class NameRequest(BaseModel):
