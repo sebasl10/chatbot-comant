@@ -57,8 +57,11 @@ class EventSink:
         self._early_emitted_intentions.add(intention)
         self.emit_early("intention", intention=intention)
 
-    def research(self, research_id, sql: str) -> None:
-        self.emit("research", research_id=research_id, sql=sql)
+    def research(self, research_id, sql: str, intention: Optional[str] = None) -> None:
+        data = {"research_id": research_id, "sql": sql}
+        if intention:
+            data["intention"] = intention
+        self.emit("research", **data)
 
     def action(self, name: str, **data) -> None:
         self.emit("action", intention=name, **data)

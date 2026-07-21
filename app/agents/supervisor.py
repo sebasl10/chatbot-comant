@@ -44,7 +44,7 @@ async def delegate_new_research(ctx: RunContext[ChatDeps], request: str) -> str:
     ctx.deps.mode = "recherche"
     result = await sql_research_agent.run(request, deps=ctx.deps, usage=ctx.usage)
     if ctx.deps.last_sql:
-        await persist_new_research(ctx.deps, False)
+        await persist_new_research(ctx.deps, False, intention="recherche")
     return result.output
 
 async def delegate_semantic_search(ctx: RunContext[ChatDeps], request: str) -> str:
@@ -55,11 +55,11 @@ async def delegate_semantic_search(ctx: RunContext[ChatDeps], request: str) -> s
     """
     print("[DELEGATE] Semantic research agent")   
     print(f"Message: {request}")
-    ctx.deps.events.early_intention("recherche_semantique")
+    ctx.deps.events.early_intention("recherche")
     ctx.deps.mode = "recherche"
     result = await semantic_research_agent.run(request, deps=ctx.deps, usage=ctx.usage)
     if ctx.deps.last_sql:
-        await persist_new_research(ctx.deps, True)
+        await persist_new_research(ctx.deps, True, intention="recherche")
     return result.output
 
 async def delegate_correction(ctx: RunContext[ChatDeps], message: str) -> str:
@@ -97,7 +97,7 @@ async def delegate_refine_search(ctx: RunContext[ChatDeps], request: str) -> str
     prompt = f"Requête SQL précédente : {ctx.deps.previous_sql}\nDemande d'affinage : {request}"
     result = await sql_research_agent.run(prompt, deps=ctx.deps, usage=ctx.usage)
     if ctx.deps.last_sql:
-        await persist_affinage(ctx.deps)
+        await persist_affinage(ctx.deps, intention="affinage")
     return result.output
 
 @supervisor_agent.tool

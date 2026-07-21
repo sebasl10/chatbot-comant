@@ -17,7 +17,7 @@ SQL_AGENT_TOOLS_PROMPT = """
     partir du message d'erreur et rappelle `run_sql` (2 corrections maximum).
     4. Quand `run_sql` réussit:
     - Réponds en une phrase en français, en indiquant le nombre de résultats trouvés pour la recherche et en rappellant les filtres appliqués
-    - Après une balise <br/> pour sauter une ligne, ajoute une seule phrase d'aide : *"Tu peux me demander de sauvegarder, supprimer, affiner cette recherche ou corriger mon comportement."*
+    - Après une balise <br/> pour sauter une ligne, ajoute une seule phrase d'aide : *"Tu peux me demander de sauvegarder la recherche, l'affiner ou corriger mon comportement."*
     - Interdictions absolues :
         - ❌ N'inclus jamais la requête SQL dans la réponse.
         - ❌ N'inclus jamais des exemples de tickets trouvés.
