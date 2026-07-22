@@ -19,7 +19,8 @@ from chromadb.api.types import Documents, EmbeddingFunction, Embeddings
 import uuid
 from datetime import datetime
 from app.config import settings
-from app.services.database import get_username
+from app.services.database import get_username, get_connection
+from bs4 import BeautifulSoup
 
 TICKETS = "tickets"
 MEMORIES = "memories"
@@ -102,6 +103,86 @@ def summaries_collection():
 def supervisor_actions_collection():
     return _collection(SUPERVISOR_ACTIONS)
 
+# ── Ajouter/mettre à jouter l'embedding d'un ticket dans Chroma ────────────
+
+def add_ticket_to_chroma(ticket_id: int) -> bool:
+    """
+    Ajoute ou met à jour un ticket dans la collection Chroma 'tickets'.
+    Récupère le ticket et ses commentaires depuis la base de données,
+    construit le texte complet, calcule l'embedding et l'ajoute à Chroma.
+    """
+    conn = get_connection()
+    try:
+        cursor = conn.cursor()
+        
+        cursor.execute("SELECT id, summary, description FROM ticket WHERE id = %s", (ticket_id,))
+        ticket = cursor.fetchone()
+        
+        if not ticket:
+            print(f"Ticket {ticket_id} non trouvé")
+            return False
+        
+        comments_cursor = conn.cursor()
+        comments_cursor.execute("SELECT text FROM comment WHERE ticket_id = %s", (ticket_id,))
+        comments = comments_cursor.fetchall()
+        
+        def remove_html_tags(text):
+            if text is None:
+                return ""
+            soup = BeautifulSoup(text, "html.parser")
+            return soup.get_text(separator=" ", strip=True)
+        
+        text_parts = []
+        if ticket['summary']:
+            text_parts.append(remove_html_tags(ticket['summary']))
+        if ticket['description']:
+            text_parts.append(remove_html_tags(ticket['description']))
+        for comment in comments:
+            text_parts.append(remove_html_tags(comment['text']))
+        
+        full_text = "\n".join(text_parts)
+        
+        if not full_text.strip():
+            print(f"Ticket {ticket_id} : texte vide, ignoré")
+            return False
+        
+        col = tickets_collection()
+        ticket_id_str = str(ticket_id)
+        
+        # Vérifier si le ticket existe déjà dans Chroma via la métadonnée ticket_id
+        existing = col.get(where={"ticket_id": ticket_id}, include=["documents", "metadatas"])
+        
+        if existing.get("ids") and len(existing["ids"]) > 0:
+            # Le ticket existe déjà, le mettre à jour
+            existing_id = existing["ids"][0]
+            col.update(
+                ids=[existing_id],
+                documents=[full_text],
+                metadatas=[{"ticket_id": ticket_id, "source": "api_add"}]
+            )
+            print(f"Ticket {ticket_id} mis à jour dans Chroma")
+        else:
+            # Le ticket n'existe pas, l'ajouter
+            col.add(
+                ids=[ticket_id_str],
+                documents=[full_text],
+                metadatas=[{"ticket_id": ticket_id, "source": "api_add"}]
+            )
+            print(f"Ticket {ticket_id} ajouté à Chroma")
+        
+        print(f"[INFO] {full_text}")
+        return True
+        
+    except Exception as e:
+        print(f"Erreur lors de l'ajout du ticket {ticket_id}: {e}")
+        import traceback
+        traceback.print_exc()
+        return False
+    finally:
+        cursor.close()
+        if 'comments_cursor' in locals():
+            comments_cursor.close()
+        conn.close()
 
 # ── Recherche sémantique de tickets ─────────────────────────────────────────
 
