@@ -2,7 +2,6 @@
 Tool de recherche sémantique de tickets (backed Chroma).
 """
 
-import asyncio
 from pydantic_ai import RunContext
 from app.agents.deps import ChatDeps
 from app.services import vectorstore as vs
@@ -24,7 +23,7 @@ async def semantic_ticket_search(ctx: RunContext[ChatDeps], query: str) -> dict:
     print("[TOOL CALL] semantic_ticket_search")
     print(f"Query: {query}")
     
-    result = await asyncio.to_thread(vs.query_tickets, query)
+    result = await vs.query_tickets(query)
     ticket_ids = result['ticket_ids']
     if ticket_ids:
         ids_str = ", ".join(str(tid) for tid in ticket_ids)
@@ -63,7 +62,7 @@ async def get_vocabulary_for_term(ctx: RunContext[ChatDeps], term: str) -> dict:
     print("[TOOL CALL] get_vocabulary_for_term")
     print(f"Term: {term}")
     
-    result = await asyncio.to_thread(vs.get_vocabulary_for_term, term)
+    result = await vs.get_vocabulary_for_term(term)
     print(f"[RESULTS] Vocabulaire pour '{term}': {result}")
     
     return result
@@ -90,7 +89,7 @@ async def remove_term_from_vocabulary(ctx: RunContext[ChatDeps], term: str, base
     print("[TOOL CALL] remove_term_from_vocabulary")
     print(f"Term to remove: {term}, Base term: {base_term}")
     
-    result = await asyncio.to_thread(vs.remove_term_from_vocabulary, term, base_term)
+    result = await vs.remove_term_from_vocabulary(term, base_term)
     print(f"[RESULTS] Suppression de '{term}' du vocabulaire de '{base_term}': {result}")
     
     return result

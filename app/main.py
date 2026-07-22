@@ -62,26 +62,26 @@ async def create_conversation_name(request: NameRequest):
 
 
 @app.get("/memory/get")
-def get_memories():
-    memories = get_all_memories()
+async def get_memories():
+    memories = await get_all_memories()
     return memories
 
 @app.post("/memory/add")
-def create_memory_chroma_endpoint(request: MemoryRequest):
-    add_memory(request.type, request.content, request.user_id, base_term=request.base_term)
+async def create_memory_chroma_endpoint(request: MemoryRequest):
+    await add_memory(request.type, request.content, request.user_id, base_term=request.base_term)
 
 @app.post("/memory/delete")
-def delete_memory_chroma_endpoint(request: MemoryRequest):
-    delete_memory(request.id)
+async def delete_memory_chroma_endpoint(request: MemoryRequest):
+    await delete_memory(request.id)
 
 @app.post("/memory/modify")
-def update_memory_endpoint(request: MemoryRequest):
-    update_memory(request.id, request.content)
+async def update_memory_endpoint(request: MemoryRequest):
+    await update_memory(request.id, request.content)
 
 
 @app.post("/embed/add")
-def add_embedding(request: EmbeddingRequest):
-    add_ticket_to_chroma(request.ticket_id)
+async def add_embedding(request: EmbeddingRequest):
+    await add_ticket_to_chroma(request.ticket_id)
 
 
 @app.get("/admin/export-finetuning", tags=["admin"])
