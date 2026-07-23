@@ -27,7 +27,7 @@ AGENT_SUPERVISOR_PROMPT = """
       - Appeler si l'utilisateur veut supprimer ou exclure un terme du vocabulaire lié à un autre terme ou sujet. Ex: "supprime X du vocabulaire lié à Y', "X ne doit pas être lié à Y", "X ne doit pas être inclu dans les recherches de Y"
   - `delegate_correction` : 
       - L'utilisateur corrige ton comportement ou te demande de RETENIR une règle/synonyme/exclusion. Ex: "utilise la table projet_ticket", "cinématique inclut aussi vitesse de rotation".
-      - Utiliser également si l'utilisateur demande de supprimer ou mettre à jour un souvenir. Il est important de noter que delegate_semantic_search est en charge de la suppression de souvenirs de type expand_vocabulary.
+      - Utiliser également si l'utilisateur demande de supprimer ou mettre à jour un souvenir. Il est important de noter que delegate_semantic_search est en charge de la suppression de souvenirs de vocabulaire (kind=vocabulary).
 
   Outils directs sur la recherche courante :
   - `rename_research` : SAUVEGARDER / RENOMMER la recherche courante. Pour appeler cet outil l'utilisateur doit donner un nom pour la recherche, tu ne dois jamais créer un nom.

@@ -7,8 +7,9 @@ des outils qui active la boucle d'auto-correction :
 
     écrire SQL → run_sql → si erreur, corriger et re-run (borné) → réponse.
 
-Les souvenirs ``correction_sql`` de l'utilisateur sont injectés dans le prompt
-pour être respectés dès la génération (plus besoin d'une 2e passe de vérification).
+Les souvenirs SQL de l'utilisateur (``target_agent=sql_research``) sont injectés
+dans le prompt en top-k sémantique pour être respectés dès la génération
+(plus besoin d'une 2e passe de vérification).
 """
 import asyncio
 
@@ -18,7 +19,7 @@ from app.agents.deps import ChatDeps
 from app.agents.model import get_agent_model
 from app.agents.tools.db import run_sql
 from app.agents.tools.entity import validate_entities
-from app.agents.tools.memory import get_memory
+from app.agents.tools.memory import relevant_memories
 from app.prompts.recherche import build_recherche_prompt
 from app.prompts.affinage import build_affinage_prompt
 from app.services.database import get_db_schema
@@ -46,8 +47,8 @@ async def _system(ctx: RunContext[ChatDeps]) -> str:
     else:
         base = build_recherche_prompt(schema, ctx.deps.user_id)
 
-    # Souvenirs de correction SQL de l'utilisateur, pertinents pour ce message.
-    memories = await get_memory(ctx, "correction_sql")
+    # Souvenirs SQL de l'utilisateur, pertinents pour ce message (top-k sémantique).
+    memories = await relevant_memories(ctx, "sql_research")
     memory_block = f"\n\n## RÈGLES MÉMORISÉES (à respecter)\n{memories}" if memories else ""
     
     print(f"\n{'─' * 60}\n[SQL MEMORIES]\n{memories}\n{'─' * 60}")

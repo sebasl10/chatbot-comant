@@ -86,15 +86,20 @@ async def print_statistics(collection):
             all_metadata = await collection.get(include=["metadatas"])
             if all_metadata.get("metadatas"):
                 all_metadatas = all_metadata["metadatas"]
-                # Compter les types uniques
+                # Compter les catégories uniques (target_agent/kind ou type legacy)
                 if all_metadatas and isinstance(all_metadatas[0], dict):
-                    type_counts = {}
-                    for meta in all_metadatas:
-                        if "type" in meta:
-                            t = meta["type"]
-                            type_counts[t] = type_counts.get(t, 0) + 1
-                    if type_counts:
-                        print(f"     • Répartition par type:")
+                    cat_key = None
+                    for candidate in ("target_agent", "type"):
+                        if any(candidate in (m or {}) for m in all_metadatas):
+                            cat_key = candidate
+                            break
+                    if cat_key:
+                        type_counts = {}
+                        for meta in all_metadatas:
+                            if cat_key in (meta or {}):
+                                t = meta[cat_key]
+                                type_counts[t] = type_counts.get(t, 0) + 1
+                        print(f"     • Répartition par {cat_key}:")
                         for t, cnt in sorted(type_counts.items(), key=lambda x: -x[1]):
                             print(f"       - {t}: {cnt:,} ({cnt/count*100:.1f}%)")
 

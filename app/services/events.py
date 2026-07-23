@@ -66,8 +66,13 @@ class EventSink:
     def action(self, name: str, **data) -> None:
         self.emit("action", intention=name, **data)
 
-    def correction(self, type: str, memory: str) -> None:
-        self.emit("correction", type=type, memory=memory)
+    def correction(self, memory: str, target_agent: Optional[str] = None, kind: Optional[str] = None) -> None:
+        data = {"memory": memory}
+        if target_agent:
+            data["target_agent"] = target_agent
+        if kind:
+            data["kind"] = kind
+        self.emit("correction", **data)
 
     def error(self, message: str) -> None:
         self.emit("error", message=message)

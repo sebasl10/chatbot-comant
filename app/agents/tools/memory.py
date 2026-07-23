@@ -1,88 +1,80 @@
 """Tools mémoire (souvenirs / corrections), backed Chroma.
 
 Stockage dans la collection Chroma ``memories`` (filtrage par métadonnées
-``type``/``scope``/``user_id`` + recherche sémantique). Signatures inchangées
-depuis la Phase 1 : seul le backend a changé (Markdown → Chroma).
+``target_agent``/``kind``/``polarity``/``scope``/``user_id`` + recherche
+sémantique).
 
-Types de mémoire : correction_sql, expand_vocabulary (global), exclude_ticket,
-other_correction.
+- Lecture : ``relevant_memories(ctx, target_agent)`` récupère en top-k
+  sémantique les souvenirs destinés à un agent, à partir de la requête condensée
+  (historique + message).
+- Écriture : ``save_memory`` (appelé par l'agent memory).
+
+target_agent : supervisor, sql_research, semantic_research, conversational.
+kind         : sql_rule, exclude, vocabulary, routing, other.
 """
 
 from pydantic_ai import RunContext
 from app.agents.deps import ChatDeps
+from app.agents.util.retrieval import build_retrieval_query
 from app.services import vectorstore as vs
 
-VALID_MEMORY_TYPES = ("correction_sql", "expand_vocabulary", "exclude_ticket", "other_correction")
+VALID_TARGET_AGENTS = ("supervisor", "sql_research", "semantic_research", "conversational")
+VALID_KINDS = ("sql_rule", "exclude", "vocabulary", "routing", "other")
 
 
-async def get_memory(ctx: RunContext[ChatDeps], type: str, query: str | None = None) -> str:
+async def relevant_memories(ctx: RunContext[ChatDeps], target_agent: str, k: int = 6) -> str:
     """
-    Récupère les souvenirs mémorisés de l'utilisateur pour un `type` donné.
+    Récupère les souvenirs destinés à ``target_agent``, les ``k`` plus proches
+    sémantiquement de la requête condensée du tour. Vide si aucun.
 
-    Types valides : correction_sql (règles de correction SQL), expand_vocabulary
-    (synonymes/vocabulaire, global), exclude_ticket (tickets à exclure),
-    other_correction. Si `query` est fourni, renvoie les souvenirs les plus
-    pertinents sémantiquement ; sinon tous ceux du type. Vide si aucun.
-    
-    Pour expand_vocabulary : retourne les synonymes formatés pour le prompt.
+    À appeler depuis le system prompt d'un agent pour injecter ses règles
+    mémorisées pertinentes (et uniquement les siennes).
     """
-    print("[TOOL CALL] get_memory")
-    print(f"  Type: {type}, Query: {query}")
-    
-    if type not in VALID_MEMORY_TYPES:
-        return ""
-    
-    """     
-    if type == "expand_vocabulary":
-        if query:
-            vocabulary = await asyncio.to_thread(vs.get_vocabulary_for_term, query)
-            synonyms = vocabulary["synonyms"]
-            print(f"  [SYNONYMS FOUND] Pour '{query}': {synonyms}")
-            if synonyms:
-                return f"Synonymes pour '{query}': {', '.join(synonyms)}"
-            else:
-                print(f"  [NO SYNONYMS] Aucun synonyme trouvé pour '{query}'")
-                return ""
-        else:
-            all_memories = await asyncio.to_thread(vs.get_all_synonyms)
-            print(f"  [ALL SYNONYMS] {len(all_memories)} entrées expand_vocabulary trouvés")
-            if all_memories:
-                formatted = "\n".join([f"{entry['base_term']}: {entry['synonyms']}" for entry in all_memories])
-                return f"Vocabulaire étendu:\n{formatted}"
-            return "" 
-    """
-    
-    # Pour les autres types, utiliser l'ancienne méthode
-    return await vs.get_memories_text(type, ctx.deps.user_id, query)
+    query = await build_retrieval_query(ctx.deps, usage=ctx.usage)
+    memories = await vs.get_memories_text(target_agent, ctx.deps.user_id, query=query, k=k)
+    print(f"[MEMORIES] target_agent={target_agent} query={query!r} -> {len(memories)} chars")
+    return memories
 
 
-async def save_memory(ctx: RunContext[ChatDeps], type: str, content: str, base_term: str | None = None) -> dict:
-    """Enregistre un nouveau souvenir de `type` donné pour l'utilisateur.
+async def save_memory(
+    ctx: RunContext[ChatDeps],
+    target_agent: str,
+    kind: str,
+    content: str,
+    base_term: str | None = None,
+) -> dict:
+    """Enregistre un nouveau souvenir/correction pour l'utilisateur.
 
     À utiliser quand l'utilisateur corrige le comportement du chatbot ou ajoute
-    une règle/synonyme à retenir. Types valides : correction_sql, expand_vocabulary,
-    exclude_ticket, other_correction.
-    
-    Pour expand_vocabulary:
-        - content : les synonymes séparés par des virgules (ex: "lent, slow, rapide")
-        - base_term : le terme de base (ex: "performance")
+    une règle/synonyme à retenir.
+
+    Args:
+        target_agent : agent qui devra respecter ce souvenir —
+            `supervisor` (délégation/routage) | `sql_research` (règles SQL) |
+            `semantic_research` (recherche sémantique, exclusions, vocabulaire) |
+            `conversational`.
+        kind : `sql_rule` | `exclude` | `vocabulary` | `routing` | `other`.
+        content : description claire et réutilisable de la correction (français, sans markdown).
+            Pour `vocabulary` : les synonymes séparés par des virgules (ex: "lent, slow, rapide").
+        base_term : UNIQUEMENT pour `kind=vocabulary` — le terme de base (ex: "performance").
     """
-    if type not in VALID_MEMORY_TYPES:
-        return {"ok": False, "error": f"type invalide: {type}"}
-    
-    # Pour expand_vocabulary, utiliser la nouvelle structure
-    if type == "expand_vocabulary" and base_term:
-        # Convertir content en liste de synonymes
+    if target_agent not in VALID_TARGET_AGENTS:
+        return {"ok": False, "error": f"target_agent invalide: {target_agent}"}
+    if kind not in VALID_KINDS:
+        return {"ok": False, "error": f"kind invalide: {kind}"}
+
+    # Vocabulaire : structure dédiée (global, base_term + synonymes)
+    if kind == "vocabulary" and base_term:
         synonyms = [s.strip() for s in content.split(",") if s.strip()]
-        print(f"[SAVE MEMORY] expand_vocabulary - base_term: '{base_term}', synonyms: {synonyms}")
+        print(f"[SAVE MEMORY] vocabulary - base_term: '{base_term}', synonyms: {synonyms}")
         await vs.add_synonyms(base_term, synonyms, ctx.deps.user_id, ctx.deps.username)
-        ctx.deps.events.correction(type=type, memory=f"{base_term}: {content}")
+        ctx.deps.events.correction(target_agent=target_agent, kind=kind, memory=f"{base_term}: {content}")
     else:
-        print(f"[SAVE MEMORY] type: {type}, content: {content}")
-        await vs.add_memory(type, content, ctx.deps.user_id, ctx.deps.username)
-        ctx.deps.events.correction(type=type, memory=content)
-    
-    return {"ok": True, "type": type}
+        print(f"[SAVE MEMORY] target_agent: {target_agent}, kind: {kind}, content: {content}")
+        await vs.add_memory(target_agent=target_agent, kind=kind, content=content, user_id=ctx.deps.user_id)
+        ctx.deps.events.correction(target_agent=target_agent, kind=kind, memory=content)
+
+    return {"ok": True, "target_agent": target_agent, "kind": kind}
 
 
 async def delete_memory(ctx: RunContext[ChatDeps]) -> dict:

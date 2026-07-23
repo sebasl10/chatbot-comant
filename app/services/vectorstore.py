@@ -6,7 +6,7 @@ stockage Markdown des souvenirs, par un client Chroma persistant unique.
 
 Collections :
 - ``tickets``                : embeddings de tickets.
-- ``memories``               : souvenirs/corrections, filtrables par métadonnées ``{type, scope, user_id}`` et recherchables sémantiquement.
+- ``memories``               : souvenirs/corrections, filtrables par métadonnées ``{target_agent, kind, polarity, scope, user_id}`` et recherchables sémantiquement.
 - ``conversation_summaries`` : résumés de conversation.
 - ``supervisor_actions``     : exemples de requêtes utilisateur et actions correspondantes pour l'agent supervisor.
 """
@@ -295,7 +295,7 @@ async def get_vocabulary_for_term(base_term: str) -> Dict[str, Any]:
 
     where = {
         "$and":[
-            {"type": "expand_vocabulary"},
+            {"kind": "vocabulary"},
             {"base_term": base_term}
         ]
     }
@@ -326,13 +326,14 @@ async def get_vocabulary_for_term(base_term: str) -> Dict[str, Any]:
 
 async def add_synonyms(base_term: str, synonyms: List[str], user_id: int | None = None, username: str | None = None) -> str:
     """
-    Ajoute un ensemble de synonymes pour un terme de base (type expand_vocabulary).
+    Ajoute un ensemble de synonymes pour un terme de base (kind=vocabulary, global).
     """
     # Convertir la liste en chaîne séparée par des virgules
     content = ", ".join(synonyms)
 
     return await add_memory(
-        type="expand_vocabulary",
+        target_agent="semantic_research",
+        kind="vocabulary",
         content=content,
         user_id=user_id,
         base_term=base_term
@@ -342,14 +343,14 @@ async def remove_term_from_vocabulary(term: str, base_term: str) -> Dict[str, An
     """
     Supprime une entrée de vocabulaire spécifique.
 
-    Cherche tous les documents de type expand_vocabulary avec base_term dans les métadonnées,
+    Cherche tous les documents de kind=vocabulary avec base_term dans les métadonnées,
     puis supprime l'entrée dont le document est exactement égal au terme à supprimer.
     """
     col = await memories_collection()
 
     where = {
         "$and":[
-            {"type": "expand_vocabulary"},
+            {"kind": "vocabulary"},
             {"base_term": base_term}
         ]
     }
@@ -385,21 +386,26 @@ async def remove_term_from_vocabulary(term: str, base_term: str) -> Dict[str, An
 
 # ── Gérer les souvenirs ──────────────────────────────────────
 
-def _memory_where(type: str, user_id: int | None) -> dict:
-    if type == "expand_vocabulary" or user_id is None:
-        return {"type": type}
-    return {"$and": [{"type": type}, {"$or": [{"user_id": user_id}, {"scope": "global"}]}]}
-
-async def get_memories_text(type: str, user_id: int | None, query: str | None = None, k: int = 8) -> str:
+def _memory_where(target_agent: str, user_id: int | None) -> dict:
     """
-    Renvoie les souvenirs d'un ``type`` sous forme de texte concaténé.
+    Filtre les souvenirs destinés à ``target_agent`` : ceux de l'utilisateur
+    plus ceux de portée globale. Si ``user_id`` est None, ne filtre que par agent.
+    """
+    if user_id is None:
+        return {"target_agent": target_agent}
+    return {"$and": [{"target_agent": target_agent}, {"$or": [{"user_id": user_id}, {"scope": "global"}]}]}
 
-    - Sans ``query`` : tous les souvenirs du type (filtrés par métadonnées).
-    - Avec ``query`` : les ``k`` souvenirs les plus proches sémantiquement (avec préfixe d'instruction).
-    Vide si aucun souvenir
+async def get_memories_text(target_agent: str, user_id: int | None, query: str | None = None, k: int = 6) -> str:
+    """
+    Renvoie les souvenirs destinés à ``target_agent`` sous forme de texte concaténé.
+
+    - Avec ``query`` (cas normal) : les ``k`` souvenirs les plus proches
+      sémantiquement de la requête condensée (préfixe d'instruction).
+    - Sans ``query`` (fallback) : tous les souvenirs de l'agent (filtrés par métadonnées).
+    Vide si aucun souvenir.
     """
     col = await memories_collection()
-    where = _memory_where(type, user_id)
+    where = _memory_where(target_agent, user_id)
     if query:
         # Calculer l'embedding avec préfixe pour les mémoires
         memory_instruction = (
@@ -414,29 +420,45 @@ async def get_memories_text(type: str, user_id: int | None, query: str | None = 
         docs = res.get("documents", []) or []
     return "\n\n---\n\n".join(docs)
 
-async def add_memory(type: str, content: str, user_id: int | None, embedding: list[float] | None = None, base_term: str | None = None) -> str:
+async def add_memory(
+    target_agent: str,
+    kind: str,
+    content: str,
+    user_id: int | None,
+    polarity: str = "negative",
+    embedding: list[float] | None = None,
+    base_term: str | None = None,
+) -> str:
     """
     Ajoute un souvenir.
 
-    Pour le type 'expand_vocabulary' :
+    - ``target_agent`` : agent qui devra lire ce souvenir (supervisor,
+      sql_research, semantic_research, conversational).
+    - ``kind`` : nature du souvenir (sql_rule, exclude, vocabulary, routing, other).
+    - ``polarity`` : "negative" (comportement à éviter, défaut) ou "positive".
+
+    Pour ``kind == "vocabulary"`` :
         - content : les termes liés/synonymes (ex: "lent, slow, performance")
         - base_term : le terme de base (ex: "performance") - **REQUIS** - stocké dans les métadonnées
-    Pour les autres types :
+        - scope : global (partagé entre utilisateurs)
+    Pour les autres kinds :
         - content : le souvenir/correction
         - base_term : non utilisé
     """
-    scope = "global" if type == "expand_vocabulary" else "user"
+    scope = "global" if kind == "vocabulary" else "user"
     username = await asyncio.to_thread(get_username, user_id)
     meta = {
-        "type": type,
+        "target_agent": target_agent,
+        "kind": kind,
+        "polarity": polarity,
         "scope": scope,
         "user_id": user_id if user_id is not None else -1,
         "username": username or "",
         "date": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
     }
 
-    # Pour expand_vocabulary, ajouter le terme de base dans les métadonnées
-    if type == "expand_vocabulary":
+    # Pour le vocabulaire, ajouter le terme de base dans les métadonnées
+    if kind == "vocabulary":
         meta["base_term"] = base_term
 
     doc_id = str(uuid.uuid4())
@@ -489,19 +511,21 @@ async def get_all_memories() -> dict:
     res = await col.get(include=["documents", "metadatas"])
     memories = []
     for i, doc_id in enumerate(res['ids']):
+        meta = res['metadatas'][i] or {}
         memory = {
             "text": res['documents'][i],
             "id": doc_id,
-            "user_id": res['metadatas'][i]['user_id'],
-            "date": res['metadatas'][i]['date'],
-            "type": res['metadatas'][i]['type'],
-            "scope": res['metadatas'][i]['scope'],
-            "username": res['metadatas'][i]['username'],
-
+            "user_id": meta.get('user_id'),
+            "date": meta.get('date'),
+            "target_agent": meta.get('target_agent'),
+            "kind": meta.get('kind'),
+            "polarity": meta.get('polarity'),
+            "scope": meta.get('scope'),
+            "username": meta.get('username'),
         }
 
-        if res['metadatas'][i].get('base_term'):
-            memory["base_term"] = res['metadatas'][i]['base_term']
+        if meta.get('base_term'):
+            memory["base_term"] = meta['base_term']
 
         memories.append(memory)
 

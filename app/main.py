@@ -68,7 +68,13 @@ async def get_memories():
 
 @app.post("/memory/add")
 async def create_memory_chroma_endpoint(request: MemoryRequest):
-    await add_memory(request.type, request.content, request.user_id, base_term=request.base_term)
+    await add_memory(
+        target_agent=request.target_agent,
+        kind=request.kind,
+        content=request.content,
+        user_id=request.user_id,
+        base_term=request.base_term,
+    )
 
 @app.post("/memory/delete")
 async def delete_memory_chroma_endpoint(request: MemoryRequest):

@@ -17,8 +17,8 @@ class MemoryRequest(BaseModel):
     id: str | None = None
     content: str | None = None
     base_term: str | None = None
-    type: str | None = None
-    scope: str | None = None
+    target_agent: str | None = None
+    kind: str | None = None
     user_id: int | None = None
 
 class EmbeddingRequest(BaseModel):

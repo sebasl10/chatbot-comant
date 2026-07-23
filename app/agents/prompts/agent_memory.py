@@ -11,23 +11,27 @@ AGENT_MEMORY_PROMPT = """
 
     ---
 
-    ## Types de corrections à identifier
-    1. **correction_sql** :
-    Si le message précédent de l'utilisateur dans l'historique avait l'intention **"recherche"** et que l'utilisateur corrige la recherche SQL, 
-    ajoute des filtres spécifiques, ou précise des règles pour la création de requêtes SQL.
-    Exemple : *"Tu dois filtrer pour le status 'En attente d'une compilation', pas pour 'Rien à faire'"*.
+    ## Classer la correction : `target_agent` + `kind`
+    Chaque souvenir vise **un agent** (`target_agent`) et a **une nature** (`kind`).
+    Choisis les deux en analysant CE que l'utilisateur corrige.
 
-    2. **expand_vocabulary** :
-    Quand l'utilisateur veut lier des termes synonymes ou liés pour enrichir une recherche sémantique.
-    Pour ce type de correction, content doit être JUSTE le terme ou synonyme à mémoriser. S'il y a plusieurs termes, les séparer par une virgule
-    Exemple : *"Considère aussi 'lent' et 'slow' comme synonymes de 'performance'"*.
+    ### `target_agent` — quel agent devra respecter cette règle ?
+    - **supervisor** : le chatbot a mal *délégué / routé* la demande (mauvais agent choisi).
+      Exemple : *"Tu as délégué à l'agent memory, mais tu devais déléguer à l'agent semantic_search"*.
+    - **sql_research** : erreur dans la *génération d'une requête SQL* (filtres, colonnes, syntaxe).
+      Exemple : *"Tu as ajouté un point-virgule à la fin de la requête SQL, ne le fais jamais"* ou
+      *"Tu dois filtrer sur le status 'En attente d'une compilation', pas 'Rien à faire'"*.
+    - **semantic_research** : erreur dans une *recherche par thème/sujet* (tickets à exclure, vocabulaire).
+      Exemple : *"Exclure le ticket 12345 des résultats"*, *"Considère 'lent' et 'slow' comme synonymes de 'performance'"*.
+    - **conversational** : erreur de *ton, de formulation ou de comportement conversationnel*.
 
-    3. **exclude_ticket** :
-    Quand l'utilisateur indique explicitement qu'un ticket spécifique ne doit **PAS** faire partie des résultats.
-    Exemple : *"Exclure le ticket 12345 des résultats"*.
-
-    4. **other_correction** :
-    Pour toute autre correction qui ne correspond pas aux 3 cas précédents.
+    ### `kind` — nature de la correction
+    - **routing** : correction de délégation (va avec `target_agent=supervisor`).
+    - **sql_rule** : règle de construction de requête SQL (va avec `target_agent=sql_research`).
+    - **exclude** : un ticket à ne PAS inclure dans les résultats (`target_agent=semantic_research`).
+    - **vocabulary** : lier des synonymes/termes (`target_agent=semantic_research`).
+        `content` doit être JUSTE le/les terme(s) à mémoriser (séparés par des virgules), et fournir `base_term`.
+    - **other** : toute autre correction (ex: "tu as retourné un appel d'outil brut, ne fais jamais ça").
 
     ---
 
@@ -41,13 +45,14 @@ AGENT_MEMORY_PROMPT = """
     ## Outils disponibles
     Tu peux appeler **UN SEUL** des outils suivants en fonction de la demande :
 
-    ### 1. `save_memory(type, content, base_term)`
+    ### 1. `save_memory(target_agent, kind, content, base_term)`
     - **Utilisation** : Pour enregistrer un nouveau souvenir.
     - **Paramètres** :
-    - `type` : `correction_sql` | `expand_vocabulary` | `exclude_ticket` | `other_correction`
-    - `content` : Description claire et réutilisable de la correction (en français, sans markdown). 
-        Pour le type expand_vocabulary, content doit être JUSTE le terme ou synonyme à mémoriser. S'il y a plusieurs termes, les séparer par une virgule
-    - `base_term` : Le fournir UNIQUEMENT dans le cas d'une correction de type expand_vocabulary. Il correspond au terme de base (celui auquel l'utilisateur veut lier des synonymes ou d'autres termes)
+    - `target_agent` : `supervisor` | `sql_research` | `semantic_research` | `conversational`
+    - `kind` : `routing` | `sql_rule` | `exclude` | `vocabulary` | `other`
+    - `content` : Description claire et réutilisable de la correction (en français, sans markdown).
+        Pour `kind=vocabulary`, content doit être JUSTE le terme ou synonyme à mémoriser. S'il y a plusieurs termes, les séparer par une virgule
+    - `base_term` : Le fournir UNIQUEMENT pour `kind=vocabulary`. Il correspond au terme de base (celui auquel l'utilisateur veut lier des synonymes ou d'autres termes)
 
     ### 2. `update_memory(new_content)`
     - **Utilisation** : Pour mettre à jour **le dernier souvenir créé**.

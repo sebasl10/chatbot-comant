@@ -6,7 +6,9 @@ détermine le type de correction, puis appelle l'outil `save_memory` (Chroma).
 Réutilise ``CORRECTION_PROMPT`` comme base, avec un addendum qui bascule la
 sortie « JSON » vers un appel d'outil.
 
-Types : correction_sql, expand_vocabulary, exclude_ticket, other_correction.
+Classe chaque correction par ``target_agent`` (supervisor, sql_research,
+semantic_research, conversational) + ``kind`` (routing, sql_rule, exclude,
+vocabulary, other), puis appelle ``save_memory``.
 """
 from pydantic_ai import Agent
 

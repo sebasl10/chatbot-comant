@@ -44,6 +44,9 @@ async def _emit_events(deps: ChatDeps) -> str:
 
 
 async def run_chat_stream(message: str, deps: ChatDeps) -> AsyncIterator[str]:
+    # Message brut du tour : source de vérité pour la récupération de souvenirs
+    # (condensation) par les agents.
+    deps.message = message
     user_prompt_with_few_shot = await build_user_prompt_with_few_shot(message)
     prompt = _history_context(deps.historique) + user_prompt_with_few_shot
 

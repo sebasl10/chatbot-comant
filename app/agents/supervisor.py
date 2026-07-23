@@ -13,6 +13,7 @@ from app.agents.specialists.conversational import conversational_agent
 from app.agents.specialists.sql_research import sql_research_agent
 from app.agents.specialists.semantic_research import semantic_research_agent
 from app.agents.specialists.memory import memory_agent
+from app.agents.tools.memory import relevant_memories
 from app.agents.tools.research import persist_new_research, persist_affinage
 from app.services.database import get_sql, rename_research as db_rename_research, delete_research as db_delete_research
 from app.agents.prompts.agent_supervisor import AGENT_SUPERVISOR_PROMPT
@@ -75,11 +76,19 @@ async def delegate_correction(ctx: RunContext[ChatDeps], message: str) -> str:
 supervisor_agent = Agent(
     get_agent_model(),
     deps_type=ChatDeps,
-    system_prompt=AGENT_SUPERVISOR_PROMPT,
     output_type=[str, delegate_conversation, delegate_new_research, delegate_semantic_search, delegate_correction],
     retries=2,
 )
 guard_against_tool_call_leak(supervisor_agent)
+
+
+@supervisor_agent.system_prompt
+async def _system(ctx: RunContext[ChatDeps]) -> str:
+    # Corrections de routage/délégation pertinentes pour ce message. Déclenche
+    # aussi la condensation, réutilisée ensuite par le spécialiste (cache).
+    memories = await relevant_memories(ctx, "supervisor")
+    memory_block = f"\n\n## CORRECTIONS DE ROUTAGE (à respecter)\n{memories}" if memories else ""
+    return AGENT_SUPERVISOR_PROMPT + memory_block
 
 @supervisor_agent.tool
 async def delegate_refine_search(ctx: RunContext[ChatDeps], request: str) -> str:

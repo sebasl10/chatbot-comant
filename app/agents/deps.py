@@ -21,6 +21,14 @@ class ChatDeps:
     historique: list[dict] = field(default_factory=list)
     events: EventSink = field(default_factory=EventSink)
 
+    # Message brut du tour courant (source de vérité pour la récupération de
+    # souvenirs, indépendant du prompt éventuellement reformulé passé aux
+    # spécialistes). Positionné par l'orchestrateur au début du tour.
+    message: str = ""
+    # Cache de la requête de récupération condensée (historique + message ->
+    # requête autonome). Calculée une seule fois par tour, à la demande.
+    retrieval_query: str | None = None
+
     # Dernière requête SQL exécutée avec succès par le tool run_sql, et son
     # nombre de résultats. La couche de délégation les utilise pour persister
     # la recherche (create_research / update_sql) de façon déterministe
