@@ -559,11 +559,7 @@ async def get_supervisor_examples(query: str, n_results: int = 5) -> List[Dict[s
         return []
 
     # Préfixe spécifique pour la recherche d'exemples de supervision
-    supervisor_instruction = (
-        "Représente une requête utilisateur pour déterminer l'action appropriée à entreprendre. "
-        "Analyse la sémantique, l'intention et le contexte pour identifier des exemples similaires "
-        "qui aideront à prendre la bonne décision de délégation."
-    )
+    supervisor_instruction = ("Given a user's query, retrieve similar queries.")
     query_embedding = await asyncio.to_thread(get_embedding, f"Instruct: {supervisor_instruction}\nQuery: {query}")
 
     res = await col.query(

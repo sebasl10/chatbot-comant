@@ -38,8 +38,8 @@ async def run_sql(ctx: RunContext[ChatDeps], sql: str) -> dict:
     print("[TOOL CALL] run_sql")
     print(f"SQL: {sql}")
     try:
-        rows = await asyncio.to_thread(execute_select, sql, "", ctx.deps.user_id)
-    except Exception as e:  # ValueError (non-SELECT) ou erreur pymysql
+        rows = await asyncio.to_thread(execute_select, sql)
+    except Exception as e:
         return {"ok": False, "error": str(e)}
 
     ctx.deps.last_sql = sql

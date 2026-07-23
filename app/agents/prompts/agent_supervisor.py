@@ -37,12 +37,12 @@ AGENT_SUPERVISOR_PROMPT = """
   - Répondre exactement comme spécifié pour les cas de `rename_research` et `delete_research`.
 """
 
-def _get_few_shot_examples(user_message: str, n_results: int = 3) -> str:
+async def _get_few_shot_examples(user_message: str, n_results: int = 3) -> str:
     """
     Récupère des exemples few-shot pertinents à partir de la requête utilisateur.
     """
     try:
-        examples = get_supervisor_examples(user_message, n_results=n_results)
+        examples = await get_supervisor_examples(user_message, n_results=n_results)
         if not examples:
             return ""
         
@@ -64,13 +64,13 @@ def _get_few_shot_examples(user_message: str, n_results: int = 3) -> str:
         print(f"[FEWSHOT] Erreur lors de la récupération des exemples: {e}")
         return ""
 
-def build_user_prompt_with_few_shot(user_message: str) -> str:
+async def build_user_prompt_with_few_shot(user_message: str) -> str:
     """
     Construit le message utilisateur enrichi avec des exemples few-shot.
     """
     return f"Message de l'utilisateur : {user_message}"
 
-    few_shot_examples = _get_few_shot_examples(user_message)
+    few_shot_examples = await _get_few_shot_examples(user_message)
     
     if few_shot_examples:
         return f"""

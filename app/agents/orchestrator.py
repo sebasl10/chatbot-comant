@@ -44,7 +44,7 @@ async def _emit_events(deps: ChatDeps) -> str:
 
 
 async def run_chat_stream(message: str, deps: ChatDeps) -> AsyncIterator[str]:
-    user_prompt_with_few_shot = build_user_prompt_with_few_shot(message)
+    user_prompt_with_few_shot = await build_user_prompt_with_few_shot(message)
     prompt = _history_context(deps.historique) + user_prompt_with_few_shot
 
     early_events_queue = asyncio.Queue()

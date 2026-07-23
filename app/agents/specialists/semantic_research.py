@@ -12,7 +12,6 @@ from pydantic_ai import Agent
 from pydantic_ai.capabilities import Capability
 from app.agents.deps import ChatDeps
 from app.agents.model import get_agent_model
-from app.agents.tools.db import run_sql
 from app.agents.tools.semantic import semantic_ticket_search, get_vocabulary_for_term, remove_term_from_vocabulary
 from app.agents.prompts.agent_semantic_research import (
     BASE_SEMANTIC_RESEARCH_PROMPT,
