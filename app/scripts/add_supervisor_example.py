@@ -1,158 +1,95 @@
 """
-Script pour ajouter un exemple manuellement à la collection supervisor_actions.
+Ajout / recherche manuels d'exemples de routage pour l'agent superviseur.
+
+Les exemples vivent dans la collection ``memories`` (``target_agent="supervisor"``,
+``kind="routing"``, ``polarity="positive"``, ``scope="global"``), au même endroit
+que les corrections de routage écrites par l'agent memory.
 
 Usage :
-    Add an example: python -m app.scripts.add_supervisor_example add --query "Ma requête" --action delegate_semantic_search
-    List all examples: python -m app.scripts.add_supervisor_example list
+    Ajouter : python -m app.scripts.add_supervisor_example add --query "Ma requête" --action delegate_semantic_search
+    Chercher: python -m app.scripts.add_supervisor_example search --query "tickets embeddings"
+    Lister  : python -m app.scripts.add_supervisor_example list
 
 Actions disponibles :
-- delegate_new_research : Recherche par filtres exacts (SQL)
-- delegate_semantic_search : Recherche par thème/sujet
-- delegate_conversation : Conversation (salutation, aide, hors-périmètre)
-- delegate_correction : Enregistrement d'une correction/souvenir
-- delegate_refine_search : Affinage d'une recherche existante
+- delegate_new_research   : Recherche par filtres exacts (SQL)
+- delegate_semantic_search: Recherche par thème/sujet
+- delegate_conversation   : Conversation (salutation, aide, hors-périmètre)
+- delegate_correction     : Enregistrement d'une correction/souvenir
+- delegate_refine_search  : Affinage d'une recherche existante
 """
 
 import argparse
 import asyncio
-from app.services.vectorstore import add_supervisor_example, get_all_supervisor_examples
+from app.services import vectorstore as vs
 from app.config import settings
 
-async def add_example(query: str, action: str, description: str = ""):
-    """Ajoute un nouvel exemple à la collection."""
+VALID_ACTIONS = [
+    "delegate_new_research",
+    "delegate_semantic_search",
+    "delegate_conversation",
+    "delegate_correction",
+    "delegate_refine_search",
+]
+
+
+async def add_example(query: str, action: str):
+    """Ajoute un exemple de routage global (positif) pour le superviseur."""
     print("=" * 70)
-    print("  Ajout d'un exemple de supervision")
+    print("  Ajout d'un exemple de routage superviseur")
     print("=" * 70)
-    print(f"  URL Chroma: {settings.chroma_http_url}")
-    print()
-    
-    print(f"  Requête: {query}")
-    print(f"  Action: {action}")
-    if description:
-        print(f"  Description: {description}")
-    print()
-    
-    # Vérifier que l'action est valide
-    valid_actions = [
-        "delegate_new_research",
-        "delegate_semantic_search", 
-        "delegate_conversation",
-        "delegate_correction",
-        "delegate_refine_search"
-    ]
-    
-    if action not in valid_actions:
-        print(f"  ❌ Action invalide. Actions autorisées: {', '.join(valid_actions)}")
+    print(f"  URL Chroma: {settings.chroma_http_url}\n")
+
+    if action not in VALID_ACTIONS:
+        print(f"  ❌ Action invalide. Actions autorisées: {', '.join(VALID_ACTIONS)}")
         return
-    
-    # Vérifier si la requête existe déjà
-    existing = await get_all_supervisor_examples()
-    for ex in existing:
-        if ex["user_query"] == query:
-            print(f"  ⚠️  Cette requête existe déjà avec l'action: {ex['metadata'].get('action', 'inconnu')}")
-            response = input("  Voulez-vous l'ajouter quand même ? (y/n): ").strip().lower()
-            if response != 'y':
-                print("  ❌ Opération annulée.")
-                return
-            break
-    
-    # Ajouter l'exemple
-    doc_id = await add_supervisor_example(query, action, description)
-    print(f"  ✅ Exemple ajouté avec succès!")
+
+    content = f"Pour une demande comme « {query} », délègue via {action}."
+    doc_id = await vs.add_memory(
+        target_agent="supervisor",
+        kind="routing",
+        content=content,
+        user_id=None,
+        polarity="positive",
+        scope="global",
+    )
+    print(f"  ✅ Ajouté: {content}")
     print(f"  ID: {doc_id}")
 
 
 async def search_examples(query: str, n_results: int = 5):
-    """Recherche des exemples similaires à une requête."""
-    from app.services.vectorstore import get_supervisor_examples
-
+    """Recherche sémantique parmi les souvenirs du superviseur."""
     print("=" * 70)
     print(f"  Recherche d'exemples similaires à: '{query}'")
     print("=" * 70)
 
-    results = await get_supervisor_examples(query, n_results)
-    
-    if not results:
-        print("  Aucun exemple trouvé.")
-        return
-    
-    for i, result in enumerate(results, 1):
-        action = result["metadata"].get("action", "inconnu")
-        description = result["metadata"].get("description", "")
-        distance = result.get("distance")
-        
-        print(f"\n  {i}. ID: {result['id']}")
-        print(f"     Requête: {result['user_query']}")
-        print(f"     Action: {action}")
-        if description:
-            print(f"     Description: {description}")
-        if distance is not None:
-            print(f"     Distance: {distance:.4f}")
-
-
-async def list_all_examples():
-    """Liste tous les exemples."""
-    from app.scripts.init_supervisor_actions import list_examples
-    await list_examples()
+    text = await vs.get_memories_text("supervisor", user_id=None, query=query, k=n_results)
+    print(text or "  Aucun exemple trouvé.")
 
 
 async def main():
-    """Point d'entrée principal."""
-    parser = argparse.ArgumentParser(
-        description="Ajouter et rechercher des exemples de supervision"
-    )
-    
-    subparsers = parser.add_subparsers(dest='command', help='Commande à exécuter')
-    
-    # Commande add
-    add_parser = subparsers.add_parser('add', help='Ajouter un exemple')
-    add_parser.add_argument(
-        '--query', '-q',
-        type=str,
-        required=True,
-        help='La requête utilisateur (ex: "Cherche les tickets PTC")'
-    )
-    add_parser.add_argument(
-        '--action', '-a',
-        type=str,
-        required=True,
-        help='Action à associer (ex: delegate_new_research)'
-    )
-    add_parser.add_argument(
-        '--description', '-d',
-        type=str,
-        default="",
-        help='Description optionnelle de l\'exemple'
-    )
-    
-    # Commande search
-    search_parser = subparsers.add_parser('search', help='Rechercher des exemples similaires')
-    search_parser.add_argument(
-        '--query', '-q',
-        type=str,
-        required=True,
-        help='Requête pour la recherche'
-    )
-    search_parser.add_argument(
-        '--n-results', '-n',
-        type=int,
-        default=5,
-        help='Nombre de résultats (défaut: 5)'
-    )
-    
-    # Commande list
-    subparsers.add_parser('list', help='Lister tous les exemples')
-    
+    parser = argparse.ArgumentParser(description="Gérer les exemples de routage du superviseur")
+    subparsers = parser.add_subparsers(dest="command", help="Commande à exécuter")
+
+    add_parser = subparsers.add_parser("add", help="Ajouter un exemple")
+    add_parser.add_argument("--query", "-q", type=str, required=True, help="La requête utilisateur type")
+    add_parser.add_argument("--action", "-a", type=str, required=True, help="Délégation à associer (ex: delegate_new_research)")
+
+    search_parser = subparsers.add_parser("search", help="Rechercher des exemples similaires")
+    search_parser.add_argument("--query", "-q", type=str, required=True, help="Requête pour la recherche")
+    search_parser.add_argument("--n-results", "-n", type=int, default=5, help="Nombre de résultats (défaut: 5)")
+
+    subparsers.add_parser("list", help="Lister tous les souvenirs superviseur")
+
     args = parser.parse_args()
-    
-    if args.command == 'add':
-        await add_example(args.query, args.action, args.description)
-    elif args.command == 'search':
+
+    if args.command == "add":
+        await add_example(args.query, args.action)
+    elif args.command == "search":
         await search_examples(args.query, args.n_results)
-    elif args.command == 'list':
-        await list_all_examples()
+    elif args.command == "list":
+        from app.scripts.init_supervisor_actions import list_examples
+        await list_examples()
     else:
-        # Si aucune commande n'est spécifiée, afficher l'aide
         parser.print_help()
 
 

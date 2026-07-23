@@ -144,7 +144,6 @@ async def main():
         (vs.TICKETS, vs.tickets_collection, "🎫"),
         (vs.MEMORIES, vs.memories_collection, "🧠"),
         (vs.CONVERSATION_SUMMARIES, vs.summaries_collection, "💬"),
-        (vs.SUPERVISOR_ACTIONS, vs.supervisor_actions_collection, "🎯"),
     ]
 
     # Inspecter chaque collection

@@ -6,9 +6,8 @@ stockage Markdown des souvenirs, par un client Chroma persistant unique.
 
 Collections :
 - ``tickets``                : embeddings de tickets.
-- ``memories``               : souvenirs/corrections, filtrables par métadonnées ``{target_agent, kind, polarity, scope, user_id}`` et recherchables sémantiquement.
+- ``memories``               : souvenirs/corrections + exemples de routage, filtrables par métadonnées ``{target_agent, kind, polarity, scope, user_id}`` et recherchables sémantiquement. Guide aussi le superviseur (``target_agent=supervisor``).
 - ``conversation_summaries`` : résumés de conversation.
-- ``supervisor_actions``     : exemples de requêtes utilisateur et actions correspondantes pour l'agent supervisor.
 """
 
 from __future__ import annotations
@@ -26,7 +25,6 @@ from bs4 import BeautifulSoup
 TICKETS = "tickets"
 MEMORIES = "memories"
 CONVERSATION_SUMMARIES = "conversation_summaries"
-SUPERVISOR_ACTIONS = "supervisor_actions"
 DEFAULT_HNSW_CONFIG = {
     "hnsw": {
         "space": "cosine",
@@ -123,10 +121,6 @@ async def memories_collection():
 
 async def summaries_collection():
     return await _collection(CONVERSATION_SUMMARIES)
-
-
-async def supervisor_actions_collection():
-    return await _collection(SUPERVISOR_ACTIONS)
 
 # ── Ajouter/mettre à jouter l'embedding d'un ticket dans Chroma ────────────
 
@@ -426,6 +420,7 @@ async def add_memory(
     content: str,
     user_id: int | None,
     polarity: str = "negative",
+    scope: str | None = None,
     embedding: list[float] | None = None,
     base_term: str | None = None,
 ) -> str:
@@ -435,17 +430,20 @@ async def add_memory(
     - ``target_agent`` : agent qui devra lire ce souvenir (supervisor,
       sql_research, semantic_research, conversational).
     - ``kind`` : nature du souvenir (sql_rule, exclude, vocabulary, routing, other).
-    - ``polarity`` : "negative" (comportement à éviter, défaut) ou "positive".
+    - ``polarity`` : "negative" (comportement à éviter, défaut) ou "positive"
+      (comportement à reproduire, ex. exemples de routage de base).
+    - ``scope`` : "user" (défaut) ou "global" (partagé entre utilisateurs).
+      Si None, vaut "global" pour le vocabulaire, sinon "user".
 
     Pour ``kind == "vocabulary"`` :
         - content : les termes liés/synonymes (ex: "lent, slow, performance")
         - base_term : le terme de base (ex: "performance") - **REQUIS** - stocké dans les métadonnées
-        - scope : global (partagé entre utilisateurs)
     Pour les autres kinds :
         - content : le souvenir/correction
         - base_term : non utilisé
     """
-    scope = "global" if kind == "vocabulary" else "user"
+    if scope is None:
+        scope = "global" if kind == "vocabulary" else "user"
     username = await asyncio.to_thread(get_username, user_id)
     meta = {
         "target_agent": target_agent,
@@ -560,83 +558,6 @@ async def get_last_memory(user_id: int | None) -> dict | None:
         "content": docs[last_index],
         "metadata": metas[last_index]
     }
-
-# ── Exemples de comportement pour l'agent superviseur ─────────────────────────────────────────────────
-
-async def add_supervisor_example(user_query: str, action: str) -> str:
-    """
-    Ajoute un exemple de requête utilisateur et l'action correspondante pour l'agent supervisor.
-    """
-    meta = {
-        "action": action,
-        "type": "supervisor_example",
-        "date": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-    }
-    doc_id = str(uuid.uuid4())
-    col = await supervisor_actions_collection()
-    await col.add(
-        ids=[doc_id],
-        documents=[user_query],
-        metadatas=[meta]
-    )
-    return doc_id
-
-async def get_supervisor_examples(query: str, n_results: int = 5) -> List[Dict[str, Any]]:
-    """
-    Recherche des exemples de supervision similaires à une requête utilisateur.
-    Utilise un embedding avec préfixe d'instruction pour améliorer la recherche.
-    """
-    col = await supervisor_actions_collection()
-
-    # Préfixe spécifique pour la recherche d'exemples de supervision
-    supervisor_instruction = ("Given a user's query, retrieve similar queries.")
-    query_embedding = await asyncio.to_thread(get_embedding, f"Instruct: {supervisor_instruction}\nQuery: {query}")
-
-    res = await col.query(
-        query_embeddings=[query_embedding],
-        n_results=n_results,
-        include=["documents", "metadatas", "distances"]
-    )
-
-    results = []
-    ids = res.get("ids", [[ ]])[0] if res.get("ids") else []
-    if not ids:
-        return []
-    documents = res.get("documents", [[ ]])[0]
-    metadatas = res.get("metadatas", [[ ]])[0]
-    distances = res.get("distances", [[ ]])[0]
-
-    for i in range(len(ids)):
-        results.append({
-            "id": ids[i],
-            "user_query": documents[i],
-            "metadata": metadatas[i] if i < len(metadatas) else {},
-            "distance": distances[i] if i < len(distances) else None
-        })
-
-    return results
-
-
-async def get_all_supervisor_examples() -> List[Dict[str, Any]]:
-    """
-    Récupère tous les exemples de supervision.
-    """
-    col = await supervisor_actions_collection()
-    res = await col.get(include=["documents", "metadatas"])
-
-    results = []
-    ids = res.get("ids", [])
-    documents = res.get("documents", [])
-    metadatas = res.get("metadatas", [])
-
-    for i in range(len(ids)):
-        results.append({
-            "id": ids[i],
-            "user_query": documents[i],
-            "metadata": metadatas[i] if i < len(metadatas) else {}
-        })
-
-    return results
 
 # ── Résumés de conversation ─────────────────────────────────────────────────
 

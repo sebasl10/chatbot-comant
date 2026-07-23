@@ -21,7 +21,6 @@ from app.agents.util.history_utils import _history_context
 from app.agents.supervisor import supervisor_agent
 from app.services.events import STREAM_START
 from app.services.database import update_intention
-from app.agents.prompts.agent_supervisor import build_user_prompt_with_few_shot
 from app.agents.util.output_guard import looks_like_leaked_tool_call
 
 
@@ -45,10 +44,11 @@ async def _emit_events(deps: ChatDeps) -> str:
 
 async def run_chat_stream(message: str, deps: ChatDeps) -> AsyncIterator[str]:
     # Message brut du tour : source de vérité pour la récupération de souvenirs
-    # (condensation) par les agents.
+    # (condensation) par les agents. Les exemples/corrections de routage du
+    # superviseur sont désormais injectés dans son system prompt via
+    # relevant_memories(target_agent="supervisor"), plus de few-shot ici.
     deps.message = message
-    user_prompt_with_few_shot = await build_user_prompt_with_few_shot(message)
-    prompt = _history_context(deps.historique) + user_prompt_with_few_shot
+    prompt = _history_context(deps.historique) + f"Message de l'utilisateur : {message}"
 
     early_events_queue = asyncio.Queue()
 
