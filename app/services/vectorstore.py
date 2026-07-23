@@ -297,6 +297,7 @@ async def get_vocabulary_for_term(base_term: str) -> Dict[str, Any]:
     res = await col.get(where=where, include=["documents", "metadatas"])
     docs = res.get("documents", [])
     metadatas = res.get("metadatas", [])
+    _debug_memory("RETRIEVE VOCAB", f"base_term={base_term!r} where={where}", docs, metadatas)
 
     synonyms = []
     metadata = None
@@ -391,6 +392,25 @@ _KIND_DEFAULT_SCOPE = {
     "other": "user",          # non classé : local par prudence
 }
 
+def _debug_memory(action: str, header: str, docs: list[str], metas: list[dict] | None = None) -> None:
+    """
+    Affiche un bloc de débogage pour toute écriture/lecture de souvenir :
+    contenu + métadonnées, pour vérifier quand et quoi est stocké/récupéré.
+
+    ``action`` : "STORE" | "RETRIEVE" | "RETRIEVE VOCAB" ...
+    ``header`` : contexte (target_agent, query, where, id…).
+    """
+    print(f"\n{'━' * 64}")
+    print(f"[MEMORY {action}] {header}")
+    print(f"  → {len(docs)} souvenir(s)")
+    for i, doc in enumerate(docs):
+        meta = metas[i] if metas and i < len(metas) else None
+        print(f"  {i + 1}. {doc}")
+        if meta is not None:
+            print(f"     meta: {meta}")
+    print('━' * 64)
+
+
 def _memory_where(target_agent: str, user_id: int | None) -> dict:
     """
     Filtre les souvenirs destinés à ``target_agent`` : ceux de l'utilisateur
@@ -418,11 +438,14 @@ async def get_memories_text(target_agent: str, user_id: int | None, query: str |
             "Inclut les synonymes, concepts liés et variations sémantiques."
         )
         query_embedding = await asyncio.to_thread(get_embedding, f"Instruct: {memory_instruction}\nQuery: {query}")
-        res = await col.query(query_embeddings=[query_embedding], n_results=k, where=where, include=["documents"])
+        res = await col.query(query_embeddings=[query_embedding], n_results=k, where=where, include=["documents", "metadatas"])
         docs = res["documents"][0] if res["documents"] else []
+        metas = res["metadatas"][0] if res.get("metadatas") else []
     else:
-        res = await col.get(where=where, include=["documents"])
+        res = await col.get(where=where, include=["documents", "metadatas"])
         docs = res.get("documents", []) or []
+        metas = res.get("metadatas", []) or []
+    _debug_memory("RETRIEVE", f"target_agent={target_agent} user_id={user_id} k={k} query={query!r} where={where}", docs, metas)
     return "\n\n---\n\n".join(docs)
 
 async def add_memory(
@@ -473,6 +496,7 @@ async def add_memory(
         kwargs["embeddings"] = [embedding]
     col = await memories_collection()
     await col.add(**kwargs)
+    _debug_memory("STORE", f"id={doc_id}", [content], [meta])
     return doc_id
 
 async def delete_memory(memory_id: str) -> bool:

@@ -48,9 +48,8 @@ async def _system(ctx: RunContext[ChatDeps]) -> str:
         base = build_recherche_prompt(schema, ctx.deps.user_id)
 
     # Souvenirs SQL de l'utilisateur, pertinents pour ce message (top-k sémantique).
+    # Le détail (contenu + métadonnées) est loggué dans vs.get_memories_text.
     memories = await relevant_memories(ctx, "sql_research")
     memory_block = f"\n\n## RÈGLES MÉMORISÉES (à respecter)\n{memories}" if memories else ""
-    
-    print(f"\n{'─' * 60}\n[SQL MEMORIES]\n{memories}\n{'─' * 60}")
 
     return base + SQL_AGENT_TOOLS_PROMPT + memory_block

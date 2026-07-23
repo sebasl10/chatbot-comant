@@ -31,9 +31,8 @@ async def relevant_memories(ctx: RunContext[ChatDeps], target_agent: str, k: int
     mémorisées pertinentes (et uniquement les siennes).
     """
     query = await build_retrieval_query(ctx.deps, usage=ctx.usage)
-    memories = await vs.get_memories_text(target_agent, ctx.deps.user_id, query=query, k=k)
-    print(f"[MEMORIES] target_agent={target_agent} query={query!r} -> {len(memories)} chars")
-    return memories
+    # Le détail (contenu + métadonnées) est loggué dans vs.get_memories_text.
+    return await vs.get_memories_text(target_agent, ctx.deps.user_id, query=query, k=k)
 
 
 async def save_memory(
