@@ -6,7 +6,7 @@ stockage Markdown des souvenirs, par un client Chroma persistant unique.
 
 Collections :
 - ``tickets``                : embeddings de tickets.
-- ``memories``               : souvenirs/corrections + exemples de routage, filtrables par métadonnées ``{target_agent, kind, polarity, scope, user_id}`` et recherchables sémantiquement. Guide aussi le superviseur (``target_agent=supervisor``).
+- ``memories``               : souvenirs/corrections + exemples de routage, filtrables par métadonnées ``{target_agent, kind, scope, user_id}`` et recherchables sémantiquement. Guide aussi le superviseur (``target_agent=supervisor``).
 - ``conversation_summaries`` : résumés de conversation.
 """
 
@@ -380,6 +380,17 @@ async def remove_term_from_vocabulary(term: str, base_term: str) -> Dict[str, An
 
 # ── Gérer les souvenirs ──────────────────────────────────────
 
+# Portée par défaut selon la nature (kind) du souvenir, quand ``scope`` n'est pas
+# fourni explicitement. Les règles « système » (comportement partagé par tous les
+# utilisateurs) sont globales ; ce qui est propre à un utilisateur reste local.
+_KIND_DEFAULT_SCOPE = {
+    "sql_rule": "global",     # règles de construction SQL : comportement système
+    "routing": "global",      # corrections/exemples de délégation : comportement système
+    "vocabulary": "global",   # synonymes partagés
+    "exclude": "user",        # exclusion de ticket : plutôt une préférence de filtrage
+    "other": "user",          # non classé : local par prudence
+}
+
 def _memory_where(target_agent: str, user_id: int | None) -> dict:
     """
     Filtre les souvenirs destinés à ``target_agent`` : ceux de l'utilisateur
@@ -419,7 +430,6 @@ async def add_memory(
     kind: str,
     content: str,
     user_id: int | None,
-    polarity: str = "negative",
     scope: str | None = None,
     embedding: list[float] | None = None,
     base_term: str | None = None,
@@ -430,10 +440,9 @@ async def add_memory(
     - ``target_agent`` : agent qui devra lire ce souvenir (supervisor,
       sql_research, semantic_research, conversational).
     - ``kind`` : nature du souvenir (sql_rule, exclude, vocabulary, routing, other).
-    - ``polarity`` : "negative" (comportement à éviter, défaut) ou "positive"
-      (comportement à reproduire, ex. exemples de routage de base).
-    - ``scope`` : "user" (défaut) ou "global" (partagé entre utilisateurs).
-      Si None, vaut "global" pour le vocabulaire, sinon "user".
+    - ``scope`` : "user" ou "global" (partagé entre utilisateurs). Si None, la
+      portée est déduite du ``kind`` via ``_KIND_DEFAULT_SCOPE``
+      (sql_rule/routing/vocabulary → global ; exclude/other → user).
 
     Pour ``kind == "vocabulary"`` :
         - content : les termes liés/synonymes (ex: "lent, slow, performance")
@@ -443,12 +452,11 @@ async def add_memory(
         - base_term : non utilisé
     """
     if scope is None:
-        scope = "global" if kind == "vocabulary" else "user"
+        scope = _KIND_DEFAULT_SCOPE.get(kind, "user")
     username = await asyncio.to_thread(get_username, user_id)
     meta = {
         "target_agent": target_agent,
         "kind": kind,
-        "polarity": polarity,
         "scope": scope,
         "user_id": user_id if user_id is not None else -1,
         "username": username or "",
@@ -517,7 +525,6 @@ async def get_all_memories() -> dict:
             "date": meta.get('date'),
             "target_agent": meta.get('target_agent'),
             "kind": meta.get('kind'),
-            "polarity": meta.get('polarity'),
             "scope": meta.get('scope'),
             "username": meta.get('username'),
         }

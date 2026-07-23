@@ -2,8 +2,8 @@
 Initialisation des exemples de routage de base pour l'agent superviseur.
 
 Les exemples sont stockés dans la collection ``memories`` avec
-``target_agent="supervisor"``, ``kind="routing"``, ``polarity="positive"`` et
-``scope="global"`` (partagés entre tous les utilisateurs). Ils sont récupérés en
+``target_agent="supervisor"``, ``kind="routing"`` et ``scope="global"``
+(partagés entre tous les utilisateurs). Ils sont récupérés en
 top-k sémantique et injectés dans le system prompt du superviseur
 (``relevant_memories``), aux côtés des corrections de routage écrites par
 l'agent memory.
@@ -75,7 +75,6 @@ async def init_examples():
             kind="routing",
             content=content,
             user_id=None,
-            polarity="positive",
             scope="global",
         )
         print(f"  ✅ Ajouté: {content}")
@@ -100,7 +99,7 @@ async def list_examples():
         return
     for i, (doc_id, doc, meta) in enumerate(zip(ids, docs, metas), 1):
         meta = meta or {}
-        print(f"\n  {i}. [{meta.get('polarity', '?')}/{meta.get('scope', '?')}] {doc}")
+        print(f"\n  {i}. [{meta.get('kind', '?')}/{meta.get('scope', '?')}] {doc}")
         print(f"     id={doc_id}")
 
 

@@ -2,8 +2,8 @@
 Ajout / recherche manuels d'exemples de routage pour l'agent superviseur.
 
 Les exemples vivent dans la collection ``memories`` (``target_agent="supervisor"``,
-``kind="routing"``, ``polarity="positive"``, ``scope="global"``), au même endroit
-que les corrections de routage écrites par l'agent memory.
+``kind="routing"``, ``scope="global"``), au même endroit que les corrections de
+routage écrites par l'agent memory.
 
 Usage :
     Ajouter : python -m app.scripts.add_supervisor_example add --query "Ma requête" --action delegate_semantic_search
@@ -49,7 +49,6 @@ async def add_example(query: str, action: str):
         kind="routing",
         content=content,
         user_id=None,
-        polarity="positive",
         scope="global",
     )
     print(f"  ✅ Ajouté: {content}")

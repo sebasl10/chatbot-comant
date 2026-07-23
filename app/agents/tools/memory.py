@@ -1,7 +1,7 @@
 """Tools mémoire (souvenirs / corrections), backed Chroma.
 
 Stockage dans la collection Chroma ``memories`` (filtrage par métadonnées
-``target_agent``/``kind``/``polarity``/``scope``/``user_id`` + recherche
+``target_agent``/``kind``/``scope``/``user_id`` + recherche
 sémantique).
 
 - Lecture : ``relevant_memories(ctx, target_agent)`` récupère en top-k
