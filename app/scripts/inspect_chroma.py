@@ -3,6 +3,7 @@
 Usage :
     python -m app.scripts.inspect_chroma
 """
+import asyncio
 from app.services import vectorstore as vs
 from app.config import settings
 
@@ -29,11 +30,11 @@ def format_value(value, max_length: int = 100) -> str:
     return s
 
 
-def get_first_rows(collection, limit: int = 5):
+async def get_first_rows(collection, limit: int = 5):
     """Récupère les premières lignes d'une collection."""
     try:
         # Récupérer les IDs
-        res = collection.get(limit=limit, include=["documents", "metadatas", "embeddings"])
+        res = await collection.get(limit=limit, include=["documents", "metadatas", "embeddings"])
         return {
             "ids": res.get("ids", []),
             "documents": res.get("documents", []),
@@ -66,23 +67,23 @@ def print_first_rows(data: dict, limit: int = 5):
         print()
 
 
-def print_statistics(collection):
+async def print_statistics(collection):
     """Affiche les statistiques d'une collection."""
     try:
-        count = collection.count()
+        count = await collection.count()
         print(f"\n  📊 Statistiques:")
         print(f"     • Nombre de documents: {count:,}")
 
         # Récupérer un échantillon pour les stats d'embeddings
         if count > 0:
-            sample = collection.get(limit=1, include=["embeddings"])
+            sample = await collection.get(limit=1, include=["embeddings"])
             if sample.get("embeddings"):
                 embedding_dim = len(sample["embeddings"][0])
                 print(f"     • Dimension des embeddings: {embedding_dim}")
 
         # Compter les métadonnées uniques (si applicable)
         if count > 0:
-            all_metadata = collection.get(include=["metadatas"])
+            all_metadata = await collection.get(include=["metadatas"])
             if all_metadata.get("metadatas"):
                 all_metadatas = all_metadata["metadatas"]
                 # Compter les types uniques
@@ -110,17 +111,17 @@ def print_statistics(collection):
         print(f"  ⚠️  Erreur lors du calcul des statistiques: {e}")
 
 
-def inspect_collection(name: str, collection_func):
+async def inspect_collection(name: str, collection_func):
     """Inspecte une collection spécifique."""
     print_collection_header(name)
     try:
-        collection = collection_func()
-        
+        collection = await collection_func()
+
         # Statistiques
-        print_statistics(collection)
-        
+        await print_statistics(collection)
+
         # Premières lignes
-        data = get_first_rows(collection)
+        data = await get_first_rows(collection)
         if data:
             print_first_rows(data)
             
@@ -128,7 +129,7 @@ def inspect_collection(name: str, collection_func):
         print(f"  ❌ Erreur: {e}")
 
 
-def main():
+async def main():
     """Point d'entrée principal."""
     print_section("Inspection des collections Chroma")
     print(f"URL du serveur: {settings.chroma_http_url}")
@@ -143,16 +144,16 @@ def main():
 
     # Inspecter chaque collection
     for name, func, icon in collections:
-        inspect_collection(f"{icon} {name}", func)
+        await inspect_collection(f"{icon} {name}", func)
 
     # Résumé global
     print_section("Résumé global")
     try:
-        client = vs.get_client()
-        all_collections = client.list_collections()
+        client = await vs.get_client()
+        all_collections = await client.list_collections()
         print(f"\n  Nombre total de collections: {len(all_collections)}")
         for col in all_collections:
-            print(f"    - {col.name}: {col.count()} documents")
+            print(f"    - {col.name}: {await col.count()} documents")
     except Exception as e:
         print(f"  ⚠️  Impossible de lister toutes les collections: {e}")
 
@@ -160,4 +161,4 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    asyncio.run(main())

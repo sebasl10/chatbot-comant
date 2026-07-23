@@ -8,6 +8,7 @@ Ce script:
 4. Ajoute chaque ticket avec son embedding à la collection Chroma "tickets"
 """
 
+import asyncio
 import json
 from bs4 import BeautifulSoup
 from app.services.database import get_connection
@@ -41,14 +42,15 @@ def get_ticket_text(ticket, comments_by_ticket):
     return "\n".join(text_parts)
 
 
-def main():
+async def main():
     """Exécute la migration des tickets vers Chroma avec embeddings pré-calculés."""
     print("=== Début de la migration des tickets vers Chroma ===\n")
 
     conn = get_connection()
 
-    vectorstore.get_client().delete_collection('tickets')
-    
+    client = await vectorstore.get_client()
+    await client.delete_collection('tickets')
+
     try:
         cursor = conn.cursor()
         cursor.execute("SELECT id, summary, description FROM ticket WHERE ticket.type IN ('Bug', 'Dev', 'Suggestion', 'Requête', 'Documentation')")
@@ -70,7 +72,7 @@ def main():
         # Migration des tickets avec embeddings
         migrated_count = 0
         skipped_count = 0
-        
+
         # Préparer les batches pour optimiser les insertions
         batch_size = 50
         current_batch = {
@@ -78,7 +80,9 @@ def main():
             'documents': [],
             'metadatas': []
         }
-        
+
+        tickets_col = await vectorstore.tickets_collection()
+
         for ticket in tickets:
             ticket_id = ticket['id']
             full_text = get_ticket_text(ticket, comments_by_ticket)
@@ -99,7 +103,7 @@ def main():
             
             # Si le batch est plein, on l'ajoute
             if len(current_batch['ids']) >= batch_size:
-                vectorstore.tickets_collection().add(
+                await tickets_col.add(
                     ids=current_batch['ids'],
                     documents=current_batch['documents'],
                     metadatas=current_batch['metadatas'],
@@ -116,7 +120,7 @@ def main():
         
         # Ajoute le dernier batch s'il n'est pas vide
         if current_batch['ids']:
-            vectorstore.tickets_collection().add(
+            await tickets_col.add(
                 ids=current_batch['ids'],
                 documents=current_batch['documents'],
                 metadatas=current_batch['metadatas'],
@@ -131,7 +135,7 @@ def main():
         print(f"Total traité: {migrated_count + skipped_count}")
         
         # Vérifie la collection
-        print(f"Collection 'tickets': {vectorstore.tickets_collection().count()} documents")
+        print(f"Collection 'tickets': {await tickets_col.count()} documents")
         
         print("\n✅ Migration terminée avec succès !")
         
@@ -147,4 +151,4 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    asyncio.run(main())

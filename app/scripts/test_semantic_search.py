@@ -5,29 +5,30 @@ Script de test rapide pour la recherche sémantique avec Chroma.
 Définis ta query dans la fonction main() ci-dessous.
 """
 
+import asyncio
 import sys
 sys.path.insert(0, '.')
 
 from app.services.vectorstore import tickets_collection, TICKETS, get_embedding
 
-def main():
+async def main():
     # ── CONFIGURATION ────────────────────────────────────────────────────────
     query = "cinématique"  # ← MODIFIE TA QUERY ICI
-    collection_name = TICKETS 
+    collection_name = TICKETS
     threshold= 0.55
     query_instruction = "Given a technical term or topic, retrieve customer support tickets that mention or relate to it, even briefly."
-    query_embedding = get_embedding(f"Instruct: {query_instruction}\nQuery: {query}")
-    
+    query_embedding = await asyncio.to_thread(get_embedding, f"Instruct: {query_instruction}\nQuery: {query}")
+
     # ── EXÉCUTION ────────────────────────────────────────────────────────────
-    collection = tickets_collection()
-    
+    collection = await tickets_collection()
+
     print(f"\n[RECHERCHE SÉMANTIQUE]")
     print(f"Collection: {collection_name}")
     print(f"Query: {query}")
     print(f"-" * 60)
-    
+
     # Recherche sémantique
-    results = collection.query(
+    results = await collection.query(
         query_embeddings=[query_embedding],
         n_results=3000,
         include=["documents", "metadatas", "distances"]
@@ -53,4 +54,4 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    asyncio.run(main())

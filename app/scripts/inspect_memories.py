@@ -3,6 +3,7 @@
 Usage :
     python -m app.scripts.inspect_memories
 """
+import asyncio
 from app.services import vectorstore as vs
 from app.config import settings
 
@@ -29,23 +30,23 @@ def format_value(value, max_length: int = 150) -> str:
     return s
 
 
-def get_all_memories(collection, batch_size: int = 100):
+async def get_all_memories(collection, batch_size: int = 100):
     """Récupère toutes les mémoires de la collection par batches."""
     try:
         # Récupérer le count
-        count_raw = collection.count()
+        count_raw = await collection.count()
         count = int(count_raw) if hasattr(count_raw, '__len__') else int(count_raw)
-        
+
         all_data = {
             "ids": [],
             "documents": [],
             "metadatas": [],
         }
-        
+
         # Récupérer par batches pour éviter les problèmes de mémoire
         offset = 0
         while offset < count:
-            batch = collection.get(
+            batch = await collection.get(
                 limit=min(batch_size, count - offset),
                 offset=offset,
                 include=["documents", "metadatas"]
@@ -97,18 +98,18 @@ def print_memories_by_type(data: dict):
             print()
 
 
-def main():
+async def main():
     """Point d'entrée principal."""
     print_section("Inspection des mémoires Chroma")
     print(f"URL du serveur: {settings.chroma_http_url}")
-    
+
     try:
-        collection = vs.memories_collection()
-        
+        collection = await vs.memories_collection()
+
         # Récupérer toutes les mémoires
         print_section(f"Collection: memories (🧠)")
-        data = get_all_memories(collection)
-        
+        data = await get_all_memories(collection)
+
         if data:
             # Afficher le nombre total
             count = len(data.get("ids", []))
@@ -124,4 +125,4 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    asyncio.run(main())

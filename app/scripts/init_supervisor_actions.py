@@ -16,6 +16,7 @@ Exemples ajoutés :
 - Requêtes d'affinage -> delegate_refine_search
 """
 
+import asyncio
 from app.services.vectorstore import (
     supervisor_actions_collection,
     SUPERVISOR_ACTIONS
@@ -106,18 +107,18 @@ SUPERVISOR_EXAMPLES = [
 ]
 
 
-def init_collection():
+async def init_collection():
     """Initialise la collection et ajoute les exemples de base."""
     print("=" * 70)
     print("  Initialisation de la collection supervisor_actions")
     print("=" * 70)
     print(f"  URL Chroma: {settings.chroma_http_url}")
     print()
-    
+
     # Vérifier si la collection existe déjà
-    collection = supervisor_actions_collection()
-    count = collection.count()
-    
+    collection = await supervisor_actions_collection()
+    count = await collection.count()
+
     if count > 0:
         print(f"  ⚠️  La collection existe déjà avec {count} exemples.")
         response = input("  Voulez-vous ajouter les exemples manquants ? (y/n): ").strip().lower()
@@ -135,52 +136,52 @@ def init_collection():
     
     # Récupérer les requêtes existantes pour éviter les doublons
     if count > 0:
-        res = collection.get(include=["documents"])
+        res = await collection.get(include=["documents"])
         existing_queries = set(res.get("documents", []))
-    
+
     for example in SUPERVISOR_EXAMPLES:
         if example["user_query"] in existing_queries:
             print(f"  ⏭️  Exemple déjà présent: '{example['user_query']}'")
             continue
-        
+
         doc_id = str(uuid.uuid4())
         now = datetime.now().isoformat()
-        
+
         metadata = {
             "action": example["action"],
             "type": "supervisor_example",
             "created_at": now,
             "updated_at": now,
         }
-        
-        collection.add(
+
+        await collection.add(
             ids=[doc_id],
             documents=[example["user_query"]],
             metadatas=[metadata]
         )
-        
+
         print(f"  ✅ Ajouté: '{example['user_query']}' -> {example['action']}")
         added_count += 1
-    
+
     print()
     print(f"  ✅ {added_count} exemples ajoutés avec succès.")
-    print(f"  Total dans la collection: {collection.count()}")
+    print(f"  Total dans la collection: {await collection.count()}")
 
 
-def list_examples():
+async def list_examples():
     """Liste tous les exemples actuels."""
-    collection = supervisor_actions_collection()
-    count = collection.count()
-    
+    collection = await supervisor_actions_collection()
+    count = await collection.count()
+
     print("=" * 70)
     print(f"  Liste des exemples de supervision ({count} au total)")
     print("=" * 70)
-    
+
     if count == 0:
         print("  Aucun exemple trouvé.")
         return
-    
-    res = collection.get(include=["documents", "metadatas"])
+
+    res = await collection.get(include=["documents", "metadatas"])
     
     ids = res.get("ids", [])
     documents = res.get("documents", [])
@@ -197,32 +198,32 @@ def list_examples():
             print(f"     Description: {description}")
 
 
-def clear_collection():
+async def clear_collection():
     """Supprime tous les exemples de la collection."""
     print("=" * 70)
     print("  ⚠️  ATTENTION: Suppression de tous les exemples de supervision")
     print("=" * 70)
-    
+
     response = input("  Êtes-vous sûr ? (y/n): ").strip().lower()
     if response != 'y':
         print("  ❌ Opération annulée.")
         return
-    
-    collection = supervisor_actions_collection()
-    all_res = collection.get(include=["ids"])
+
+    collection = await supervisor_actions_collection()
+    all_res = await collection.get(include=["ids"])
     all_ids = all_res.get("ids", [])
-    
+
     if all_ids:
-        collection.delete(ids=all_ids)
+        await collection.delete(ids=all_ids)
         print(f"  ✅ {len(all_ids)} exemples supprimés.")
     else:
         print("  La collection est déjà vide.")
 
 
-def main():
+async def main():
     """Point d'entrée principal."""
     import argparse
-    
+
     parser = argparse.ArgumentParser(
         description="Gestion des exemples de supervision pour l'agent supervisor"
     )
@@ -243,15 +244,15 @@ def main():
     )
     
     args = parser.parse_args()
-    
+
     if args.clear:
-        clear_collection()
+        await clear_collection()
     elif args.list:
-        list_examples()
+        await list_examples()
     else:
         # Par défaut: initialiser
-        init_collection()
+        await init_collection()
 
 
 if __name__ == "__main__":
-    main()
+    asyncio.run(main())
