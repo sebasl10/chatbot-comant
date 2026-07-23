@@ -28,9 +28,11 @@ MEMORIES = "memories"
 CONVERSATION_SUMMARIES = "conversation_summaries"
 SUPERVISOR_ACTIONS = "supervisor_actions"
 DEFAULT_HNSW_CONFIG = {
-    "space": "cosine",
-    "ef_construction": 1000,
-    "ef_search": 1000
+    "hnsw": {
+        "space": "cosine",
+        "ef_construction": 1000,
+        "ef_search": 1000
+    }
 }
 
 class OllamaEmbeddingFunction(EmbeddingFunction):
@@ -98,7 +100,7 @@ async def get_client():
 async def _collection(name: str):
     client = await get_client()
     return await client.get_or_create_collection(
-        name, metadata=DEFAULT_HNSW_CONFIG, embedding_function=OllamaEmbeddingFunction()
+        name, configuration=DEFAULT_HNSW_CONFIG, embedding_function=OllamaEmbeddingFunction()
     )
 
 
