@@ -109,7 +109,7 @@ async def main():
                     metadatas=current_batch['metadatas'],
                 )
                 migrated_count += len(current_batch['ids'])
-                print(f"✅ Batch de {len(current_batch['ids'])} tickets ajouté")
+                print(f"✅ Batch de {len(current_batch['ids'])} tickets ajouté - Total: {migrated_count}")
                 
                 # Réinitialise le batch
                 current_batch = {

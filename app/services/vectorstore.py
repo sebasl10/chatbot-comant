@@ -30,8 +30,9 @@ SUPERVISOR_ACTIONS = "supervisor_actions"
 DEFAULT_HNSW_CONFIG = {
     "hnsw": {
         "space": "cosine",
-        "ef_construction": 1000,
-        "ef_search": 1000
+        "max_neighbors": 32,
+        "ef_construction": 200,
+        "ef_search": 200
     }
 }
 

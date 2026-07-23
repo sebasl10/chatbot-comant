@@ -39,7 +39,6 @@ ticket_search_capability = Capability(
     defer_loading=True,
 )
 ticket_search_capability.tool(semantic_ticket_search)
-ticket_search_capability.tool(run_sql)
 
 semantic_research_agent = Agent(
     get_agent_model(),
