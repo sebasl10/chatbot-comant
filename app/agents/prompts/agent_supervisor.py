@@ -77,7 +77,7 @@ async def build_user_prompt_with_few_shot(user_message: str) -> str:
     """
     Construit le message utilisateur enrichi avec des exemples few-shot.
     """
-    return f"Message de l'utilisateur : {user_message}"
+    #return f"Message de l'utilisateur : {user_message}"
 
     few_shot_examples = await _get_few_shot_examples(user_message)
     

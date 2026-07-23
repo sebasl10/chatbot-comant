@@ -46,7 +46,10 @@ class OllamaEmbeddingFunction(EmbeddingFunction):
         self._model = model or settings.model_ia_embedding
 
     def __call__(self, input: Documents) -> Embeddings:
-        resp = requests.post(self._url, json={"model": self._model, "input": list(input)})
+        resp = requests.post(
+            self._url,
+            json={"model": self._model, "input": list(input), "keep_alive": "30m"},
+        )
         resp.raise_for_status()
         return resp.json()["embeddings"]
 
@@ -98,11 +101,16 @@ async def get_client():
     return _client
 
 
+_collections: dict[str, Any] = {}
+
+
 async def _collection(name: str):
-    client = await get_client()
-    return await client.get_or_create_collection(
-        name, configuration=DEFAULT_HNSW_CONFIG, embedding_function=OllamaEmbeddingFunction()
-    )
+    if name not in _collections:
+        client = await get_client()
+        _collections[name] = await client.get_or_create_collection(
+            name, configuration=DEFAULT_HNSW_CONFIG, embedding_function=OllamaEmbeddingFunction()
+        )
+    return _collections[name]
 
 
 async def tickets_collection():
@@ -555,8 +563,6 @@ async def get_supervisor_examples(query: str, n_results: int = 5) -> List[Dict[s
     Utilise un embedding avec préfixe d'instruction pour améliorer la recherche.
     """
     col = await supervisor_actions_collection()
-    if await col.count() == 0:
-        return []
 
     # Préfixe spécifique pour la recherche d'exemples de supervision
     supervisor_instruction = ("Given a user's query, retrieve similar queries.")
@@ -569,7 +575,9 @@ async def get_supervisor_examples(query: str, n_results: int = 5) -> List[Dict[s
     )
 
     results = []
-    ids = res.get("ids", [[ ]])[0]
+    ids = res.get("ids", [[ ]])[0] if res.get("ids") else []
+    if not ids:
+        return []
     documents = res.get("documents", [[ ]])[0]
     metadatas = res.get("metadatas", [[ ]])[0]
     distances = res.get("distances", [[ ]])[0]
