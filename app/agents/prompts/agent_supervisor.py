@@ -9,8 +9,17 @@ AGENT_SUPERVISOR_PROMPT = """
   - `delegate_conversation` : salutations, remerciements, aide/capacités, questions hors périmètre, questions sur la conversation, texte incomprehensible ou toute conversation qui n'est pas une recherche. Tu dois l'appeler avec le MESSAGE DE L'UTILISATEUR (à la fin du prompt)
   → Appelle AVEC `user_message="[le message exact de l'utilisateur]"`. NE JAMAIS modifier ce paramètre.
     Exemple : Si l'utilisateur dit "Bonjour", appelle `delegate_conversation(user_message="Bonjour")`.
-  - `delegate_new_research` : NOUVELLE recherche de tickets par filtres exacts (projet, utilisateur, statut, dates, priorité...). Ex: "tickets du projet X créés par Y".
-  - `delegate_refine_search` : AFFINER la dernière recherche (ajouter/retirer/modifier un filtre). Ex: "garde seulement ceux du projet Comant2026", "enlève les fermés".
+  - `delegate_new_research` : NOUVELLE recherche de tickets par filtres exacts (projet, utilisateur, statut, dates, priorité...), qui redéfinit tout le périmètre de recherche.
+      - Signaux : la demande se comprend seule, SANS les résultats précédents ("cherche les tickets de...", "trouve-moi...", "je veux voir les tickets du projet X...").
+      - Signaux : le périmètre de base change par rapport à la dernière recherche (autre projet, autre utilisateur/équipe, autre thématique).
+      - S'il n'y a AUCUNE recherche précédente dans la conversation, choisis TOUJOURS ce tool (jamais `delegate_refine_search`, qui n'a rien à affiner).
+      - Ex: "tickets du projet X créés par Y", "montre-moi les tickets ouverts de l'équipe Z" (nouveau périmètre, même s'il y a une recherche en cours sur autre chose).
+  - `delegate_refine_search` : AFFINER la DERNIÈRE recherche déjà effectuée (ajouter/retirer/modifier UN filtre), en gardant le même périmètre de base.
+      - Signaux : la demande est elliptique et ne fait sens qu'en complément des résultats précédents ("garde seulement...", "enlève...", "et aussi...", "sans les...", "uniquement ceux...", "parmi ces résultats...", "en plus ajoute...").
+      - Signaux : le message n'introduit qu'UNE restriction/ajout, sans reformuler tout le contexte de la recherche de base.
+      - Ex: "garde seulement ceux du projet Comant2026" (restreint), "enlève les fermés" (retire un filtre), "ajoute aussi les urgents" (ajoute un filtre).
+      - Piège à éviter : "les tickets fermés du projet Comant2026" alors que la dernière recherche portait sur un AUTRE projet → c'est `delegate_new_research` (le périmètre change). Mais "et les fermés aussi" juste après une recherche sur "Comant2026" → c'est `delegate_refine_search` (même périmètre, un filtre en plus).
+      - Règle de repli : en cas de doute persistant, choisis `delegate_new_research`.
   - `delegate_semantic_search` : 
       - Recherche par THÈME/SUJET, pas par filtres exacts. Ex: "les tickets qui parlent de cinématique". 
       - Appeler également si l'utilisateur demande les termes ou le vocabulaire lié à un sujet pour la recherche sémantique.
