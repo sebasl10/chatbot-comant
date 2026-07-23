@@ -1,40 +1,45 @@
-"""Suppression de toutes les collections Chroma.
+"""Suppression des collections Chroma.
 
 Usage :
     python -m app.scripts.delete_chroma_collections
+
+Modifiez la liste COLLECTIONS_TO_DELETE pour definir les collections a supprimer.
 """
 import asyncio
 from app.services import vectorstore as vs
 from app.config import settings
 
 
+# Liste des collections a supprimer - MODIFIEZ CI-DESSOUS
+COLLECTIONS_TO_DELETE = [
+    "supervisor_actions",
+    "memories"
+]
+
+
 async def main():
-    """Supprime toutes les collections Chroma et affiche les resultats."""
+    """Supprime les collections specifiees dans COLLECTIONS_TO_DELETE."""
     print(f"Suppression des collections Chroma - Serveur: {settings.chroma_http_url}")
     print("-" * 70)
 
     client = await vs.get_client()
-    collections = await client.list_collections()
 
-    if not collections:
-        print("Aucune collection trouvée.")
-        return
-
-    print(f"Collections a supprimer: {len(collections)}")
-    for col in collections:
-        count = await col.count()
-        print(f"  - {col.name}: {count} documents")
+    print(f"Collections a supprimer: {len(COLLECTIONS_TO_DELETE)}")
+    for col_name in COLLECTIONS_TO_DELETE:
+        print(f"  - {col_name}")
     print()
 
     results = {}
-    for col in collections:
+    for col_name in COLLECTIONS_TO_DELETE:
         try:
-            await client.delete_collection(col.name)
-            results[col.name] = True
-            print(f"Supprimée: {col.name}")
+            collection = await client.get_collection(col_name)
+            count = await collection.count()
+            await client.delete_collection(col_name)
+            results[col_name] = True
+            print(f"Supprimée: {col_name} ({count} documents)")
         except Exception as e:
-            results[col.name] = False
-            print(f"Erreur {col.name}: {e}")
+            results[col_name] = False
+            print(f"Erreur {col_name}: {e}")
 
     print("-" * 70)
     success = sum(1 for r in results.values() if r)
