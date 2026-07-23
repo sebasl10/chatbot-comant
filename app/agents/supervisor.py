@@ -36,7 +36,7 @@ async def delegate_new_research(ctx: RunContext[ChatDeps], request: str) -> str:
     """
     Délègue une NOUVELLE recherche par filtres exacts à l'agent SQL, puis persiste la recherche créée.
     Args:
-        request: Message exact envoyé par l'utilisateur, sans modification, sans reformulation, sans ajout de texte
+        request: Message contenant la requête de l'utilisateur (message envoyé par l'utilisateur ou construit à partir de l'historique)
     """
     print("[DELEGATE] SQL research agent")
     print(f"Message: {request}")

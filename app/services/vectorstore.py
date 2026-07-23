@@ -230,17 +230,25 @@ async def query_tickets(query: list[float] | str, threshold: float = 0.55, use_s
     """
     col = await tickets_collection()
 
-    """ query_instruction = (
-        "Trouve les tickets pertinents pour une demande donnée en identifiant ceux qui mentionnent, décrivent ou traitent du sujet spécifié. "
-        "Inclus les tickets qui contiennent des termes directement liés ou des concepts sémantiquement proches."
-        "Donne la priorité aux tickets qui contiennent exactement le sujet."
-    ) """
-    #query_instruction = "Given a search query, retrieve support tickets that discuss the specified topic or technical concept."
-    query_instruction = "Given a technical term or topic, retrieve customer support tickets that mention or relate to it, even briefly."
+    query_instruction = "Given a technical term or topic, retrieve support tickets that mention or relate to it, even briefly."
+    
+    # Variante haut rappel : les documents (summary + description + commentaires concaténés) sont bruités
+    # et le sujet peut n'apparaître que dans un commentaire, en passant. Pousse le modèle à ne pas exiger
+    # une correspondance centrale/exacte du sujet.
+    # query_instruction = "Given a topic, retrieve all support tickets that mention, discuss, or are related to it, even in a single comment or as a minor detail."
+
+    # Variante en français : les requêtes utilisateur et le contenu des tickets sont en français
+    # (ex: "cinématique") ; à tester si les instructions anglaises sous-performent sur du vocabulaire
+    # technique métier francophone.
+    #query_instruction = "Étant donné un terme ou un sujet technique, retrouve les tickets de support qui le mentionnent ou qui s'y rapportent, même brièvement."
+
+    # Variante orientée synonymes/concepts proches : complémentaire du mécanisme use_synonyms (qui génère
+    # déjà un embedding par synonyme) — insiste ici sur la proximité conceptuelle plutôt que lexicale,
+    # pour capter des tickets qui n'emploient ni le terme ni ses synonymes connus mais un concept lié.
+    #query_instruction = "Given a technical topic, retrieve support tickets that relate to it conceptually, even if they use different wording or related terminology rather than the exact term."
 
     all_embeddings = []
     terms_used = []
-
 
     if use_synonyms:
         synonyms = (await get_vocabulary_for_term(query))["synonyms"]
