@@ -426,19 +426,13 @@ def _memory_payload(doc: str, meta: dict | None) -> str:
     document lui-même (invariant, où le document EST la règle)."""
     return (meta or {}).get("correction") or doc
 
-
-# Instruction de préfixe pour embedder une requête de récupération de souvenirs.
-# Constante pour que l'embedding d'un même message soit identique d'un agent à
-# l'autre → réutilisable via cache (voir ChatDeps.memory_query_embedding).
-_MEMORY_QUERY_INSTRUCTION = (
-    "Représente une requête utilisateur pour retrouver des requêtes passées "
-    "similaires ayant déclenché une correction."
-)
-
-
 async def embed_memory_query(text: str) -> list[float]:
     """Embedding (avec préfixe d'instruction) d'un message pour la recherche de souvenirs."""
-    return await asyncio.to_thread(get_embedding, f"Instruct: {_MEMORY_QUERY_INSTRUCTION}\nQuery: {text}")
+    instruction  = (
+        "Représente une requête utilisateur pour retrouver des requêtes passées "
+        "similaires ayant déclenché une correction."
+    )
+    return await asyncio.to_thread(get_embedding, f"Instruct: {instruction}\nQuery: {text}")
 
 
 async def get_memories_text(
@@ -609,8 +603,6 @@ async def get_all_memories() -> dict:
     memories = []
     for i, doc_id in enumerate(res['ids']):
         meta = res['metadatas'][i] or {}
-        # Pour un souvenir contextuel, ``text`` (le document) est la requête
-        # déclencheuse, et la règle injectée est dans ``correction``.
         memory = {
             "text": res['documents'][i],
             "id": doc_id,
