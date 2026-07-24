@@ -33,8 +33,18 @@ async def relevant_memories(ctx: RunContext[ChatDeps], target_agent: str, k: int
     À appeler depuis le system prompt d'un agent pour injecter ses règles
     mémorisées pertinentes (et uniquement les siennes).
     """
+    # Embedding du message calculé une seule fois par tour, réutilisé par le
+    # superviseur puis le spécialiste délégué (même message, même embedding).
+    if ctx.deps.memory_query_embedding is None and ctx.deps.message:
+        ctx.deps.memory_query_embedding = await vs.embed_memory_query(ctx.deps.message)
     # Le détail (contenu + métadonnées) est loggué dans vs.get_memories_text.
-    return await vs.get_memories_text(target_agent, ctx.deps.user_id, query=ctx.deps.message, k=k)
+    return await vs.get_memories_text(
+        target_agent,
+        ctx.deps.user_id,
+        query=ctx.deps.message,
+        query_embedding=ctx.deps.memory_query_embedding,
+        k=k,
+    )
 
 
 async def save_memory(

@@ -430,16 +430,39 @@ def _memory_payload(doc: str, meta: dict | None) -> str:
     return (meta or {}).get("correction") or doc
 
 
-async def get_memories_text(target_agent: str, user_id: int | None, query: str | None = None, k: int = 5) -> str:
+# Instruction de préfixe pour embedder une requête de récupération de souvenirs.
+# Constante pour que l'embedding d'un même message soit identique d'un agent à
+# l'autre → réutilisable via cache (voir ChatDeps.memory_query_embedding).
+_MEMORY_QUERY_INSTRUCTION = (
+    "Représente une requête utilisateur pour retrouver des requêtes passées "
+    "similaires ayant déclenché une correction."
+)
+
+
+async def embed_memory_query(text: str) -> list[float]:
+    """Embedding (avec préfixe d'instruction) d'un message pour la recherche de souvenirs."""
+    return await asyncio.to_thread(get_embedding, f"Instruct: {_MEMORY_QUERY_INSTRUCTION}\nQuery: {text}")
+
+
+async def get_memories_text(
+    target_agent: str,
+    user_id: int | None,
+    query: str | None = None,
+    query_embedding: list[float] | None = None,
+    k: int = 5,
+) -> str:
     """
     Renvoie les souvenirs à injecter pour ``target_agent``, en combinant deux voies :
 
     1. **Invariants** (``retrieval="invariant"``) : règles universelles, TOUJOURS
        injectées (filtre métadonnées, sans similarité).
     2. **Contextuels** (``retrieval="contextual"``) : les ``k`` dont la *requête
-       déclencheuse* (le ``document`` embeddé) est la plus proche du ``query``
-       (message utilisateur). Indexation asymétrique : on compare requête ↔ requête,
-       pas requête ↔ règle.
+       déclencheuse* (le ``document`` embeddé) est la plus proche du message.
+       Indexation asymétrique : on compare requête ↔ requête, pas requête ↔ règle.
+
+    ``query_embedding`` : embedding déjà calculé du message (via ``embed_memory_query``),
+    pour éviter de ré-embedder le même message d'un agent à l'autre. Sinon il est
+    calculé à partir de ``query``. ``query`` reste utilisé pour le log d'accès.
 
     Le vocabulaire (sans champ ``retrieval``) n'est pas concerné : il a son propre
     mécanisme (``get_vocabulary_for_term`` / ``semantic_ticket_search``).
@@ -457,12 +480,9 @@ async def get_memories_text(target_agent: str, user_id: int | None, query: str |
     # 2) Contextuels — top-k par similarité message ↔ requête déclencheuse
     ctx_docs: list = []
     ctx_metas: list = []
-    if query:
-        instruction = (
-            "Représente une requête utilisateur pour retrouver des requêtes passées "
-            "similaires ayant déclenché une correction."
-        )
-        query_embedding = await asyncio.to_thread(get_embedding, f"Instruct: {instruction}\nQuery: {query}")
+    if query_embedding is None and query:
+        query_embedding = await embed_memory_query(query)
+    if query_embedding is not None:
         cres = await col.query(
             query_embeddings=[query_embedding],
             n_results=k,
