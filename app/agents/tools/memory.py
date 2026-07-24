@@ -30,7 +30,18 @@ async def relevant_memories(ctx: RunContext[ChatDeps], target_agent: str, k: int
     Récupère les souvenirs destinés à ``target_agent``, les ``k`` plus proches
     sémantiquement du message utilisateur brut (``ctx.deps.message``). Vide si aucun.
     """
-    return await vs.get_memories_text(target_agent, ctx.deps.user_id, query=ctx.deps.message, k=k)
+    # Embedding du message calculé une seule fois par tour, réutilisé par le
+    # superviseur puis le spécialiste délégué (même message, même embedding).
+    if ctx.deps.memory_query_embedding is None and ctx.deps.message:
+        ctx.deps.memory_query_embedding = await vs.embed_memory_query(ctx.deps.message)
+    # Le détail (contenu + métadonnées) est loggué dans vs.get_memories_text.
+    return await vs.get_memories_text(
+        target_agent,
+        ctx.deps.user_id,
+        query=ctx.deps.message,
+        query_embedding=ctx.deps.memory_query_embedding,
+        k=k,
+    )
 
 
 async def save_memory(ctx: RunContext[ChatDeps], target_agent: str, kind: str, content: str, retrieval: str = "invariant", trigger: str | None = None, base_term: str | None = None) -> dict:
