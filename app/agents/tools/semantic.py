@@ -32,6 +32,10 @@ async def semantic_ticket_search(ctx: RunContext[ChatDeps], query: str) -> dict:
         sql_query = "SELECT t.id, t.summary, t.description FROM ticket t WHERE t.id IN ()"
         
     print(f"[SQL RESULT] {sql_query}")
+    print(f"[NB TICKETS] {len(ticket_ids)}")
+    
+    ctx.deps.last_sql = sql_query
+    ctx.deps.last_count = len(ticket_ids)
     
     return {
         "sql_query": sql_query,

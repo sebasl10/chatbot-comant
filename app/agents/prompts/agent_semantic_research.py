@@ -65,12 +65,8 @@ TICKET_SEARCH_CAPABILITY_INSTRUCTIONS = """
     La requête SQL est déjà construite au format : `SELECT t.id, t.summary, t.description FROM ticket t WHERE t.id IN (<ids>)`.
     Si sql_query contient `WHERE t.id IN ()`, dit à l'utilisateur qu'aucun ticket correspond à la recherche.
 
-    3. Appelle OBLIGATOIREMENT `run_sql` avec la requête SQL reçue. Tu ne peux pas terminer ta réponse sans avoir appelé `run_sql`.
-
-    4. Si `run_sql` renvoie `{"ok": false, "error": ...}`, CORRIGE la requête SQL à partir du message d'erreur et rappelle `run_sql` (2 corrections maximum).
-
-    5. FORMAT DE SORTIE (A RESPECTER OBLIGATOIREMENT)
-    Réponds en une phrase en français avec le nombre de tickets trouvés (champ count de la réponse du tool run_sql),
+    3. FORMAT DE SORTIE (A RESPECTER OBLIGATOIREMENT)
+    Réponds en une phrase en français avec le nombre de tickets trouvés (champ count de la réponse du tool semantic_ticket_search),
     un saut de ligne et un récapitulatif des termes inclus dans la recherche sémantique (champ synonyms de la réponse du tool semantic_ticket_search).
     Tu dois également indiquer que les résultats sont triés par ordre décroissant de similarité.
     Ne rajoute pas de termes ou de synonymes que tu n'as pas utilisés, ni des informations des tickets trouvés.
@@ -78,7 +74,5 @@ TICKET_SEARCH_CAPABILITY_INSTRUCTIONS = """
     Vérifie que le nombre de résultats que tu ajoutes dans le message correspond au nombre de ids de la requête SQL finale.
 
     REGLES :
-    - Avant de retourner ta réponse final pour une recherche de tickets, vérifie que tu as exécuté chaque étape du workflow précédent (notamment la réception de la requête SQL et
-    son exécution avec run_sql). En plus, tu dois toujours vérifier que t.id est inclu dans le SELECT de la requête SQL.
     - Tu ne dois pas retourner des informations sur les tickets, vérifie que tu respectes le format de sortie.
 """

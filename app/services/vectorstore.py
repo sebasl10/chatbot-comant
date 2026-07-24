@@ -1,14 +1,10 @@
 """
 Base vectorielle Chroma — tickets, mémoires, résumés de conversation.
 
-Remplace le duo (table MySQL ``ticket_embedding`` + cosine en Python) et le
-stockage Markdown des souvenirs, par un client Chroma persistant unique.
-
 Collections :
 - ``tickets``                : embeddings de tickets.
-- ``memories``               : souvenirs/corrections, filtrables par métadonnées ``{type, scope, user_id}`` et recherchables sémantiquement.
+- ``memories``               : souvenirs/corrections + exemples de routage, filtrables par métadonnées ``{target_agent, kind, scope, user_id}`` et recherchables sémantiquement. Guide aussi le superviseur (``target_agent=supervisor``).
 - ``conversation_summaries`` : résumés de conversation.
-- ``supervisor_actions``     : exemples de requêtes utilisateur et actions correspondantes pour l'agent supervisor.
 """
 
 from __future__ import annotations
@@ -26,12 +22,12 @@ from bs4 import BeautifulSoup
 TICKETS = "tickets"
 MEMORIES = "memories"
 CONVERSATION_SUMMARIES = "conversation_summaries"
-SUPERVISOR_ACTIONS = "supervisor_actions"
 DEFAULT_HNSW_CONFIG = {
     "hnsw": {
         "space": "cosine",
-        "ef_construction": 1000,
-        "ef_search": 1000
+        "max_neighbors": 32,
+        "ef_construction": 200,
+        "ef_search": 200
     }
 }
 
@@ -45,7 +41,10 @@ class OllamaEmbeddingFunction(EmbeddingFunction):
         self._model = model or settings.model_ia_embedding
 
     def __call__(self, input: Documents) -> Embeddings:
-        resp = requests.post(self._url, json={"model": self._model, "input": list(input)})
+        resp = requests.post(
+            self._url,
+            json={"model": self._model, "input": list(input), "keep_alive": "30m"},
+        )
         resp.raise_for_status()
         return resp.json()["embeddings"]
 
@@ -97,11 +96,16 @@ async def get_client():
     return _client
 
 
+_collections: dict[str, Any] = {}
+
+
 async def _collection(name: str):
-    client = await get_client()
-    return await client.get_or_create_collection(
-        name, configuration=DEFAULT_HNSW_CONFIG, embedding_function=OllamaEmbeddingFunction()
-    )
+    if name not in _collections:
+        client = await get_client()
+        _collections[name] = await client.get_or_create_collection(
+            name, configuration=DEFAULT_HNSW_CONFIG, embedding_function=OllamaEmbeddingFunction()
+        )
+    return _collections[name]
 
 
 async def tickets_collection():
@@ -114,10 +118,6 @@ async def memories_collection():
 
 async def summaries_collection():
     return await _collection(CONVERSATION_SUMMARIES)
-
-
-async def supervisor_actions_collection():
-    return await _collection(SUPERVISOR_ACTIONS)
 
 # ── Ajouter/mettre à jouter l'embedding d'un ticket dans Chroma ────────────
 
@@ -286,7 +286,7 @@ async def get_vocabulary_for_term(base_term: str) -> Dict[str, Any]:
 
     where = {
         "$and":[
-            {"type": "expand_vocabulary"},
+            {"kind": "vocabulary"},
             {"base_term": base_term}
         ]
     }
@@ -294,6 +294,7 @@ async def get_vocabulary_for_term(base_term: str) -> Dict[str, Any]:
     res = await col.get(where=where, include=["documents", "metadatas"])
     docs = res.get("documents", [])
     metadatas = res.get("metadatas", [])
+    _debug_memory("RETRIEVE VOCAB", f"base_term={base_term!r} where={where}", docs, metadatas)
 
     synonyms = []
     metadata = None
@@ -317,13 +318,14 @@ async def get_vocabulary_for_term(base_term: str) -> Dict[str, Any]:
 
 async def add_synonyms(base_term: str, synonyms: List[str], user_id: int | None = None, username: str | None = None) -> str:
     """
-    Ajoute un ensemble de synonymes pour un terme de base (type expand_vocabulary).
+    Ajoute un ensemble de synonymes pour un terme de base (kind=vocabulary, global).
     """
     # Convertir la liste en chaîne séparée par des virgules
     content = ", ".join(synonyms)
 
     return await add_memory(
-        type="expand_vocabulary",
+        target_agent="semantic_research",
+        kind="vocabulary",
         content=content,
         user_id=user_id,
         base_term=base_term
@@ -333,14 +335,14 @@ async def remove_term_from_vocabulary(term: str, base_term: str) -> Dict[str, An
     """
     Supprime une entrée de vocabulaire spécifique.
 
-    Cherche tous les documents de type expand_vocabulary avec base_term dans les métadonnées,
+    Cherche tous les documents de kind=vocabulary avec base_term dans les métadonnées,
     puis supprime l'entrée dont le document est exactement égal au terme à supprimer.
     """
     col = await memories_collection()
 
     where = {
         "$and":[
-            {"type": "expand_vocabulary"},
+            {"kind": "vocabulary"},
             {"base_term": base_term}
         ]
     }
@@ -376,66 +378,186 @@ async def remove_term_from_vocabulary(term: str, base_term: str) -> Dict[str, An
 
 # ── Gérer les souvenirs ──────────────────────────────────────
 
-def _memory_where(type: str, user_id: int | None) -> dict:
-    if type == "expand_vocabulary" or user_id is None:
-        return {"type": type}
-    return {"$and": [{"type": type}, {"$or": [{"user_id": user_id}, {"scope": "global"}]}]}
+# Portée par défaut selon la nature (kind) du souvenir, quand ``scope`` n'est pas
+# fourni explicitement. Les règles « système » (comportement partagé par tous les
+# utilisateurs) sont globales ; ce qui est propre à un utilisateur reste local.
+_KIND_DEFAULT_SCOPE = {
+    "sql_rule": "global",     # règles de construction SQL : comportement système
+    "routing": "global",      # corrections/exemples de délégation : comportement système
+    "vocabulary": "global",   # synonymes partagés
+    "exclude": "user",        # exclusion de ticket : plutôt une préférence de filtrage
+    "other": "user",          # non classé : local par prudence
+}
 
-async def get_memories_text(type: str, user_id: int | None, query: str | None = None, k: int = 8) -> str:
+def _debug_memory(action: str, header: str, docs: list[str], metas: list[dict] | None = None) -> None:
     """
-    Renvoie les souvenirs d'un ``type`` sous forme de texte concaténé.
+    Affiche un bloc de débogage pour toute écriture/lecture de souvenir :
+    contenu + métadonnées, pour vérifier quand et quoi est stocké/récupéré.
 
-    - Sans ``query`` : tous les souvenirs du type (filtrés par métadonnées).
-    - Avec ``query`` : les ``k`` souvenirs les plus proches sémantiquement (avec préfixe d'instruction).
-    Vide si aucun souvenir
+    ``action`` : "STORE" | "RETRIEVE" | "RETRIEVE VOCAB" ...
+    ``header`` : contexte (target_agent, query, where, id…).
+    """
+    print(f"\n{'━' * 64}")
+    print(f"[MEMORY {action}] {header}")
+    print(f"  → {len(docs)} souvenir(s)")
+    for i, doc in enumerate(docs):
+        meta = metas[i] if metas and i < len(metas) else None
+        print(f"  {i + 1}. {doc}")
+        if meta is not None:
+            print(f"     meta: {meta}")
+    print('━' * 64)
+
+
+def _memory_where(target_agent: str, user_id: int | None, retrieval: str | None = None) -> dict:
+    """
+    Filtre les souvenirs destinés à ``target_agent`` : ceux de l'utilisateur plus
+    ceux de portée globale, éventuellement restreints à un mode de récupération
+    (``retrieval`` = "invariant" | "contextual"). Construit un ``$and`` plat.
+    """
+    conds: list[dict] = [{"target_agent": target_agent}]
+    if user_id is not None:
+        conds.append({"$or": [{"user_id": user_id}, {"scope": "global"}]})
+    if retrieval is not None:
+        conds.append({"retrieval": retrieval})
+    return conds[0] if len(conds) == 1 else {"$and": conds}
+
+def _memory_payload(doc: str, meta: dict | None) -> str:
+    """Texte à injecter dans le prompt : la correction (contextuel) ou le
+    document lui-même (invariant, où le document EST la règle)."""
+    return (meta or {}).get("correction") or doc
+
+async def embed_memory_query(text: str) -> list[float]:
+    """Embedding (avec préfixe d'instruction) d'un message pour la recherche de souvenirs."""
+    instruction  = (
+        "Représente une requête utilisateur pour retrouver des requêtes passées "
+        "similaires ayant déclenché une correction."
+    )
+    return await asyncio.to_thread(get_embedding, f"Instruct: {instruction}\nQuery: {text}")
+
+
+async def get_memories_text(
+    target_agent: str,
+    user_id: int | None,
+    query: str | None = None,
+    query_embedding: list[float] | None = None,
+    k: int = 5,
+) -> str:
+    """
+    Renvoie les souvenirs à injecter pour ``target_agent``, en combinant deux voies :
+
+    1. **Invariants** (``retrieval="invariant"``) : règles universelles, TOUJOURS
+       injectées (filtre métadonnées, sans similarité).
+    2. **Contextuels** (``retrieval="contextual"``) : les ``k`` dont la *requête
+       déclencheuse* (le ``document`` embeddé) est la plus proche du message.
+       Indexation asymétrique : on compare requête ↔ requête, pas requête ↔ règle.
+
+    ``query_embedding`` : embedding déjà calculé du message (via ``embed_memory_query``),
+    pour éviter de ré-embedder le même message d'un agent à l'autre. Sinon il est
+    calculé à partir de ``query``. ``query`` reste utilisé pour le log d'accès.
+
+    Le vocabulaire (sans champ ``retrieval``) n'est pas concerné : il a son propre
+    mécanisme (``get_vocabulary_for_term`` / ``semantic_ticket_search``).
     """
     col = await memories_collection()
-    where = _memory_where(type, user_id)
-    if query:
-        # Calculer l'embedding avec préfixe pour les mémoires
-        memory_instruction = (
-            "Représente une question ou un contexte pour retrouver des souvenirs ou corrections pertinents. "
-            "Inclut les synonymes, concepts liés et variations sémantiques."
-        )
-        query_embedding = await asyncio.to_thread(get_embedding, f"Instruct: {memory_instruction}\nQuery: {query}")
-        res = await col.query(query_embeddings=[query_embedding], n_results=k, where=where, include=["documents"])
-        docs = res["documents"][0] if res["documents"] else []
-    else:
-        res = await col.get(where=where, include=["documents"])
-        docs = res.get("documents", []) or []
-    return "\n\n---\n\n".join(docs)
 
-async def add_memory(type: str, content: str, user_id: int | None, embedding: list[float] | None = None, base_term: str | None = None) -> str:
+    # 1) Invariants — toujours injectés
+    inv_res = await col.get(
+        where=_memory_where(target_agent, user_id, retrieval="invariant"),
+        include=["documents", "metadatas"],
+    )
+    inv_docs = inv_res.get("documents", []) or []
+    inv_metas = inv_res.get("metadatas", []) or []
+
+    # 2) Contextuels — top-k par similarité message ↔ requête déclencheuse
+    ctx_docs: list = []
+    ctx_metas: list = []
+    if query_embedding is None and query:
+        query_embedding = await embed_memory_query(query)
+    if query_embedding is not None:
+        cres = await col.query(
+            query_embeddings=[query_embedding],
+            n_results=k,
+            where=_memory_where(target_agent, user_id, retrieval="contextual"),
+            include=["documents", "metadatas"],
+        )
+        ctx_docs = cres["documents"][0] if cres["documents"] else []
+        ctx_metas = cres["metadatas"][0] if cres.get("metadatas") else []
+
+    docs = inv_docs + ctx_docs
+    metas = inv_metas + ctx_metas
+    # Accès : agent + query ; résultats : contenu + métadonnées de chaque souvenir.
+    _debug_memory("ACCESS", f"agent={target_agent} query={query!r}", docs, metas)
+
+    lines = [_memory_payload(d, m) for d, m in zip(docs, metas)]
+    return "\n\n---\n\n".join(l for l in lines if l)
+
+async def add_memory(
+    target_agent: str,
+    kind: str,
+    content: str,
+    user_id: int | None,
+    retrieval: str | None = None,
+    trigger: str | None = None,
+    scope: str | None = None,
+    embedding: list[float] | None = None,
+    base_term: str | None = None,
+) -> str:
     """
     Ajoute un souvenir.
 
-    Pour le type 'expand_vocabulary' :
+    - ``target_agent`` : agent qui devra lire ce souvenir (supervisor,
+      sql_research, semantic_research, conversational).
+    - ``kind`` : nature du souvenir (sql_rule, exclude, vocabulary, routing, other).
+    - ``content`` : le texte de la règle/correction à injecter (le payload).
+    - ``retrieval`` : mode de récupération —
+        * "invariant"  : règle universelle, toujours injectée. ``document`` = ``content``.
+        * "contextual" : liée à une situation. ``document`` = ``trigger`` (la requête
+          déclencheuse, embeddée comme clé), ``content`` conservé en payload ``correction``.
+        * None         : vocabulaire (mécanisme dédié), non concerné par les deux voies.
+    - ``trigger`` : requête utilisateur déclencheuse (REQUIS si ``retrieval="contextual"``).
+    - ``scope`` : "user" ou "global". Si None, déduit du ``kind`` via ``_KIND_DEFAULT_SCOPE``.
+
+    Pour ``kind == "vocabulary"`` :
         - content : les termes liés/synonymes (ex: "lent, slow, performance")
         - base_term : le terme de base (ex: "performance") - **REQUIS** - stocké dans les métadonnées
-    Pour les autres types :
-        - content : le souvenir/correction
-        - base_term : non utilisé
     """
-    scope = "global" if type == "expand_vocabulary" else "user"
+    if scope is None:
+        scope = _KIND_DEFAULT_SCOPE.get(kind, "user")
+    # Garde-fou : un souvenir non-vocabulaire DOIT avoir un mode de récupération,
+    # sinon il serait invisible pour get_memories_text. Défaut : invariant.
+    if retrieval is None and kind != "vocabulary":
+        retrieval = "invariant"
     username = await asyncio.to_thread(get_username, user_id)
     meta = {
-        "type": type,
+        "target_agent": target_agent,
+        "kind": kind,
         "scope": scope,
         "user_id": user_id if user_id is not None else -1,
         "username": username or "",
         "date": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
     }
+    if retrieval is not None:
+        meta["retrieval"] = retrieval
 
-    # Pour expand_vocabulary, ajouter le terme de base dans les métadonnées
-    if type == "expand_vocabulary":
+    # Pour le vocabulaire, ajouter le terme de base dans les métadonnées
+    if kind == "vocabulary":
         meta["base_term"] = base_term
 
+    # Indexation asymétrique : pour un souvenir contextuel, la clé de recherche
+    # (document embeddé) est la requête déclencheuse ; la règle reste en payload.
+    if retrieval == "contextual":
+        document = trigger or content
+        meta["correction"] = content
+    else:
+        document = content
+
     doc_id = str(uuid.uuid4())
-    kwargs = {"ids": [doc_id], "documents": [content], "metadatas": [meta]}
+    kwargs = {"ids": [doc_id], "documents": [document], "metadatas": [meta]}
     if embedding is not None:
         kwargs["embeddings"] = [embedding]
     col = await memories_collection()
     await col.add(**kwargs)
+    _debug_memory("STORE", f"id={doc_id}", [document], [meta])
     return doc_id
 
 async def delete_memory(memory_id: str) -> bool:
@@ -480,19 +602,23 @@ async def get_all_memories() -> dict:
     res = await col.get(include=["documents", "metadatas"])
     memories = []
     for i, doc_id in enumerate(res['ids']):
+        meta = res['metadatas'][i] or {}
         memory = {
             "text": res['documents'][i],
             "id": doc_id,
-            "user_id": res['metadatas'][i]['user_id'],
-            "date": res['metadatas'][i]['date'],
-            "type": res['metadatas'][i]['type'],
-            "scope": res['metadatas'][i]['scope'],
-            "username": res['metadatas'][i]['username'],
-
+            "user_id": meta.get('user_id'),
+            "date": meta.get('date'),
+            "target_agent": meta.get('target_agent'),
+            "kind": meta.get('kind'),
+            "retrieval": meta.get('retrieval'),
+            "scope": meta.get('scope'),
+            "username": meta.get('username'),
         }
 
-        if res['metadatas'][i].get('base_term'):
-            memory["base_term"] = res['metadatas'][i]['base_term']
+        if meta.get('correction'):
+            memory["correction"] = meta['correction']
+        if meta.get('base_term'):
+            memory["base_term"] = meta['base_term']
 
         memories.append(memory)
 
@@ -527,87 +653,6 @@ async def get_last_memory(user_id: int | None) -> dict | None:
         "content": docs[last_index],
         "metadata": metas[last_index]
     }
-
-# ── Exemples de comportement pour l'agent superviseur ─────────────────────────────────────────────────
-
-async def add_supervisor_example(user_query: str, action: str) -> str:
-    """
-    Ajoute un exemple de requête utilisateur et l'action correspondante pour l'agent supervisor.
-    """
-    meta = {
-        "action": action,
-        "type": "supervisor_example",
-        "date": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-    }
-    doc_id = str(uuid.uuid4())
-    col = await supervisor_actions_collection()
-    await col.add(
-        ids=[doc_id],
-        documents=[user_query],
-        metadatas=[meta]
-    )
-    return doc_id
-
-async def get_supervisor_examples(query: str, n_results: int = 5) -> List[Dict[str, Any]]:
-    """
-    Recherche des exemples de supervision similaires à une requête utilisateur.
-    Utilise un embedding avec préfixe d'instruction pour améliorer la recherche.
-    """
-    col = await supervisor_actions_collection()
-    if await col.count() == 0:
-        return []
-
-    # Préfixe spécifique pour la recherche d'exemples de supervision
-    supervisor_instruction = (
-        "Représente une requête utilisateur pour déterminer l'action appropriée à entreprendre. "
-        "Analyse la sémantique, l'intention et le contexte pour identifier des exemples similaires "
-        "qui aideront à prendre la bonne décision de délégation."
-    )
-    query_embedding = await asyncio.to_thread(get_embedding, f"Instruct: {supervisor_instruction}\nQuery: {query}")
-
-    res = await col.query(
-        query_embeddings=[query_embedding],
-        n_results=n_results,
-        include=["documents", "metadatas", "distances"]
-    )
-
-    results = []
-    ids = res.get("ids", [[ ]])[0]
-    documents = res.get("documents", [[ ]])[0]
-    metadatas = res.get("metadatas", [[ ]])[0]
-    distances = res.get("distances", [[ ]])[0]
-
-    for i in range(len(ids)):
-        results.append({
-            "id": ids[i],
-            "user_query": documents[i],
-            "metadata": metadatas[i] if i < len(metadatas) else {},
-            "distance": distances[i] if i < len(distances) else None
-        })
-
-    return results
-
-
-async def get_all_supervisor_examples() -> List[Dict[str, Any]]:
-    """
-    Récupère tous les exemples de supervision.
-    """
-    col = await supervisor_actions_collection()
-    res = await col.get(include=["documents", "metadatas"])
-
-    results = []
-    ids = res.get("ids", [])
-    documents = res.get("documents", [])
-    metadatas = res.get("metadatas", [])
-
-    for i in range(len(ids)):
-        results.append({
-            "id": ids[i],
-            "user_query": documents[i],
-            "metadata": metadatas[i] if i < len(metadatas) else {}
-        })
-
-    return results
 
 # ── Résumés de conversation ─────────────────────────────────────────────────
 

@@ -21,6 +21,15 @@ class ChatDeps:
     historique: list[dict] = field(default_factory=list)
     events: EventSink = field(default_factory=EventSink)
 
+    # Message brut du tour courant. Sert de requête pour la récupération
+    # sémantique des souvenirs (relevant_memories). Positionné par
+    # l'orchestrateur au début du tour.
+    message: str = ""
+    # Cache de l'embedding du message pour la recherche de souvenirs, calculé une
+    # seule fois par tour et réutilisé par le superviseur puis le spécialiste
+    # délégué (évite un 2e appel d'embedding sur le même message).
+    memory_query_embedding: list[float] | None = None
+
     # Dernière requête SQL exécutée avec succès par le tool run_sql, et son
     # nombre de résultats. La couche de délégation les utilise pour persister
     # la recherche (create_research / update_sql) de façon déterministe

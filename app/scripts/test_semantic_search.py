@@ -21,6 +21,14 @@ async def main():
 
     # ── EXÉCUTION ────────────────────────────────────────────────────────────
     collection = await tickets_collection()
+    
+    """ NEW_HNSW_CONFIG = {
+        "hnsw": {
+            "ef_search": 1000
+        }
+    }
+    await collection.modify(configuration=NEW_HNSW_CONFIG) """
+    print(collection.configuration_json)
 
     print(f"\n[RECHERCHE SÉMANTIQUE]")
     print(f"Collection: {collection_name}")

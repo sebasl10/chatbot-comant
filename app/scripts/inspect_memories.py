@@ -68,18 +68,18 @@ def print_memories_by_type(data: dict):
         print("  Aucun document trouvé.")
         return
 
-    # Regrouper par type
+    # Regrouper par target_agent / kind
     memories_by_type = {}
     for doc_id, doc, meta in zip(data["ids"], data["documents"], data["metadatas"]):
-        # Extraire le type des métadonnées
-        if meta and isinstance(meta, dict) and "type" in meta:
-            mem_type = meta["type"]
+        # Grouper par "target_agent/kind" des métadonnées
+        if meta and isinstance(meta, dict):
+            mem_type = f"{meta.get('target_agent', '?')}/{meta.get('kind', '?')}"
         else:
             mem_type = "unknown"
-        
+
         if mem_type not in memories_by_type:
             memories_by_type[mem_type] = []
-        
+
         memories_by_type[mem_type].append({
             "id": doc_id,
             "document": doc,
