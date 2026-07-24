@@ -425,7 +425,7 @@ async def get_memories_text(target_agent: str, user_id: int | None, query: str |
     Renvoie les souvenirs destinés à ``target_agent`` sous forme de texte concaténé.
 
     - Avec ``query`` (cas normal) : les ``k`` souvenirs les plus proches
-      sémantiquement de la requête condensée (préfixe d'instruction).
+      sémantiquement de la requête (message utilisateur, préfixe d'instruction).
     - Sans ``query`` (fallback) : tous les souvenirs de l'agent (filtrés par métadonnées).
     Vide si aucun souvenir.
     """

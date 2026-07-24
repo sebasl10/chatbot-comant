@@ -5,9 +5,10 @@ Stockage dans la collection Chroma ``memories`` (filtrage par métadonnées
 sémantique).
 
 - Lecture : ``relevant_memories(ctx, target_agent)`` récupère en top-k
-  sémantique les souvenirs destinés à un agent, à partir de la requête condensée
-  (historique + message).
-- Écriture : ``save_memory`` (appelé par l'agent memory).
+  sémantique les souvenirs destinés à un agent, à partir du message utilisateur
+  brut (``ctx.deps.message``).
+- Écriture : ``save_memory`` (appelé par l'agent memory, qui reformule les
+  messages elliptiques « oui/non » à partir de l'historique avant de stocker).
 
 target_agent : supervisor, sql_research, semantic_research, conversational.
 kind         : sql_rule, exclude, vocabulary, routing, other.
@@ -15,7 +16,6 @@ kind         : sql_rule, exclude, vocabulary, routing, other.
 
 from pydantic_ai import RunContext
 from app.agents.deps import ChatDeps
-from app.agents.util.retrieval import build_retrieval_query
 from app.services import vectorstore as vs
 
 VALID_TARGET_AGENTS = ("supervisor", "sql_research", "semantic_research", "conversational")
@@ -25,14 +25,13 @@ VALID_KINDS = ("sql_rule", "exclude", "vocabulary", "routing", "other")
 async def relevant_memories(ctx: RunContext[ChatDeps], target_agent: str, k: int = 6) -> str:
     """
     Récupère les souvenirs destinés à ``target_agent``, les ``k`` plus proches
-    sémantiquement de la requête condensée du tour. Vide si aucun.
+    sémantiquement du message utilisateur brut (``ctx.deps.message``). Vide si aucun.
 
     À appeler depuis le system prompt d'un agent pour injecter ses règles
     mémorisées pertinentes (et uniquement les siennes).
     """
-    query = await build_retrieval_query(ctx.deps, usage=ctx.usage)
     # Le détail (contenu + métadonnées) est loggué dans vs.get_memories_text.
-    return await vs.get_memories_text(target_agent, ctx.deps.user_id, query=query, k=k)
+    return await vs.get_memories_text(target_agent, ctx.deps.user_id, query=ctx.deps.message, k=k)
 
 
 async def save_memory(

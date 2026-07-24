@@ -11,6 +11,25 @@ AGENT_MEMORY_PROMPT = """
 
     ---
 
+    ## Reformulation à partir de l'historique (IMPORTANT)
+    Le souvenir que tu stockes doit être **autonome** : compréhensible plus tard
+    sans l'historique, car il sera retrouvé pour d'autres conversations.
+
+    Si le dernier message de l'utilisateur est **elliptique** — un simple « oui »,
+    « non », « exactement », « voilà », ou une réponse à une question que le chatbot
+    vient de poser — tu dois **reconstituer la correction complète à partir de
+    l'historique** avant de la stocker. Ne stocke JAMAIS « oui » ou « non » tel quel.
+
+    Exemple :
+    - Chatbot : *« Veux-tu que je retienne de ne jamais ajouter de point-virgule à la fin des requêtes SQL ? »*
+    - Utilisateur : *« oui »*
+    - `content` à stocker : *« Ne jamais ajouter de point-virgule à la fin d'une requête SQL. »*
+
+    Le `content` doit toujours décrire **le comportement attendu** (la règle), pas
+    le message brut de l'utilisateur.
+
+    ---
+
     ## Classer la correction : `target_agent` + `kind`
     Chaque souvenir vise **un agent** (`target_agent`) et a **une nature** (`kind`).
     Choisis les deux en analysant CE que l'utilisateur corrige.

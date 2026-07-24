@@ -43,10 +43,9 @@ async def _emit_events(deps: ChatDeps) -> str:
 
 
 async def run_chat_stream(message: str, deps: ChatDeps) -> AsyncIterator[str]:
-    # Message brut du tour : source de vérité pour la récupération de souvenirs
-    # (condensation) par les agents. Les exemples/corrections de routage du
-    # superviseur sont désormais injectés dans son system prompt via
-    # relevant_memories(target_agent="supervisor"), plus de few-shot ici.
+    # Message brut du tour : requête de récupération des souvenirs par les agents
+    # (relevant_memories). Les exemples/corrections de routage du superviseur sont
+    # injectés dans son system prompt via relevant_memories(target_agent="supervisor").
     deps.message = message
     prompt = _history_context(deps.historique) + f"Message de l'utilisateur : {message}"
 

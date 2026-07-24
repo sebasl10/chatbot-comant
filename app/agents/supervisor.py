@@ -85,8 +85,7 @@ guard_against_tool_call_leak(supervisor_agent)
 @supervisor_agent.system_prompt
 async def _system(ctx: RunContext[ChatDeps]) -> str:
     # Exemples et corrections de routage pertinents pour ce message
-    # (target_agent=supervisor). Déclenche aussi la condensation, réutilisée
-    # ensuite par le spécialiste (cache).
+    # (target_agent=supervisor), récupérés à partir du message utilisateur brut.
     memories = await relevant_memories(ctx, "supervisor")
     memory_block = f"\n\n## GUIDE DE ROUTAGE (exemples et corrections à respecter)\n{memories}" if memories else ""
     return AGENT_SUPERVISOR_PROMPT + memory_block
