@@ -29,25 +29,14 @@ async def relevant_memories(ctx: RunContext[ChatDeps], target_agent: str, k: int
     """
     Récupère les souvenirs destinés à ``target_agent``, les ``k`` plus proches
     sémantiquement du message utilisateur brut (``ctx.deps.message``). Vide si aucun.
-
-    À appeler depuis le system prompt d'un agent pour injecter ses règles
-    mémorisées pertinentes (et uniquement les siennes).
     """
-    # Le détail (contenu + métadonnées) est loggué dans vs.get_memories_text.
     return await vs.get_memories_text(target_agent, ctx.deps.user_id, query=ctx.deps.message, k=k)
 
 
-async def save_memory(
-    ctx: RunContext[ChatDeps],
-    target_agent: str,
-    kind: str,
-    content: str,
-    retrieval: str = "invariant",
-    trigger: str | None = None,
-    base_term: str | None = None,
-) -> dict:
-    """Enregistre un nouveau souvenir/correction pour l'utilisateur.
-
+async def save_memory(ctx: RunContext[ChatDeps], target_agent: str, kind: str, content: str, retrieval: str = "invariant", trigger: str | None = None, base_term: str | None = None) -> dict:
+    """
+    Enregistre un nouveau souvenir/correction pour l'utilisateur.
+    
     À utiliser quand l'utilisateur corrige le comportement du chatbot ou ajoute
     une règle/synonyme à retenir.
 
