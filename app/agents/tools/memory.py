@@ -118,35 +118,48 @@ async def delete_memory(ctx: RunContext[ChatDeps]) -> dict:
     if not last_memory:
         return {"ok": False, "error": "Aucun souvenir récent à supprimer."}
 
-    print(f"Memory ID: {last_memory['id']}")
-    print(f"Memory Content: {last_memory['content']}")
+    meta = last_memory.get("metadata") or {}
+    # Règle du souvenir = la correction (contextuel) ou le document lui-même (invariant).
+    rule = meta.get("correction") or last_memory["content"]
+    print(f"Memory ID: {last_memory['id']} (retrieval={meta.get('retrieval')})")
+    print(f"Règle: {rule}")
 
     try:
         await vs.delete_memory(last_memory['id'])
         ctx.deps.events.action("delete_memory", memory_id=last_memory['id'])
-        return {"ok": True, "message": "Souvenir supprimé.", "content": last_memory['content']}
+        return {"ok": True, "message": "Souvenir supprimé.", "content": rule}
     except Exception as e:
         return {"ok": False, "error": str(e)}
 
 
 async def update_memory(ctx: RunContext[ChatDeps], new_content: str) -> dict:
     """
-    Met à jour le dernier souvenir créé (utilise ctx.deps.last_memory_id).
-    Args:m
-        new_content: Nouveau contenu du souvenir
+    Met à jour la RÈGLE du dernier souvenir créé par l'utilisateur.
+
+    `new_content` = la nouvelle règle / le nouveau comportement attendu. Le
+    routage vers le bon champ est automatique : pour un souvenir contextuel, la
+    requête déclencheuse (le document) reste inchangée et seule la règle
+    (`metadata.correction`) est mise à jour ; pour un invariant, c'est le document.
+
+    Args:
+        new_content: Nouvelle règle du souvenir (français, sans markdown).
     """
     print("[TOOL CALL] update_memory")
     last_memory = await vs.get_last_memory(ctx.deps.user_id)
     if not last_memory:
         return {"ok": False, "error": "Aucun souvenir récent à modifier."}
-    print(f"Memory ID: {last_memory['id']}")
-    print(f"Memory Content: {last_memory['content']}")
-    print(f"Nouveau contenu: {new_content}")
+
+    meta = last_memory.get("metadata") or {}
+    # Règle actuelle = la correction (contextuel) ou le document lui-même (invariant).
+    old_rule = meta.get("correction") or last_memory["content"]
+    print(f"Memory ID: {last_memory['id']} (retrieval={meta.get('retrieval')})")
+    print(f"Ancienne règle: {old_rule}")
+    print(f"Nouvelle règle: {new_content}")
     try:
         success = await vs.update_memory(last_memory['id'], new_content, ctx.deps.username)
         if success:
             ctx.deps.events.action("update_memory", memory_id=last_memory['id'])
-            return {"ok": True, "message": "Souvenir mis à jour.", "old_content": last_memory['content'], "new_content": new_content}
+            return {"ok": True, "message": "Souvenir mis à jour.", "old_content": old_rule, "new_content": new_content}
         else:
             return {"ok": False, "error": "Souvenir non trouvé."}
     except Exception as e:

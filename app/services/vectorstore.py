@@ -575,7 +575,12 @@ async def delete_memory(memory_id: str) -> bool:
 
 async def update_memory(memory_id: str, new_content: str, username: str | None = None) -> bool:
     """
-    Met à jour un souvenir existant.
+    Met à jour la RÈGLE (le contenu injecté) d'un souvenir existant.
+
+    Selon la structure du souvenir, ``new_content`` ne va pas au même endroit :
+    - **contextuel** : le ``document`` est la requête déclencheuse (clé de recherche)
+      et NE doit PAS changer ; on met à jour la règle dans ``metadata.correction``.
+    - **invariant / vocabulaire** : le ``document`` EST le contenu injecté ; on le met à jour.
     """
     col = await memories_collection()
 
@@ -584,18 +589,18 @@ async def update_memory(memory_id: str, new_content: str, username: str | None =
         return False
 
     existing_meta = res["metadatas"][0] if res["metadatas"] and len(res["metadatas"]) > 0 else {}
-    if isinstance(existing_meta, dict):
-        existing_meta["date"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        if username:
-            existing_meta["username"] = username
-    else:
+    if not isinstance(existing_meta, dict):
         existing_meta = {}
+    existing_meta["date"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    if username:
+        existing_meta["username"] = username
 
-    await col.update(
-        ids=[memory_id],
-        documents=[new_content],
-        metadatas=[existing_meta]
-    )
+    if existing_meta.get("retrieval") == "contextual":
+        # On garde le document (déclencheur) tel quel : on ne passe pas `documents`.
+        existing_meta["correction"] = new_content
+        await col.update(ids=[memory_id], metadatas=[existing_meta])
+    else:
+        await col.update(ids=[memory_id], documents=[new_content], metadatas=[existing_meta])
     return True
 
 async def get_all_memories() -> dict:
