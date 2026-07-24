@@ -303,7 +303,6 @@ async def get_vocabulary_for_term(base_term: str) -> Dict[str, Any]:
     res = await col.get(where=where, include=["documents", "metadatas"])
     docs = res.get("documents", [])
     metadatas = res.get("metadatas", [])
-    _debug_memory("RETRIEVE VOCAB", f"base_term={base_term!r} where={where}", docs, metadatas)
 
     synonyms = []
     metadata = None
@@ -386,10 +385,6 @@ async def remove_term_from_vocabulary(term: str, base_term: str) -> Dict[str, An
 
 
 # ── Gérer les souvenirs ──────────────────────────────────────
-
-# Portée par défaut selon la nature (kind) du souvenir, quand ``scope`` n'est pas
-# fourni explicitement. Les règles « système » (comportement partagé par tous les
-# utilisateurs) sont globales ; ce qui est propre à un utilisateur reste local.
 _KIND_DEFAULT_SCOPE = {
     "sql_rule": "global",     # règles de construction SQL : comportement système
     "routing": "global",      # corrections/exemples de délégation : comportement système
@@ -403,7 +398,7 @@ def _debug_memory(action: str, header: str, docs: list[str], metas: list[dict] |
     Affiche un bloc de débogage pour toute écriture/lecture de souvenir :
     contenu + métadonnées, pour vérifier quand et quoi est stocké/récupéré.
 
-    ``action`` : "STORE" | "RETRIEVE" | "RETRIEVE VOCAB" ...
+    ``action`` : "STORE" | "RETRIEVE" | ...
     ``header`` : contexte (target_agent, query, where, id…).
     """
     print(f"\n{'━' * 64}")
