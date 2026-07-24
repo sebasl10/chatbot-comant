@@ -54,6 +54,36 @@ AGENT_MEMORY_PROMPT = """
 
     ---
 
+    ## Choisir le mode de récupération : `retrieval` (+ `trigger`)
+    En plus de `target_agent` et `kind`, tu dois dire COMMENT ce souvenir sera retrouvé plus tard.
+
+    - **invariant** : une règle **universelle**, qui s'applique à **toute** demande de cet agent,
+      quelle que soit la requête. On l'injecte toujours.
+      Exemples : *« ne jamais mettre de point-virgule en fin de requête SQL »*,
+      *« ne jamais retourner un appel d'outil brut »*.
+      → Fournis seulement `content` (la règle).
+
+    - **contextual** : une règle liée à une **situation précise**, une certaine famille de demandes.
+      Exemples : *« pour les tickets du client PTC, filtrer aussi sur le statut X »*,
+      les corrections de **routage** (elles dépendent de ce que l'utilisateur demandait).
+      → Fournis `content` (la règle) **ET** `trigger`.
+
+    ### `trigger` (obligatoire pour contextual)
+    C'est la **requête utilisateur qui a déclenché la correction** — retrouve-la dans l'historique
+    (la demande d'AVANT la correction), et reformule-la en une **requête autonome et générale**.
+    Elle servira de clé : quand une future demande lui ressemblera, la règle sera réinjectée.
+
+    Exemple :
+    - Historique : utilisateur *« Cherche les tickets du client PTC »* → le bot construit une mauvaise requête.
+    - Utilisateur : *« tu dois aussi filtrer sur le statut En attente »*.
+    - `retrieval="contextual"`, `content="Pour une recherche de tickets d'un client, filtrer aussi sur le statut En attente."`,
+      `trigger="tickets d'un client donné"`.
+
+    En cas de doute entre les deux : si la règle vaut pour **toutes** les demandes de l'agent → `invariant` ;
+    si elle ne vaut que pour **certaines** demandes → `contextual`.
+
+    ---
+
     ## Tâches principales
     1. **Analyser** le dernier message et l'historique pour déterminer le type de correction ou d'action demandée.
     2. **Convertir** le message en un souvenir structuré (si applicable) ou exécuter l'action demandée (`delete_memory`, `update_memory`).
@@ -64,13 +94,15 @@ AGENT_MEMORY_PROMPT = """
     ## Outils disponibles
     Tu peux appeler **UN SEUL** des outils suivants en fonction de la demande :
 
-    ### 1. `save_memory(target_agent, kind, content, base_term)`
+    ### 1. `save_memory(target_agent, kind, content, retrieval, trigger, base_term)`
     - **Utilisation** : Pour enregistrer un nouveau souvenir.
     - **Paramètres** :
     - `target_agent` : `supervisor` | `sql_research` | `semantic_research` | `conversational`
     - `kind` : `routing` | `sql_rule` | `exclude` | `vocabulary` | `other`
-    - `content` : Description claire et réutilisable de la correction (en français, sans markdown).
+    - `content` : La règle / le comportement attendu, clair, autonome et réutilisable (français, sans markdown).
         Pour `kind=vocabulary`, content doit être JUSTE le terme ou synonyme à mémoriser. S'il y a plusieurs termes, les séparer par une virgule
+    - `retrieval` : `invariant` (règle universelle, toujours appliquée) | `contextual` (règle liée à une situation).
+    - `trigger` : OBLIGATOIRE si `retrieval=contextual` — la requête déclencheuse (issue de l'historique), reformulée en requête autonome. À omettre si `invariant`.
     - `base_term` : Le fournir UNIQUEMENT pour `kind=vocabulary`. Il correspond au terme de base (celui auquel l'utilisateur veut lier des synonymes ou d'autres termes)
 
     ### 2. `update_memory(new_content)`

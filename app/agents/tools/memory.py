@@ -12,6 +12,8 @@ sémantique).
 
 target_agent : supervisor, sql_research, semantic_research, conversational.
 kind         : sql_rule, exclude, vocabulary, routing, other.
+retrieval    : invariant (toujours injecté) | contextual (indexé par la requête
+               déclencheuse, récupéré par similarité). Voir get_memories_text.
 """
 
 from pydantic_ai import RunContext
@@ -20,6 +22,7 @@ from app.services import vectorstore as vs
 
 VALID_TARGET_AGENTS = ("supervisor", "sql_research", "semantic_research", "conversational")
 VALID_KINDS = ("sql_rule", "exclude", "vocabulary", "routing", "other")
+VALID_RETRIEVAL = ("invariant", "contextual")
 
 
 async def relevant_memories(ctx: RunContext[ChatDeps], target_agent: str, k: int = 6) -> str:
@@ -39,6 +42,8 @@ async def save_memory(
     target_agent: str,
     kind: str,
     content: str,
+    retrieval: str = "invariant",
+    trigger: str | None = None,
     base_term: str | None = None,
 ) -> dict:
     """Enregistre un nouveau souvenir/correction pour l'utilisateur.
@@ -52,8 +57,18 @@ async def save_memory(
             `semantic_research` (recherche sémantique, exclusions, vocabulaire) |
             `conversational`.
         kind : `sql_rule` | `exclude` | `vocabulary` | `routing` | `other`.
-        content : description claire et réutilisable de la correction (français, sans markdown).
+        content : la RÈGLE / le comportement attendu, en une phrase claire, autonome
+            et réutilisable (français, sans markdown). Reformule les messages
+            elliptiques (« oui », « non ») à partir de l'historique.
             Pour `vocabulary` : les synonymes séparés par des virgules (ex: "lent, slow, rapide").
+        retrieval : mode de récupération —
+            `invariant`  = règle UNIVERSELLE, à appliquer à toute demande de cet agent
+                (ex: « ne jamais mettre de point-virgule »). Toujours injectée.
+            `contextual` = règle liée à une SITUATION précise (ex: « pour les tickets du
+                client PTC, filtrer sur le statut X », corrections de routage). Nécessite `trigger`.
+        trigger : UNIQUEMENT si `retrieval="contextual"`. La requête utilisateur
+            DÉCLENCHEUSE (celle de l'historique qui a causé la correction), reformulée
+            en requête autonome. Sert de clé de recherche pour retrouver la règle plus tard.
         base_term : UNIQUEMENT pour `kind=vocabulary` — le terme de base (ex: "performance").
     """
     if target_agent not in VALID_TARGET_AGENTS:
@@ -61,18 +76,32 @@ async def save_memory(
     if kind not in VALID_KINDS:
         return {"ok": False, "error": f"kind invalide: {kind}"}
 
-    # Vocabulaire : structure dédiée (global, base_term + synonymes)
+    # Vocabulaire : structure dédiée (global, base_term + synonymes), hors invariant/contextuel
     if kind == "vocabulary" and base_term:
         synonyms = [s.strip() for s in content.split(",") if s.strip()]
         print(f"[SAVE MEMORY] vocabulary - base_term: '{base_term}', synonyms: {synonyms}")
         await vs.add_synonyms(base_term, synonyms, ctx.deps.user_id, ctx.deps.username)
         ctx.deps.events.correction(target_agent=target_agent, kind=kind, memory=f"{base_term}: {content}")
-    else:
-        print(f"[SAVE MEMORY] target_agent: {target_agent}, kind: {kind}, content: {content}")
-        await vs.add_memory(target_agent=target_agent, kind=kind, content=content, user_id=ctx.deps.user_id)
-        ctx.deps.events.correction(target_agent=target_agent, kind=kind, memory=content)
+        return {"ok": True, "target_agent": target_agent, "kind": kind}
 
-    return {"ok": True, "target_agent": target_agent, "kind": kind}
+    if retrieval not in VALID_RETRIEVAL:
+        return {"ok": False, "error": f"retrieval invalide: {retrieval}"}
+    if retrieval == "contextual" and not trigger:
+        return {"ok": False, "error": "trigger requis pour une correction contextuelle (la requête déclencheuse)"}
+
+    print(f"[SAVE MEMORY] target_agent={target_agent} kind={kind} retrieval={retrieval} "
+          f"trigger={trigger!r} content={content!r}")
+    await vs.add_memory(
+        target_agent=target_agent,
+        kind=kind,
+        content=content,
+        user_id=ctx.deps.user_id,
+        retrieval=retrieval,
+        trigger=trigger,
+    )
+    ctx.deps.events.correction(target_agent=target_agent, kind=kind, memory=content)
+
+    return {"ok": True, "target_agent": target_agent, "kind": kind, "retrieval": retrieval}
 
 
 async def delete_memory(ctx: RunContext[ChatDeps]) -> dict:

@@ -73,6 +73,8 @@ async def create_memory_chroma_endpoint(request: MemoryRequest):
         kind=request.kind,
         content=request.content,
         user_id=request.user_id,
+        retrieval=request.retrieval,
+        trigger=request.trigger,
         base_term=request.base_term,
     )
 

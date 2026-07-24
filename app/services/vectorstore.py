@@ -411,48 +411,87 @@ def _debug_memory(action: str, header: str, docs: list[str], metas: list[dict] |
     print('━' * 64)
 
 
-def _memory_where(target_agent: str, user_id: int | None) -> dict:
+def _memory_where(target_agent: str, user_id: int | None, retrieval: str | None = None) -> dict:
     """
-    Filtre les souvenirs destinés à ``target_agent`` : ceux de l'utilisateur
-    plus ceux de portée globale. Si ``user_id`` est None, ne filtre que par agent.
+    Filtre les souvenirs destinés à ``target_agent`` : ceux de l'utilisateur plus
+    ceux de portée globale, éventuellement restreints à un mode de récupération
+    (``retrieval`` = "invariant" | "contextual"). Construit un ``$and`` plat.
     """
-    if user_id is None:
-        return {"target_agent": target_agent}
-    return {"$and": [{"target_agent": target_agent}, {"$or": [{"user_id": user_id}, {"scope": "global"}]}]}
+    conds: list[dict] = [{"target_agent": target_agent}]
+    if user_id is not None:
+        conds.append({"$or": [{"user_id": user_id}, {"scope": "global"}]})
+    if retrieval is not None:
+        conds.append({"retrieval": retrieval})
+    return conds[0] if len(conds) == 1 else {"$and": conds}
+
+def _memory_payload(doc: str, meta: dict | None) -> str:
+    """Texte à injecter dans le prompt : la correction (contextuel) ou le
+    document lui-même (invariant, où le document EST la règle)."""
+    return (meta or {}).get("correction") or doc
+
 
 async def get_memories_text(target_agent: str, user_id: int | None, query: str | None = None, k: int = 6) -> str:
     """
-    Renvoie les souvenirs destinés à ``target_agent`` sous forme de texte concaténé.
+    Renvoie les souvenirs à injecter pour ``target_agent``, en combinant deux voies :
 
-    - Avec ``query`` (cas normal) : les ``k`` souvenirs les plus proches
-      sémantiquement de la requête (message utilisateur, préfixe d'instruction).
-    - Sans ``query`` (fallback) : tous les souvenirs de l'agent (filtrés par métadonnées).
-    Vide si aucun souvenir.
+    1. **Invariants** (``retrieval="invariant"``) : règles universelles, TOUJOURS
+       injectées (filtre métadonnées, sans similarité).
+    2. **Contextuels** (``retrieval="contextual"``) : les ``k`` dont la *requête
+       déclencheuse* (le ``document`` embeddé) est la plus proche du ``query``
+       (message utilisateur). Indexation asymétrique : on compare requête ↔ requête,
+       pas requête ↔ règle.
+
+    Le vocabulaire (sans champ ``retrieval``) n'est pas concerné : il a son propre
+    mécanisme (``get_vocabulary_for_term`` / ``semantic_ticket_search``).
     """
     col = await memories_collection()
-    where = _memory_where(target_agent, user_id)
+
+    # 1) Invariants — toujours injectés
+    inv_res = await col.get(
+        where=_memory_where(target_agent, user_id, retrieval="invariant"),
+        include=["documents", "metadatas"],
+    )
+    inv_docs = inv_res.get("documents", []) or []
+    inv_metas = inv_res.get("metadatas", []) or []
+
+    # 2) Contextuels — top-k par similarité message ↔ requête déclencheuse
+    ctx_docs: list = []
+    ctx_metas: list = []
     if query:
-        # Calculer l'embedding avec préfixe pour les mémoires
-        memory_instruction = (
-            "Représente une question ou un contexte pour retrouver des souvenirs ou corrections pertinents. "
-            "Inclut les synonymes, concepts liés et variations sémantiques."
+        instruction = (
+            "Représente une requête utilisateur pour retrouver des requêtes passées "
+            "similaires ayant déclenché une correction."
         )
-        query_embedding = await asyncio.to_thread(get_embedding, f"Instruct: {memory_instruction}\nQuery: {query}")
-        res = await col.query(query_embeddings=[query_embedding], n_results=k, where=where, include=["documents", "metadatas"])
-        docs = res["documents"][0] if res["documents"] else []
-        metas = res["metadatas"][0] if res.get("metadatas") else []
-    else:
-        res = await col.get(where=where, include=["documents", "metadatas"])
-        docs = res.get("documents", []) or []
-        metas = res.get("metadatas", []) or []
-    _debug_memory("RETRIEVE", f"target_agent={target_agent} user_id={user_id} k={k} query={query!r} where={where}", docs, metas)
-    return "\n\n---\n\n".join(docs)
+        query_embedding = await asyncio.to_thread(get_embedding, f"Instruct: {instruction}\nQuery: {query}")
+        cres = await col.query(
+            query_embeddings=[query_embedding],
+            n_results=k,
+            where=_memory_where(target_agent, user_id, retrieval="contextual"),
+            include=["documents", "metadatas"],
+        )
+        ctx_docs = cres["documents"][0] if cres["documents"] else []
+        ctx_metas = cres["metadatas"][0] if cres.get("metadatas") else []
+
+    docs = inv_docs + ctx_docs
+    metas = inv_metas + ctx_metas
+    _debug_memory(
+        "RETRIEVE",
+        f"target_agent={target_agent} user_id={user_id} k={k} query={query!r} "
+        f"(invariants={len(inv_docs)}, contextuels={len(ctx_docs)})",
+        docs,
+        metas,
+    )
+
+    lines = [_memory_payload(d, m) for d, m in zip(docs, metas)]
+    return "\n\n---\n\n".join(l for l in lines if l)
 
 async def add_memory(
     target_agent: str,
     kind: str,
     content: str,
     user_id: int | None,
+    retrieval: str | None = None,
+    trigger: str | None = None,
     scope: str | None = None,
     embedding: list[float] | None = None,
     base_term: str | None = None,
@@ -463,19 +502,25 @@ async def add_memory(
     - ``target_agent`` : agent qui devra lire ce souvenir (supervisor,
       sql_research, semantic_research, conversational).
     - ``kind`` : nature du souvenir (sql_rule, exclude, vocabulary, routing, other).
-    - ``scope`` : "user" ou "global" (partagé entre utilisateurs). Si None, la
-      portée est déduite du ``kind`` via ``_KIND_DEFAULT_SCOPE``
-      (sql_rule/routing/vocabulary → global ; exclude/other → user).
+    - ``content`` : le texte de la règle/correction à injecter (le payload).
+    - ``retrieval`` : mode de récupération —
+        * "invariant"  : règle universelle, toujours injectée. ``document`` = ``content``.
+        * "contextual" : liée à une situation. ``document`` = ``trigger`` (la requête
+          déclencheuse, embeddée comme clé), ``content`` conservé en payload ``correction``.
+        * None         : vocabulaire (mécanisme dédié), non concerné par les deux voies.
+    - ``trigger`` : requête utilisateur déclencheuse (REQUIS si ``retrieval="contextual"``).
+    - ``scope`` : "user" ou "global". Si None, déduit du ``kind`` via ``_KIND_DEFAULT_SCOPE``.
 
     Pour ``kind == "vocabulary"`` :
         - content : les termes liés/synonymes (ex: "lent, slow, performance")
         - base_term : le terme de base (ex: "performance") - **REQUIS** - stocké dans les métadonnées
-    Pour les autres kinds :
-        - content : le souvenir/correction
-        - base_term : non utilisé
     """
     if scope is None:
         scope = _KIND_DEFAULT_SCOPE.get(kind, "user")
+    # Garde-fou : un souvenir non-vocabulaire DOIT avoir un mode de récupération,
+    # sinon il serait invisible pour get_memories_text. Défaut : invariant.
+    if retrieval is None and kind != "vocabulary":
+        retrieval = "invariant"
     username = await asyncio.to_thread(get_username, user_id)
     meta = {
         "target_agent": target_agent,
@@ -485,18 +530,28 @@ async def add_memory(
         "username": username or "",
         "date": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
     }
+    if retrieval is not None:
+        meta["retrieval"] = retrieval
 
     # Pour le vocabulaire, ajouter le terme de base dans les métadonnées
     if kind == "vocabulary":
         meta["base_term"] = base_term
 
+    # Indexation asymétrique : pour un souvenir contextuel, la clé de recherche
+    # (document embeddé) est la requête déclencheuse ; la règle reste en payload.
+    if retrieval == "contextual":
+        document = trigger or content
+        meta["correction"] = content
+    else:
+        document = content
+
     doc_id = str(uuid.uuid4())
-    kwargs = {"ids": [doc_id], "documents": [content], "metadatas": [meta]}
+    kwargs = {"ids": [doc_id], "documents": [document], "metadatas": [meta]}
     if embedding is not None:
         kwargs["embeddings"] = [embedding]
     col = await memories_collection()
     await col.add(**kwargs)
-    _debug_memory("STORE", f"id={doc_id}", [content], [meta])
+    _debug_memory("STORE", f"id={doc_id}", [document], [meta])
     return doc_id
 
 async def delete_memory(memory_id: str) -> bool:
@@ -542,6 +597,8 @@ async def get_all_memories() -> dict:
     memories = []
     for i, doc_id in enumerate(res['ids']):
         meta = res['metadatas'][i] or {}
+        # Pour un souvenir contextuel, ``text`` (le document) est la requête
+        # déclencheuse, et la règle injectée est dans ``correction``.
         memory = {
             "text": res['documents'][i],
             "id": doc_id,
@@ -549,10 +606,13 @@ async def get_all_memories() -> dict:
             "date": meta.get('date'),
             "target_agent": meta.get('target_agent'),
             "kind": meta.get('kind'),
+            "retrieval": meta.get('retrieval'),
             "scope": meta.get('scope'),
             "username": meta.get('username'),
         }
 
+        if meta.get('correction'):
+            memory["correction"] = meta['correction']
         if meta.get('base_term'):
             memory["base_term"] = meta['base_term']
 

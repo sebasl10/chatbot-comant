@@ -2,11 +2,12 @@
 Initialisation des exemples de routage de base pour l'agent superviseur.
 
 Les exemples sont stockés dans la collection ``memories`` avec
-``target_agent="supervisor"``, ``kind="routing"`` et ``scope="global"``
-(partagés entre tous les utilisateurs). Ils sont récupérés en
-top-k sémantique et injectés dans le system prompt du superviseur
-(``relevant_memories``), aux côtés des corrections de routage écrites par
-l'agent memory.
+``target_agent="supervisor"``, ``kind="routing"``, ``scope="global"`` et
+``retrieval="contextual"`` : le ``trigger`` (la requête type) est la clé
+embeddée, le ``content`` (« Délègue via … ») est le payload injecté. Ils sont
+récupérés par similarité entre la nouvelle demande et les triggers, puis injectés
+dans le system prompt du superviseur (``relevant_memories``), aux côtés des
+corrections de routage écrites par l'agent memory.
 
 Usage :
     python -m app.scripts.init_supervisor_actions --init   # ajoute les exemples de base
@@ -45,39 +46,43 @@ SUPERVISOR_EXAMPLES = [
 ]
 
 
-def _format_example(user_query: str, action: str) -> str:
-    """Formate un exemple de routage en phrase-démonstration réutilisable."""
-    return f"Pour une demande comme « {user_query} », délègue via {action}."
-
-
-async def _existing_supervisor_docs() -> set[str]:
+async def _existing_supervisor_triggers() -> set[str]:
+    # Les exemples de routage sont contextuels : le ``document`` est la requête
+    # déclencheuse (le trigger). On dédoublonne dessus.
     col = await vs.memories_collection()
     res = await col.get(where={"target_agent": "supervisor"}, include=["documents"])
     return set(res.get("documents", []) or [])
 
 
 async def init_examples():
-    """Ajoute les exemples de base (idempotent : ignore les doublons)."""
+    """Ajoute les exemples de base (idempotent : ignore les doublons).
+
+    Chaque exemple est un souvenir **contextuel** : ``trigger`` = la requête type
+    (clé de recherche embeddée), ``content`` = la délégation à appliquer (payload).
+    """
     print("=" * 70)
     print("  Initialisation des exemples de routage du superviseur (memories)")
     print("=" * 70)
     print(f"  URL Chroma: {settings.chroma_http_url}\n")
 
-    existing = await _existing_supervisor_docs()
+    existing = await _existing_supervisor_triggers()
     added = 0
     for ex in SUPERVISOR_EXAMPLES:
-        content = _format_example(ex["user_query"], ex["action"])
-        if content in existing:
-            print(f"  ⏭️  Déjà présent: {content}")
+        trigger = ex["user_query"]
+        content = f"Délègue via {ex['action']}."
+        if trigger in existing:
+            print(f"  ⏭️  Déjà présent: {trigger} → {content}")
             continue
         await vs.add_memory(
             target_agent="supervisor",
             kind="routing",
             content=content,
             user_id=None,
+            retrieval="contextual",
+            trigger=trigger,
             scope="global",
         )
-        print(f"  ✅ Ajouté: {content}")
+        print(f"  ✅ Ajouté: {trigger} → {content}")
         added += 1
 
     print(f"\n  ✅ {added} exemple(s) ajouté(s).")
@@ -99,7 +104,13 @@ async def list_examples():
         return
     for i, (doc_id, doc, meta) in enumerate(zip(ids, docs, metas), 1):
         meta = meta or {}
-        print(f"\n  {i}. [{meta.get('kind', '?')}/{meta.get('scope', '?')}] {doc}")
+        tag = f"{meta.get('kind', '?')}/{meta.get('retrieval', '?')}/{meta.get('scope', '?')}"
+        if meta.get("retrieval") == "contextual":
+            # doc = trigger (clé), meta["correction"] = payload injecté
+            print(f"\n  {i}. [{tag}] trigger: {doc}")
+            print(f"     → {meta.get('correction', '')}")
+        else:
+            print(f"\n  {i}. [{tag}] {doc}")
         print(f"     id={doc_id}")
 
 
