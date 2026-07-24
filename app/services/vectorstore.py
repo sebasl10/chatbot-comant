@@ -605,31 +605,51 @@ async def update_memory(memory_id: str, new_content: str, username: str | None =
 
 async def get_all_memories() -> dict:
     """
-    Recupère tous les souvenirs de la collection memories
+    Récupère tous les souvenirs de la collection ``memories``, sous une forme
+    **normalisée** pour l'affichage (frontend) : le ``document`` ambigu est
+    résolu en champs explicites selon la structure du souvenir.
+
+    Chaque souvenir a TOUJOURS les mêmes clés (``null`` si non applicable) :
+    - identité/classification : ``id``, ``target_agent``, ``kind``, ``retrieval``,
+      ``scope``, ``user_id``, ``username``, ``date``.
+    - contenu selon la forme :
+        * contextuel : ``trigger`` (la requête déclencheuse) + ``rule`` (la règle injectée).
+        * invariant  : ``rule`` (le document EST la règle), ``trigger`` = null.
+        * vocabulaire: ``base_term`` + ``synonyms`` (le document), ``rule``/``trigger`` = null.
     """
     col = await memories_collection()
     res = await col.get(include=["documents", "metadatas"])
     memories = []
     for i, doc_id in enumerate(res['ids']):
         meta = res['metadatas'][i] or {}
-        memory = {
-            "text": res['documents'][i],
+        document = res['documents'][i]
+        kind = meta.get('kind')
+        retrieval = meta.get('retrieval')
+
+        trigger = rule = base_term = synonyms = None
+        if kind == "vocabulary":
+            base_term = meta.get('base_term')
+            synonyms = document
+        elif retrieval == "contextual":
+            trigger = document
+            rule = meta.get('correction')
+        else:  # invariant (ou legacy sans retrieval) : le document est la règle
+            rule = document
+
+        memories.append({
             "id": doc_id,
-            "user_id": meta.get('user_id'),
-            "date": meta.get('date'),
             "target_agent": meta.get('target_agent'),
-            "kind": meta.get('kind'),
-            "retrieval": meta.get('retrieval'),
+            "kind": kind,
+            "retrieval": retrieval,
             "scope": meta.get('scope'),
+            "user_id": meta.get('user_id'),
             "username": meta.get('username'),
-        }
-
-        if meta.get('correction'):
-            memory["correction"] = meta['correction']
-        if meta.get('base_term'):
-            memory["base_term"] = meta['base_term']
-
-        memories.append(memory)
+            "date": meta.get('date'),
+            "trigger": trigger,
+            "rule": rule,
+            "base_term": base_term,
+            "synonyms": synonyms,
+        })
 
     return {'memories': memories}
 
