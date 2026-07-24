@@ -31,8 +31,8 @@ DEFAULT_HNSW_CONFIG = {
     "hnsw": {
         "space": "cosine",
         "max_neighbors": 32,
-        "ef_construction": 200,
-        "ef_search": 200
+        "ef_construction": 1000,
+        "ef_search": 1000
     }
 }
 
@@ -280,7 +280,8 @@ async def query_tickets(query: list[float] | str, threshold: float = 0.55, use_s
 
     all_results.sort(key=lambda x: x["distance"])
     filtered_results = [r for r in all_results if r["distance"] <= threshold]
-    ticket_ids = [r["id"] for r in filtered_results]
+    #ticket_ids = [r["id"] for r in filtered_results]
+    ticket_ids = list(dict.fromkeys(r["id"] for r in filtered_results))
 
     return {
         "ticket_ids": ticket_ids,

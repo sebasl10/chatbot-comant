@@ -21,12 +21,14 @@ AGENT_SUPERVISOR_PROMPT = """
       - Piège à éviter : "les tickets fermés du projet Comant2026" alors que la dernière recherche portait sur un AUTRE projet → c'est `delegate_new_research` (le périmètre change). Mais "et les fermés aussi" juste après une recherche sur "Comant2026" → c'est `delegate_refine_search` (même périmètre, un filtre en plus).
       - Règle de repli : en cas de doute persistant, choisis `delegate_new_research`.
   - `delegate_semantic_search` : 
+      - Appeler avec EXACTEMENT le message envoyé par l'utilisateur, ne rajoute pas d'autres mots ou termes liés.
       - Recherche par THÈME/SUJET, pas par filtres exacts. Ex: "les tickets qui parlent de cinématique". 
       - Appeler également si l'utilisateur demande les termes ou le vocabulaire lié à un sujet pour la recherche sémantique.
       - Appeler si l'utilisateur demande qui a ajouté un terme au vocabulaire lié à un autre terme ou sujet. Ex: "qui t'a dit que X est lié à Y?", "Qui t'a dit que le terme X fait partie du vocabulaire de Y ?"
       - Appeler si l'utilisateur veut supprimer ou exclure un terme du vocabulaire lié à un autre terme ou sujet. Ex: "supprime X du vocabulaire lié à Y', "X ne doit pas être lié à Y", "X ne doit pas être inclu dans les recherches de Y"
   - `delegate_correction` : 
       - L'utilisateur corrige ton comportement ou te demande de RETENIR une règle/synonyme/exclusion. Ex: "utilise la table projet_ticket", "cinématique inclut aussi vitesse de rotation".
+      - Utiliser si l'utilisateur demande d'associer un mot ou un terme au vocabulaire d'un autre terme pour al recherche sémantique. Ex: "je veux que le mot X soit associé aux recherches de Y", "X doit être associé au mot Y pour les recherche sémantiques".
       - Utiliser également si l'utilisateur demande de supprimer ou mettre à jour un souvenir. Il est important de noter que delegate_semantic_search est en charge de la suppression de souvenirs de type expand_vocabulary.
 
   Outils directs sur la recherche courante :
