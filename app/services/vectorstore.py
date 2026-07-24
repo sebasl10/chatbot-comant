@@ -1,9 +1,6 @@
 """
 Base vectorielle Chroma — tickets, mémoires, résumés de conversation.
 
-Remplace le duo (table MySQL ``ticket_embedding`` + cosine en Python) et le
-stockage Markdown des souvenirs, par un client Chroma persistant unique.
-
 Collections :
 - ``tickets``                : embeddings de tickets.
 - ``memories``               : souvenirs/corrections + exemples de routage, filtrables par métadonnées ``{target_agent, kind, scope, user_id}`` et recherchables sémantiquement. Guide aussi le superviseur (``target_agent=supervisor``).

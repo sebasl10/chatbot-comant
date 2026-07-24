@@ -30,9 +30,6 @@ async def relevant_memories(ctx: RunContext[ChatDeps], target_agent: str, k: int
     """
     Récupère les souvenirs destinés à ``target_agent``, les ``k`` plus proches
     sémantiquement du message utilisateur brut (``ctx.deps.message``). Vide si aucun.
-
-    À appeler depuis le system prompt d'un agent pour injecter ses règles
-    mémorisées pertinentes (et uniquement les siennes).
     """
     # Embedding du message calculé une seule fois par tour, réutilisé par le
     # superviseur puis le spécialiste délégué (même message, même embedding).

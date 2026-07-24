@@ -1,14 +1,5 @@
-"""MemoryAgent — enregistrement des corrections/souvenirs.
-
-Remplace l'ancienne intention `correction`. Analyse le message + l'historique,
-détermine le type de correction, puis appelle l'outil `save_memory` (Chroma).
-
-Réutilise ``CORRECTION_PROMPT`` comme base, avec un addendum qui bascule la
-sortie « JSON » vers un appel d'outil.
-
-Classe chaque correction par ``target_agent`` (supervisor, sql_research,
-semantic_research, conversational) + ``kind`` (routing, sql_rule, exclude,
-vocabulary, other), puis appelle ``save_memory``.
+"""
+MemoryAgent — enregistrement des corrections/souvenirs.
 """
 from pydantic_ai import Agent
 
