@@ -430,7 +430,7 @@ def _memory_payload(doc: str, meta: dict | None) -> str:
     return (meta or {}).get("correction") or doc
 
 
-async def get_memories_text(target_agent: str, user_id: int | None, query: str | None = None, k: int = 6) -> str:
+async def get_memories_text(target_agent: str, user_id: int | None, query: str | None = None, k: int = 5) -> str:
     """
     Renvoie les souvenirs à injecter pour ``target_agent``, en combinant deux voies :
 
@@ -474,13 +474,8 @@ async def get_memories_text(target_agent: str, user_id: int | None, query: str |
 
     docs = inv_docs + ctx_docs
     metas = inv_metas + ctx_metas
-    _debug_memory(
-        "RETRIEVE",
-        f"target_agent={target_agent} user_id={user_id} k={k} query={query!r} "
-        f"(invariants={len(inv_docs)}, contextuels={len(ctx_docs)})",
-        docs,
-        metas,
-    )
+    # Accès : agent + query ; résultats : contenu + métadonnées de chaque souvenir.
+    _debug_memory("ACCESS", f"agent={target_agent} query={query!r}", docs, metas)
 
     lines = [_memory_payload(d, m) for d, m in zip(docs, metas)]
     return "\n\n---\n\n".join(l for l in lines if l)

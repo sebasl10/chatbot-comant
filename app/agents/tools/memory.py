@@ -25,7 +25,7 @@ VALID_KINDS = ("sql_rule", "exclude", "vocabulary", "routing", "other")
 VALID_RETRIEVAL = ("invariant", "contextual")
 
 
-async def relevant_memories(ctx: RunContext[ChatDeps], target_agent: str, k: int = 6) -> str:
+async def relevant_memories(ctx: RunContext[ChatDeps], target_agent: str, k: int = 5) -> str:
     """
     Récupère les souvenirs destinés à ``target_agent``, les ``k`` plus proches
     sémantiquement du message utilisateur brut (``ctx.deps.message``). Vide si aucun.
