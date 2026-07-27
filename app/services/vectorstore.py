@@ -359,6 +359,20 @@ async def query_tickets(query: list[float] | str, threshold: float = 0.55, use_s
         key=lambda tid: (lexical_tiers.get(tid, 4), best_distance.get(tid, float("inf"))),
     )
 
+    tier_counts: dict[int, int] = {}
+    for tid in all_ids:
+        tier = lexical_tiers.get(tid, 4)
+        tier_counts[tier] = tier_counts.get(tier, 0) + 1
+    tier_labels = {
+        0: "terme dans le titre",
+        1: "terme dans description/commentaires",
+        2: "synonyme dans le titre",
+        3: "synonyme dans description/commentaires",
+        4: "sémantique pur",
+    }
+    for tier, label in tier_labels.items():
+        print(f"[TIER {tier} - {label}] {tier_counts.get(tier, 0)} ticket(s)")
+
     return {
         "ticket_ids": ticket_ids,
         "synonyms": terms_used,
