@@ -555,11 +555,10 @@ async def add_memory(
 
     if scope is None:
         scope = _default_scope(target_agent, kind)
-    # Garde-fou : un souvenir DOIT toujours avoir un mode de récupération, sinon
-    # il serait invisible pour get_memories_text. Défaut : invariant (y compris
-    # pour le vocabulaire, par cohérence — il en est ensuite exclu à la lecture).
+        
     if retrieval is None:
         retrieval = "invariant"
+        
     username = await asyncio.to_thread(get_username, user_id)
     meta = {
         "target_agent": target_agent,
@@ -602,34 +601,83 @@ async def delete_memory(memory_id: str) -> bool:
     return True
 
 
-async def update_memory(memory_id: str, new_content: str, username: str | None = None) -> bool:
+async def update_memory(
+    memory_id: str,
+    target_agent: str | None = None,
+    content: str | None = None,
+    user_id: int | None = None,
+    kind: str | None = None,
+    retrieval: str | None = None,
+    trigger: str | None = None,
+    scope: str | None = None,
+    embedding: list[float] | None = None,
+    base_term: str | None = None,
+) -> bool:
     """
-    Met à jour la RÈGLE (le contenu injecté) d'un souvenir existant.
-
-    Selon la structure du souvenir, ``new_content`` ne va pas au même endroit :
-    - **contextuel** : le ``document`` est la requête déclencheuse (clé de recherche)
-      et NE doit PAS changer ; on met à jour la règle dans ``metadata.correction``.
-    - **invariant / vocabulaire** : le ``document`` EST le contenu injecté ; on le met à jour.
+    Met à jour un souvenir existant
     """
     col = await memories_collection()
 
-    res = await col.get(ids=[memory_id], include=["metadatas"])
+    res = await col.get(ids=[memory_id], include=["documents", "metadatas"])
     if not res["ids"] or len(res["ids"]) == 0:
         return False
 
+    existing_doc = res["documents"][0] if res["documents"] and len(res["documents"]) > 0 else ""
     existing_meta = res["metadatas"][0] if res["metadatas"] and len(res["metadatas"]) > 0 else {}
     if not isinstance(existing_meta, dict):
         existing_meta = {}
-    existing_meta["date"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    if username:
-        existing_meta["username"] = username
 
-    if existing_meta.get("retrieval") == "contextual":
-        # On garde le document (déclencheur) tel quel : on ne passe pas `documents`.
-        existing_meta["correction"] = new_content
-        await col.update(ids=[memory_id], metadatas=[existing_meta])
+    if kind is None:
+        kind = existing_meta.get("kind", "behavior")
+    is_vocab = kind == "vocabulary"
+
+    if scope is None:
+        scope = existing_meta.get("scope") or _default_scope(target_agent or existing_meta.get("target_agent", ""), kind)
+
+    if retrieval is None:
+        retrieval = existing_meta.get("retrieval", "invariant")
+
+    if user_id is None:
+        user_id = existing_meta.get("user_id")
+
+    if target_agent is None:
+        target_agent = existing_meta.get("target_agent")
+
+    username = existing_meta.get("username")
+    if user_id is not None:
+        username = await asyncio.to_thread(get_username, user_id)
+
+    meta = {
+        "target_agent": target_agent,
+        "kind": kind,
+        "scope": scope,
+        "user_id": user_id if user_id is not None else -1,
+        "username": username or "",
+        "date": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+    }
+    if retrieval is not None:
+        meta["retrieval"] = retrieval
+
+    if is_vocab:
+        if base_term is not None:
+            meta["base_term"] = base_term
+        elif "base_term" in existing_meta:
+            meta["base_term"] = existing_meta["base_term"]
+
+    if retrieval == "contextual":
+        document = trigger or content or existing_doc
+        meta["correction"] = content or existing_meta.get("correction", "")
     else:
-        await col.update(ids=[memory_id], documents=[new_content], metadatas=[existing_meta])
+        document = content or existing_doc
+
+    kwargs = {"ids": [memory_id], "metadatas": [meta]}
+    if embedding is not None:
+        kwargs["embeddings"] = [embedding]
+    if retrieval != "contextual" or trigger is not None or content is None:
+        kwargs["documents"] = [document]
+
+    await col.update(**kwargs)
+    _debug_memory("UPDATE", f"id={memory_id}", [document], [meta])
     return True
 
 async def get_all_memories() -> dict:
