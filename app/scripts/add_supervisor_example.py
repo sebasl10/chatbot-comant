@@ -2,9 +2,9 @@
 Ajout / recherche manuels d'exemples de routage pour l'agent superviseur.
 
 Les exemples vivent dans la collection ``memories`` (``target_agent="supervisor"``,
-``kind="routing"``, ``retrieval="contextual"``, ``scope="global"``) : la requête
-est le ``trigger`` (clé embeddée), la délégation le payload. Même endroit que les
-corrections de routage écrites par l'agent memory.
+``retrieval="contextual"``, ``scope="global"``) : la requête est le ``trigger``
+(clé embeddée), la délégation le payload. Même endroit que les corrections de
+routage écrites par l'agent memory.
 
 Usage :
     Ajouter : python -m app.scripts.add_supervisor_example add --query "Ma requête" --action delegate_semantic_search
@@ -48,7 +48,6 @@ async def add_example(query: str, action: str):
     content = f"Délègue via {action}."
     doc_id = await vs.add_memory(
         target_agent="supervisor",
-        kind="routing",
         content=content,
         user_id=None,
         retrieval="contextual",
