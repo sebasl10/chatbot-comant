@@ -61,14 +61,15 @@ TICKET_SEARCH_CAPABILITY_INSTRUCTIONS = """
     1. Extrais le sujet de recherche du message (quelques mots-clés). Ne modifie jamais le texte, ne change pas les minuscules et majuscules.
     - Ex: "Cherche les tickets qui parlent d'annotations 3d" => "annotations 3d"
 
-    2. Appelle `semantic_ticket_search(query=<sujet>)` pour obtenir la requête SQL (`sql_query`), le nombre de résultats (`count`) et le vocabulaire utilisé (`synonyms`).
+    2. Appelle `semantic_ticket_search(query=<sujet>)` pour obtenir la requête SQL (`sql_query`), le nombre de résultats (`count`), le vocabulaire utilisé (`synonyms`) et la répartition par catégorie de correspondance (`tier_counts`).
     La requête SQL est déjà construite au format : `SELECT t.id, t.summary, t.description FROM ticket t WHERE t.id IN (<ids>)`.
     Si sql_query contient `WHERE t.id IN ()`, dit à l'utilisateur qu'aucun ticket correspond à la recherche.
 
     3. FORMAT DE SORTIE (A RESPECTER OBLIGATOIREMENT)
     Réponds en une phrase en français avec le nombre de tickets trouvés (champ count de la réponse du tool semantic_ticket_search),
     un saut de ligne et un récapitulatif des termes inclus dans la recherche sémantique (champ synonyms de la réponse du tool semantic_ticket_search).
-    Tu dois également indiquer que les résultats sont triés par ordre décroissant de similarité.
+    Ajoute ensuite, ligne par ligne, la répartition du nombre de tickets par catégorie de correspondance (champ tier_counts : pour
+    chaque élément, son label et son count), dans l'ordre fourni (du plus littéral au plus sémantique), en omettant les catégories à 0.
     Ne rajoute pas de termes ou de synonymes que tu n'as pas utilisés, ni des informations des tickets trouvés.
     N'invente pas des informations dans le message que tu retourneras.
     Vérifie que le nombre de résultats que tu ajoutes dans le message correspond au nombre de ids de la requête SQL finale.

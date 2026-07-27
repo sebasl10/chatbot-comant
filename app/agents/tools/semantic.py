@@ -2,45 +2,207 @@
 Tool de recherche sémantique de tickets (backed Chroma).
 """
 
+import asyncio
 from pydantic_ai import RunContext
 from app.agents.deps import ChatDeps
 from app.services import vectorstore as vs
+from app.services.database import get_connection
+
+# ── Priorité lexicale (SQL) sur la recherche sémantique ─────────────────────
+# Ordre de priorité des tickets, du plus littéral au plus sémantique :
+#   0. le terme cherché apparaît dans le titre (summary)
+#   1. le terme cherché apparaît dans la description ou un commentaire
+#   2. un synonyme (vocabulaire lié) apparaît dans le titre
+#   3. un synonyme apparaît dans la description ou un commentaire
+#   4. aucun match lexical, seulement une proximité sémantique sous le seuil
+
+TIER_LABELS = {
+    0: "terme dans le titre",
+    1: "terme dans description/commentaires",
+    2: "synonyme dans le titre",
+    3: "synonyme dans description/commentaires",
+    4: "sémantique pur",
+}
+
+
+def _like_clause(column: str, terms: list[str]) -> tuple[str, list[str]]:
+    """Construit ``(column LIKE %s OR column LIKE %s ...)`` pour une liste de termes."""
+    clean_terms = [t.strip() for t in terms if t and t.strip()]
+    condition = " OR ".join([f"{column} LIKE %s"] * len(clean_terms))
+    params = [f"%{t}%" for t in clean_terms]
+    return f"({condition})", params
+
+
+def _fetch_lexical_tiers(base_term: str, synonyms: list[str]) -> dict[int, int]:
+    """
+    Renvoie ``{ticket_id: tier}`` (0 à 3, cf. TIER_LABELS) selon que le terme de
+    base ou un synonyme apparaît dans le titre, la description ou un commentaire
+    (sous-chaîne, ``LIKE``). Bloquant (pymysql) : à appeler via ``asyncio.to_thread``.
+    """
+    subqueries: list[str] = []
+    params: list[str] = []
+
+    cond, p = _like_clause("t.summary", [base_term])
+    subqueries.append(f"SELECT t.id AS ticket_id, 0 AS tier FROM ticket t WHERE {cond}")
+    params += p
+
+    cond, p = _like_clause("t.description", [base_term])
+    subqueries.append(f"SELECT t.id AS ticket_id, 1 AS tier FROM ticket t WHERE {cond}")
+    params += p
+
+    cond, p = _like_clause("c.text", [base_term])
+    subqueries.append(f"SELECT c.ticket_id AS ticket_id, 1 AS tier FROM comment c WHERE {cond}")
+    params += p
+
+    if synonyms:
+        cond, p = _like_clause("t.summary", synonyms)
+        subqueries.append(f"SELECT t.id AS ticket_id, 2 AS tier FROM ticket t WHERE {cond}")
+        params += p
+
+        cond, p = _like_clause("t.description", synonyms)
+        subqueries.append(f"SELECT t.id AS ticket_id, 3 AS tier FROM ticket t WHERE {cond}")
+        params += p
+
+        cond, p = _like_clause("c.text", synonyms)
+        subqueries.append(f"SELECT c.ticket_id AS ticket_id, 3 AS tier FROM comment c WHERE {cond}")
+        params += p
+
+    sql = (
+        "SELECT ticket_id, MIN(tier) AS tier FROM (\n            "
+        + "\n            UNION ALL\n            ".join(subqueries)
+        + "\n        ) x GROUP BY ticket_id"
+    )
+
+    conn = get_connection()
+    try:
+        with conn.cursor() as cursor:
+            cursor.execute(sql, params)
+            rows = cursor.fetchall()
+    finally:
+        conn.close()
+
+    return {row["ticket_id"]: row["tier"] for row in rows}
+
+
+async def query_tickets(query: str, threshold: float = 0.55, use_synonyms: bool = True) -> dict:
+    """
+    Recherche des tickets sémantiquement proches de la query.
+    Récupère toujours 3000 résultats puis filtre ceux avec distance <= threshold.
+    Priorise ensuite par tier lexical (cf. ``_fetch_lexical_tiers``) : terme dans le
+    titre > terme dans description/commentaires > synonyme dans le titre > synonyme
+    dans description/commentaires > proximité purement sémantique.
+    """
+    col = await vs.tickets_collection()
+
+    query_instruction = "Given a technical term or topic, retrieve support tickets that mention or relate to it, even briefly."
+
+    all_embeddings = []
+    terms_used = []
+    synonyms: list[str] = []
+
+    if use_synonyms:
+        synonyms = (await vs.get_vocabulary_for_term(query))["synonyms"]
+        if synonyms:
+            all_terms = [query] + synonyms
+            prompts = [f"Instruct: {query_instruction}\nQuery: {term}" for term in all_terms]
+            all_embeddings = await vs.get_embeddings(prompts)
+            terms_used = all_terms
+
+    if not all_embeddings:
+        all_embeddings = await vs.get_embeddings([f"Instruct: {query_instruction}\nQuery: {query}"])
+        terms_used = [query]
+
+    res = await col.query(
+        query_embeddings=all_embeddings,
+        n_results=3000,
+        include=["distances"]
+    )
+
+    all_results = []
+    for i in range(len(all_embeddings)):
+        ids = res["ids"][i]
+        distances = res["distances"][i]
+        for j in range(len(ids)):
+            all_results.append({
+                "id": int(ids[j]),
+                "distance": distances[j],
+            })
+
+    all_results.sort(key=lambda x: x["distance"])
+    filtered_results = [r for r in all_results if r["distance"] <= threshold]
+
+    # Meilleure distance connue par ticket (les résultats sont déjà triés par distance croissante).
+    best_distance: dict[int, float] = {}
+    for r in filtered_results:
+        best_distance.setdefault(r["id"], r["distance"])
+
+    # Priorité lexicale (tiers 0-3, cf. _fetch_lexical_tiers) devant les résultats
+    # purement sémantiques (tier 4), même si leur score de similarité est moins bon.
+    lexical_tiers = await asyncio.to_thread(_fetch_lexical_tiers, query, synonyms)
+
+    all_ids = set(best_distance) | set(lexical_tiers)
+    ticket_ids = sorted(
+        all_ids,
+        key=lambda tid: (lexical_tiers.get(tid, 4), best_distance.get(tid, float("inf"))),
+    )
+
+    tier_counts: dict[int, int] = {}
+    for tid in all_ids:
+        tier = lexical_tiers.get(tid, 4)
+        tier_counts[tier] = tier_counts.get(tier, 0) + 1
+    for tier, label in TIER_LABELS.items():
+        print(f"[TIER {tier} - {label}] {tier_counts.get(tier, 0)} ticket(s)")
+
+    return {
+        "ticket_ids": ticket_ids,
+        "synonyms": terms_used,
+        "count": len(ticket_ids),
+        "tier_counts": [
+            {"tier": tier, "label": label, "count": tier_counts.get(tier, 0)}
+            for tier, label in TIER_LABELS.items()
+        ],
+    }
+
 
 async def semantic_ticket_search(ctx: RunContext[ChatDeps], query: str) -> dict:
     """
     Recherche des tickets sémantiquement proches de `query` (sujet/thème).
-    Renvoie la requête SQL construite, les synonymes utilisés et le count.
-    
+    Renvoie la requête SQL construite, les synonymes utilisés, le count et la
+    répartition du nombre de tickets par catégorie de correspondance (tier_counts).
+
     Args:
         query: Message exact envoyé par l'utilisateur, sans modification, sans reformulation, sans ajout de texte
-    
+
     Returns:
         dict avec les clés:
         - sql_query: requête SQL au format SELECT t.id, t.summary, t.description FROM ticket t WHERE t.id IN (<ids>)
         - synonyms: liste de tous les termes utilisés (query + synonymes)
         - count: nombre de tickets trouvés
+        - tier_counts: liste de {tier, label, count}, du plus littéral (tier 0 : terme dans
+          le titre) au plus sémantique (tier 4 : proximité sémantique pure)
     """
     print("[TOOL CALL] semantic_ticket_search")
     print(f"Query: {query}")
-    
-    result = await vs.query_tickets(query)
+
+    result = await query_tickets(query)
     ticket_ids = result['ticket_ids']
     if ticket_ids:
         ids_str = ", ".join(str(tid) for tid in ticket_ids)
         sql_query = f"SELECT t.id, t.summary, t.description FROM ticket t WHERE t.id IN ({ids_str}) "
     else:
         sql_query = "SELECT t.id, t.summary, t.description FROM ticket t WHERE t.id IN ()"
-        
+
     print(f"[SQL RESULT] {sql_query}")
     print(f"[NB TICKETS] {len(ticket_ids)}")
-    
+
     ctx.deps.last_sql = sql_query
     ctx.deps.last_count = len(ticket_ids)
-    
+
     return {
         "sql_query": sql_query,
         "synonyms": result["synonyms"],
-        "count": result["count"]
+        "count": result["count"],
+        "tier_counts": result["tier_counts"],
     }
 
 
