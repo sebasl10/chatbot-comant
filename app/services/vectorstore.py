@@ -3,7 +3,7 @@ Base vectorielle Chroma — tickets, mémoires, résumés de conversation.
 
 Collections :
 - ``tickets``                : embeddings de tickets.
-- ``memories``               : souvenirs/corrections + exemples de routage, filtrables par métadonnées ``{target_agent, kind, scope, user_id}`` et recherchables sémantiquement. Guide aussi le superviseur (``target_agent=supervisor``).
+- ``memories``               : souvenirs/corrections + exemples de routage, filtrables par métadonnées ``{target_agent, scope, user_id}`` (+ ``kind`` uniquement pour ``target_agent=semantic_research``) et recherchables sémantiquement. Guide aussi le superviseur (``target_agent=supervisor``).
 - ``conversation_summaries`` : résumés de conversation.
 """
 
@@ -385,13 +385,20 @@ async def remove_term_from_vocabulary(term: str, base_term: str) -> Dict[str, An
 
 
 # ── Gérer les souvenirs ──────────────────────────────────────
-_KIND_DEFAULT_SCOPE = {
-    "sql_rule": "global",     # règles de construction SQL : comportement système
-    "routing": "global",      # corrections/exemples de délégation : comportement système
-    "vocabulary": "global",   # synonymes partagés
-    "exclude": "user",        # exclusion de ticket : plutôt une préférence de filtrage
-    "other": "user",          # non classé : local par prudence
+# Portée par défaut selon l'agent (quand ``scope`` n'est pas fourni explicitement).
+# Le champ ``kind`` n'existe que pour semantic_research (voir _default_scope).
+_TARGET_AGENT_DEFAULT_SCOPE = {
+    "supervisor": "global",       # corrections/exemples de délégation : comportement système
+    "sql_research": "global",     # règles de construction SQL : comportement système
+    "conversational": "user",     # préférence de ton/comportement, propre à l'utilisateur
 }
+
+
+def _default_scope(target_agent: str, kind: str | None) -> str:
+    if target_agent == "semantic_research":
+        # vocabulary : synonymes partagés → global. behavior : préférence → user.
+        return "global" if kind == "vocabulary" else "user"
+    return _TARGET_AGENT_DEFAULT_SCOPE.get(target_agent, "user")
 
 def _debug_memory(action: str, header: str, docs: list[str], metas: list[dict] | None = None) -> None:
     """
@@ -497,9 +504,9 @@ async def get_memories_text(
 
 async def add_memory(
     target_agent: str,
-    kind: str,
     content: str,
     user_id: int | None,
+    kind: str | None = None,
     retrieval: str | None = None,
     trigger: str | None = None,
     scope: str | None = None,
@@ -511,7 +518,9 @@ async def add_memory(
 
     - ``target_agent`` : agent qui devra lire ce souvenir (supervisor,
       sql_research, semantic_research, conversational).
-    - ``kind`` : nature du souvenir (sql_rule, exclude, vocabulary, routing, other).
+    - ``kind`` : UNIQUEMENT pour ``target_agent="semantic_research"`` — "vocabulary"
+      (synonymes) ou "behavior" (correction de comportement). Jamais stocké pour
+      les autres agents, même si fourni.
     - ``content`` : le texte de la règle/correction à injecter (le payload).
     - ``retrieval`` : mode de récupération —
         * "invariant"  : règle universelle, toujours injectée. ``document`` = ``content``.
@@ -519,32 +528,38 @@ async def add_memory(
           déclencheuse, embeddée comme clé), ``content`` conservé en payload ``correction``.
         * None         : vocabulaire (mécanisme dédié), non concerné par les deux voies.
     - ``trigger`` : requête utilisateur déclencheuse (REQUIS si ``retrieval="contextual"``).
-    - ``scope`` : "user" ou "global". Si None, déduit du ``kind`` via ``_KIND_DEFAULT_SCOPE``.
+    - ``scope`` : "user" ou "global". Si None, déduit de ``target_agent`` (et de ``kind``
+      pour semantic_research) via ``_default_scope``.
 
-    Pour ``kind == "vocabulary"`` :
+    Pour ``target_agent="semantic_research"`` et ``kind="vocabulary"`` :
         - content : les termes liés/synonymes (ex: "lent, slow, performance")
         - base_term : le terme de base (ex: "performance") - **REQUIS** - stocké dans les métadonnées
     """
+    is_semantic_vocab = target_agent == "semantic_research" and kind == "vocabulary"
+
     if scope is None:
-        scope = _KIND_DEFAULT_SCOPE.get(kind, "user")
+        scope = _default_scope(target_agent, kind)
     # Garde-fou : un souvenir non-vocabulaire DOIT avoir un mode de récupération,
     # sinon il serait invisible pour get_memories_text. Défaut : invariant.
-    if retrieval is None and kind != "vocabulary":
+    if retrieval is None and not is_semantic_vocab:
         retrieval = "invariant"
     username = await asyncio.to_thread(get_username, user_id)
     meta = {
         "target_agent": target_agent,
-        "kind": kind,
         "scope": scope,
         "user_id": user_id if user_id is not None else -1,
         "username": username or "",
         "date": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
     }
+    # kind n'existe que pour semantic_research : jamais stocké pour les autres agents,
+    # même si un appelant (endpoint admin) le fournit par erreur.
+    if target_agent == "semantic_research" and kind is not None:
+        meta["kind"] = kind
     if retrieval is not None:
         meta["retrieval"] = retrieval
 
     # Pour le vocabulaire, ajouter le terme de base dans les métadonnées
-    if kind == "vocabulary":
+    if is_semantic_vocab:
         meta["base_term"] = base_term
 
     # Indexation asymétrique : pour un souvenir contextuel, la clé de recherche

@@ -11,7 +11,9 @@ sémantique).
   messages elliptiques « oui/non » à partir de l'historique avant de stocker).
 
 target_agent : supervisor, sql_research, semantic_research, conversational.
-kind         : sql_rule, exclude, vocabulary, routing, other.
+kind         : UNIQUEMENT pour target_agent=semantic_research — vocabulary
+               (synonymes) | behavior (correction de comportement). Absent pour
+               les autres agents : target_agent seul les classifie.
 retrieval    : invariant (toujours injecté) | contextual (indexé par la requête
                déclencheuse, récupéré par similarité). Voir get_memories_text.
                L'agent memory (save_memory) n'écrit QUE du contextual ; les
@@ -23,7 +25,8 @@ from app.agents.deps import ChatDeps
 from app.services import vectorstore as vs
 
 VALID_TARGET_AGENTS = ("supervisor", "sql_research", "semantic_research", "conversational")
-VALID_KINDS = ("sql_rule", "exclude", "vocabulary", "routing", "other")
+# kind n'existe que pour semantic_research (les autres agents n'ont pas ce champ).
+VALID_SEMANTIC_KINDS = ("vocabulary", "behavior")
 
 
 async def relevant_memories(ctx: RunContext[ChatDeps], target_agent: str, k: int = 5) -> str:
@@ -48,8 +51,8 @@ async def relevant_memories(ctx: RunContext[ChatDeps], target_agent: str, k: int
 async def save_memory(
     ctx: RunContext[ChatDeps],
     target_agent: str,
-    kind: str,
     content: str,
+    kind: str | None = None,
     trigger: str | None = None,
     base_term: str | None = None,
 ) -> dict:
@@ -62,13 +65,15 @@ async def save_memory(
     Args:
         target_agent : agent qui devra respecter ce souvenir —
             `supervisor` (délégation/routage) | `sql_research` (règles SQL) |
-            `semantic_research` (recherche sémantique, exclusions, vocabulaire) |
-            `conversational`.
-        kind : `sql_rule` | `exclude` | `vocabulary` | `routing` | `other`.
+            `semantic_research` (recherche sémantique, vocabulaire) | `conversational`.
         content : la RÈGLE / le comportement attendu, en une phrase claire, autonome
             et réutilisable (français, sans markdown). Reformule les messages
             elliptiques (« oui », « non ») à partir de l'historique.
-            Pour `vocabulary` : les synonymes séparés par des virgules (ex: "lent, slow, rapide").
+            Pour `kind=vocabulary` : les synonymes séparés par des virgules (ex: "lent, slow, rapide").
+        kind : UNIQUEMENT si `target_agent="semantic_research"` — `vocabulary`
+            (synonymes/vocabulaire) ou `behavior` (correction de comportement de
+            cet agent). NE JAMAIS fournir ce paramètre pour les autres agents :
+            `target_agent` suffit à les classifier.
         trigger : OBLIGATOIRE (sauf `kind=vocabulary`). La requête utilisateur
             DÉCLENCHEUSE (celle de l'historique qui a causé la correction), reformulée
             en requête autonome et générale. Sert de clé pour retrouver la règle quand
@@ -77,19 +82,25 @@ async def save_memory(
     """
     if target_agent not in VALID_TARGET_AGENTS:
         return {"ok": False, "error": f"target_agent invalide: {target_agent}"}
-    if kind not in VALID_KINDS:
-        return {"ok": False, "error": f"kind invalide: {kind}"}
 
-    # Vocabulaire : structure dédiée (global, base_term + synonymes), hors trigger/retrieval
-    if kind == "vocabulary" and base_term:
+    if target_agent == "semantic_research":
+        if kind not in VALID_SEMANTIC_KINDS:
+            return {"ok": False, "error": "kind requis pour semantic_research : 'vocabulary' ou 'behavior'"}
+    elif kind is not None:
+        return {"ok": False, "error": f"kind ne doit pas être fourni pour target_agent={target_agent}"}
+
+    # Vocabulaire (semantic_research uniquement) : structure dédiée, hors trigger/retrieval
+    if kind == "vocabulary":
+        if not base_term:
+            return {"ok": False, "error": "base_term requis pour kind=vocabulary"}
         synonyms = [s.strip() for s in content.split(",") if s.strip()]
         print(f"[SAVE MEMORY] vocabulary - base_term: '{base_term}', synonyms: {synonyms}")
         await vs.add_synonyms(base_term, synonyms, ctx.deps.user_id, ctx.deps.username)
         ctx.deps.events.correction(target_agent=target_agent, kind=kind, memory=f"{base_term}: {content}")
         return {"ok": True, "target_agent": target_agent, "kind": kind}
 
-    # Tous les souvenirs écrits par l'agent sont contextuels (indexés par leur
-    # déclencheur). Seul l'endpoint /memory/add peut créer des invariants.
+    # Tous les autres souvenirs écrits par l'agent sont contextuels (indexés par
+    # leur déclencheur). Seul l'endpoint /memory/add peut créer des invariants.
     if not trigger:
         return {"ok": False, "error": "trigger requis (la requête utilisateur déclencheuse de la correction)"}
 
