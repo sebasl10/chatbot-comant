@@ -19,9 +19,9 @@ from app.services.database import get_connection
 TIER_LABELS = {
     0: "terme dans le titre",
     1: "terme dans description/commentaires",
-    2: "synonyme dans le titre",
-    3: "synonyme dans description/commentaires",
-    4: "sémantique pur",
+    2: "terme lié dans le titre",
+    3: "terme lié dans description/commentaires",
+    4: "sémantiquement proches",
 }
 
 
@@ -84,7 +84,7 @@ def _fetch_lexical_tiers(base_term: str, synonyms: list[str]) -> dict[int, int]:
     return {row["ticket_id"]: row["tier"] for row in rows}
 
 
-async def query_tickets(query: str, threshold: float = 0.55, use_synonyms: bool = True) -> dict:
+async def query_tickets(query: str, threshold: float = 0.52, use_synonyms: bool = True) -> dict:
     """
     Recherche des tickets sémantiquement proches de la query.
     Récupère toujours 3000 résultats puis filtre ceux avec distance <= threshold.

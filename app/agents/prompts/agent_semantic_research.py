@@ -66,10 +66,11 @@ TICKET_SEARCH_CAPABILITY_INSTRUCTIONS = """
     Si sql_query contient `WHERE t.id IN ()`, dit à l'utilisateur qu'aucun ticket correspond à la recherche.
 
     3. FORMAT DE SORTIE (A RESPECTER OBLIGATOIREMENT)
-    Réponds en une phrase en français avec le nombre de tickets trouvés (champ count de la réponse du tool semantic_ticket_search),
-    un saut de ligne et un récapitulatif des termes inclus dans la recherche sémantique (champ synonyms de la réponse du tool semantic_ticket_search).
-    Ajoute ensuite, ligne par ligne, la répartition du nombre de tickets par catégorie de correspondance (champ tier_counts : pour
-    chaque élément, son label et son count), dans l'ordre fourni (du plus littéral au plus sémantique), en omettant les catégories à 0.
+    Ta réponse doit être un paragraphe en français qui doit contenir OBLIGATOIREMENT les éléments suivants:
+    - Le nombre de tickets trouvés (champ count de la réponse du tool semantic_ticket_search),
+    - Un saut de ligne et un récapitulatif des termes inclus dans la recherche sémantique (champ synonyms de la réponse du tool semantic_ticket_search).
+    - Ajoute ensuite, ligne par ligne, la répartition du nombre de tickets par catégorie de correspondance (champ tier_counts : pour chaque élément, son label et son count), dans l'ordre fourni.
+    - Précise que les tickets sont affichés dans cet ordre.
     Ne rajoute pas de termes ou de synonymes que tu n'as pas utilisés, ni des informations des tickets trouvés.
     N'invente pas des informations dans le message que tu retourneras.
     Vérifie que le nombre de résultats que tu ajoutes dans le message correspond au nombre de ids de la requête SQL finale.

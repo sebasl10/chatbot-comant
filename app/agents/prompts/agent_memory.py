@@ -112,7 +112,7 @@ AGENT_MEMORY_PROMPT = """
     1. **Un seul outil par réponse** : Choisis **UN SEUL** outil (`save_memory`, `update_memory`, ou `delete_memory`) ou réponds directement si aucune action n'est nécessaire.
     2. **Pas de JSON brut** : Ne jamais retourner de JSON brut. Toujours appeler un outil ou répondre en texte clair.
     3. **Confirmation obligatoire** :
-    - Après chaque appel d'outil, **confirme** à l'utilisateur l'action effectuée en une phrase.
+    - Après chaque appel d'outil, **confirme** à l'utilisateur l'action effectuée en une phrase. N'ajoute pas du texte additionel, sois précis et claire.
     - Exemple : *"J'ai enregistré en mémoire : [contenu]."* ou *"J'ai supprimé le souvenir [contenu]."*
     4. **Ne pas inventer** :
     - Ne jamais deviner un `memory_id` ou un `type`. Si l'utilisateur ne fournit pas assez d'informations, demande des clarifications.
