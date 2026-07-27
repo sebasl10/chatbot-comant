@@ -9,7 +9,6 @@ Collections :
 
 from __future__ import annotations
 import asyncio
-import re
 from typing import Any, Dict, List
 import requests
 from chromadb import AsyncHttpClient
@@ -214,52 +213,61 @@ async def add_ticket_to_chroma(ticket_id: int) -> bool:
         return False
 
 # ── Priorité lexicale (SQL) sur la recherche sémantique ─────────────────────
-# Les tickets qui contiennent littéralement le terme cherché (tier 0) ou un
-# terme de vocabulaire lié (tier 1) doivent passer devant les résultats
-# purement sémantiques (tier 2), même si leur score de similarité est moins bon.
+# Ordre de priorité des tickets, du plus littéral au plus sémantique :
+#   0. le terme cherché apparaît dans le titre (summary)
+#   1. le terme cherché apparaît dans la description ou un commentaire
+#   2. un synonyme (vocabulaire lié) apparaît dans le titre
+#   3. un synonyme apparaît dans la description ou un commentaire
+#   4. aucun match lexical, seulement une proximité sémantique sous le seuil
 
-def _word_boundary_pattern(terms: list[str]) -> str:
-    """
-    Construit un pattern REGEXP « mot entier parmi terms ». Suppose un serveur
-    MySQL >= 8.0.4 (moteur ICU, seul à supporter ``\\b``) ou MariaDB récent.
-    """
-    escaped = [re.escape(t.strip()) for t in terms if t and t.strip()]
-    alternation = "|".join(escaped)
-    return rf"\b({alternation})\b"
+def _like_clause(column: str, terms: list[str]) -> tuple[str, list[str]]:
+    """Construit ``(column LIKE %s OR column LIKE %s ...)`` pour une liste de termes."""
+    clean_terms = [t.strip() for t in terms if t and t.strip()]
+    condition = " OR ".join([f"{column} LIKE %s"] * len(clean_terms))
+    params = [f"%{t}%" for t in clean_terms]
+    return f"({condition})", params
 
 
 def _fetch_lexical_tiers(base_term: str, synonyms: list[str]) -> dict[int, int]:
     """
-    Renvoie ``{ticket_id: tier}`` pour les tickets contenant, mot entier, le
-    terme de base (tier 0) ou un des synonymes/vocabulaire lié (tier 1), dans
-    le résumé, la description ou un commentaire. Bloquant (pymysql) : à
-    appeler via ``asyncio.to_thread``.
+    Renvoie ``{ticket_id: tier}`` (0 à 3, cf. section ci-dessus) selon que le
+    terme de base ou un synonyme apparaît dans le titre, la description ou un
+    commentaire (sous-chaîne, ``LIKE``). Bloquant (pymysql) : à appeler via
+    ``asyncio.to_thread``.
     """
-    base_pattern = _word_boundary_pattern([base_term])
+    subqueries: list[str] = []
+    params: list[str] = []
 
-    sql = """
-        SELECT ticket_id, MIN(tier) AS tier FROM (
-            SELECT t.id AS ticket_id, 0 AS tier FROM ticket t
-                WHERE t.summary REGEXP %s OR t.description REGEXP %s
-            UNION ALL
-            SELECT c.ticket_id AS ticket_id, 0 AS tier FROM comment c
-                WHERE c.text REGEXP %s
-    """
-    params = [base_pattern, base_pattern, base_pattern]
+    cond, p = _like_clause("t.summary", [base_term])
+    subqueries.append(f"SELECT t.id AS ticket_id, 0 AS tier FROM ticket t WHERE {cond}")
+    params += p
+
+    cond, p = _like_clause("t.description", [base_term])
+    subqueries.append(f"SELECT t.id AS ticket_id, 1 AS tier FROM ticket t WHERE {cond}")
+    params += p
+
+    cond, p = _like_clause("c.text", [base_term])
+    subqueries.append(f"SELECT c.ticket_id AS ticket_id, 1 AS tier FROM comment c WHERE {cond}")
+    params += p
 
     if synonyms:
-        vocab_pattern = _word_boundary_pattern(synonyms)
-        sql += """
-            UNION ALL
-            SELECT t.id AS ticket_id, 1 AS tier FROM ticket t
-                WHERE t.summary REGEXP %s OR t.description REGEXP %s
-            UNION ALL
-            SELECT c.ticket_id AS ticket_id, 1 AS tier FROM comment c
-                WHERE c.text REGEXP %s
-        """
-        params += [vocab_pattern, vocab_pattern, vocab_pattern]
+        cond, p = _like_clause("t.summary", synonyms)
+        subqueries.append(f"SELECT t.id AS ticket_id, 2 AS tier FROM ticket t WHERE {cond}")
+        params += p
 
-    sql += ") x GROUP BY ticket_id"
+        cond, p = _like_clause("t.description", synonyms)
+        subqueries.append(f"SELECT t.id AS ticket_id, 3 AS tier FROM ticket t WHERE {cond}")
+        params += p
+
+        cond, p = _like_clause("c.text", synonyms)
+        subqueries.append(f"SELECT c.ticket_id AS ticket_id, 3 AS tier FROM comment c WHERE {cond}")
+        params += p
+
+    sql = (
+        "SELECT ticket_id, MIN(tier) AS tier FROM (\n            "
+        + "\n            UNION ALL\n            ".join(subqueries)
+        + "\n        ) x GROUP BY ticket_id"
+    )
 
     conn = get_connection()
     try:
@@ -278,8 +286,9 @@ async def query_tickets(query: list[float] | str, threshold: float = 0.55, use_s
     """
     Recherche des tickets sémantiquement proches de la query.
     Récupère toujours 3000 résultats puis filtre ceux avec distance <= threshold.
-    Priorise ensuite les tickets contenant littéralement le terme (tier 0) ou un
-    terme du vocabulaire lié (tier 1) devant les résultats purement sémantiques (tier 2).
+    Priorise ensuite par tier lexical (cf. ``_fetch_lexical_tiers``) : terme dans le
+    titre > terme dans description/commentaires > synonyme dans le titre > synonyme
+    dans description/commentaires > proximité purement sémantique.
     """
     col = await tickets_collection()
 
@@ -340,15 +349,14 @@ async def query_tickets(query: list[float] | str, threshold: float = 0.55, use_s
     for r in filtered_results:
         best_distance.setdefault(r["id"], r["distance"])
 
-    # Priorité lexicale : les tickets qui contiennent littéralement le terme cherché (tier 0)
-    # ou un terme du vocabulaire lié (tier 1) passent devant les résultats purement sémantiques
-    # (tier 2), même si leur score de similarité est moins bon.
+    # Priorité lexicale (tiers 0-3, cf. _fetch_lexical_tiers) devant les résultats
+    # purement sémantiques (tier 4), même si leur score de similarité est moins bon.
     lexical_tiers = await asyncio.to_thread(_fetch_lexical_tiers, query, synonyms)
 
     all_ids = set(best_distance) | set(lexical_tiers)
     ticket_ids = sorted(
         all_ids,
-        key=lambda tid: (lexical_tiers.get(tid, 2), best_distance.get(tid, float("inf"))),
+        key=lambda tid: (lexical_tiers.get(tid, 4), best_distance.get(tid, float("inf"))),
     )
 
     return {
