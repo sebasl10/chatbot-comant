@@ -3,7 +3,7 @@ Base vectorielle Chroma — tickets, mémoires, résumés de conversation.
 
 Collections :
 - ``tickets``                : embeddings de tickets.
-- ``memories``               : souvenirs/corrections + exemples de routage, filtrables par métadonnées ``{target_agent, scope, user_id}`` (+ ``kind`` uniquement pour ``target_agent=semantic_research``) et recherchables sémantiquement. Guide aussi le superviseur (``target_agent=supervisor``).
+- ``memories``               : souvenirs/corrections + exemples de routage, filtrables par métadonnées ``{target_agent, kind, scope, user_id}`` (``kind`` = "behavior" par défaut, "vocabulary" uniquement pour semantic_research) et recherchables sémantiquement. Guide aussi le superviseur (``target_agent=supervisor``).
 - ``conversation_summaries`` : résumés de conversation.
 """
 
@@ -386,18 +386,20 @@ async def remove_term_from_vocabulary(term: str, base_term: str) -> Dict[str, An
 
 # ── Gérer les souvenirs ──────────────────────────────────────
 # Portée par défaut selon l'agent (quand ``scope`` n'est pas fourni explicitement).
-# Le champ ``kind`` n'existe que pour semantic_research (voir _default_scope).
+# ``kind`` existe pour TOUS les souvenirs : "behavior" (défaut) ou "vocabulary"
+# (uniquement possible pour semantic_research, seul agent avec un mécanisme de
+# vocabulaire). Un souvenir "vocabulary" est toujours global (synonymes partagés).
 _TARGET_AGENT_DEFAULT_SCOPE = {
-    "supervisor": "global",       # corrections/exemples de délégation : comportement système
-    "sql_research": "global",     # règles de construction SQL : comportement système
-    "conversational": "user",     # préférence de ton/comportement, propre à l'utilisateur
+    "supervisor": "global",         # corrections/exemples de délégation : comportement système
+    "sql_research": "global",       # règles de construction SQL : comportement système
+    "semantic_research": "user",    # correction de comportement, propre à l'utilisateur
+    "conversational": "user",       # préférence de ton/comportement, propre à l'utilisateur
 }
 
 
 def _default_scope(target_agent: str, kind: str | None) -> str:
-    if target_agent == "semantic_research":
-        # vocabulary : synonymes partagés → global. behavior : préférence → user.
-        return "global" if kind == "vocabulary" else "user"
+    if kind == "vocabulary":
+        return "global"
     return _TARGET_AGENT_DEFAULT_SCOPE.get(target_agent, "user")
 
 def _debug_memory(action: str, header: str, docs: list[str], metas: list[dict] | None = None) -> None:
@@ -419,17 +421,25 @@ def _debug_memory(action: str, header: str, docs: list[str], metas: list[dict] |
     print('━' * 64)
 
 
-def _memory_where(target_agent: str, user_id: int | None, retrieval: str | None = None) -> dict:
+def _memory_where(
+    target_agent: str,
+    user_id: int | None,
+    retrieval: str | None = None,
+    exclude_kind: str | None = None,
+) -> dict:
     """
     Filtre les souvenirs destinés à ``target_agent`` : ceux de l'utilisateur plus
     ceux de portée globale, éventuellement restreints à un mode de récupération
-    (``retrieval`` = "invariant" | "contextual"). Construit un ``$and`` plat.
+    (``retrieval`` = "invariant" | "contextual") et/ou excluant un ``kind`` donné.
+    Construit un ``$and`` plat.
     """
     conds: list[dict] = [{"target_agent": target_agent}]
     if user_id is not None:
         conds.append({"$or": [{"user_id": user_id}, {"scope": "global"}]})
     if retrieval is not None:
         conds.append({"retrieval": retrieval})
+    if exclude_kind is not None:
+        conds.append({"kind": {"$ne": exclude_kind}})
     return conds[0] if len(conds) == 1 else {"$and": conds}
 
 def _memory_payload(doc: str, meta: dict | None) -> str:
@@ -466,14 +476,16 @@ async def get_memories_text(
     pour éviter de ré-embedder le même message d'un agent à l'autre. Sinon il est
     calculé à partir de ``query``. ``query`` reste utilisé pour le log d'accès.
 
-    Le vocabulaire (sans champ ``retrieval``) n'est pas concerné : il a son propre
-    mécanisme (``get_vocabulary_for_term`` / ``semantic_ticket_search``).
+    Le vocabulaire (``kind="vocabulary"``, aussi marqué ``retrieval="invariant"``
+    pour la cohérence des métadonnées) est explicitement EXCLU des deux voies : il
+    a son propre mécanisme de récupération (``get_vocabulary_for_term`` /
+    ``semantic_ticket_search``), pas les blocs de règles injectés ici.
     """
     col = await memories_collection()
 
-    # 1) Invariants — toujours injectés
+    # 1) Invariants — toujours injectés (hors vocabulaire, cf. ci-dessus)
     inv_res = await col.get(
-        where=_memory_where(target_agent, user_id, retrieval="invariant"),
+        where=_memory_where(target_agent, user_id, retrieval="invariant", exclude_kind="vocabulary"),
         include=["documents", "metadatas"],
     )
     inv_docs = inv_res.get("documents", []) or []
@@ -518,48 +530,50 @@ async def add_memory(
 
     - ``target_agent`` : agent qui devra lire ce souvenir (supervisor,
       sql_research, semantic_research, conversational).
-    - ``kind`` : UNIQUEMENT pour ``target_agent="semantic_research"`` — "vocabulary"
-      (synonymes) ou "behavior" (correction de comportement). Jamais stocké pour
-      les autres agents, même si fourni.
+    - ``kind`` : "behavior" (défaut, toute correction de comportement) ou
+      "vocabulary" (synonymes — uniquement valide pour ``target_agent="semantic_research"``,
+      seul agent doté d'un mécanisme de vocabulaire).
     - ``content`` : le texte de la règle/correction à injecter (le payload).
     - ``retrieval`` : mode de récupération —
         * "invariant"  : règle universelle, toujours injectée. ``document`` = ``content``.
+          C'est aussi la valeur par défaut pour le vocabulaire (cohérence des
+          métadonnées), même s'il est ensuite exclu de l'injection par
+          ``get_memories_text`` (mécanisme dédié).
         * "contextual" : liée à une situation. ``document`` = ``trigger`` (la requête
           déclencheuse, embeddée comme clé), ``content`` conservé en payload ``correction``.
-        * None         : vocabulaire (mécanisme dédié), non concerné par les deux voies.
     - ``trigger`` : requête utilisateur déclencheuse (REQUIS si ``retrieval="contextual"``).
     - ``scope`` : "user" ou "global". Si None, déduit de ``target_agent`` (et de ``kind``
-      pour semantic_research) via ``_default_scope``.
+      pour le vocabulaire, toujours global) via ``_default_scope``.
 
-    Pour ``target_agent="semantic_research"`` et ``kind="vocabulary"`` :
+    Pour ``kind="vocabulary"`` :
         - content : les termes liés/synonymes (ex: "lent, slow, performance")
         - base_term : le terme de base (ex: "performance") - **REQUIS** - stocké dans les métadonnées
     """
-    is_semantic_vocab = target_agent == "semantic_research" and kind == "vocabulary"
+    if kind is None:
+        kind = "behavior"
+    is_vocab = kind == "vocabulary"
 
     if scope is None:
         scope = _default_scope(target_agent, kind)
-    # Garde-fou : un souvenir non-vocabulaire DOIT avoir un mode de récupération,
-    # sinon il serait invisible pour get_memories_text. Défaut : invariant.
-    if retrieval is None and not is_semantic_vocab:
+    # Garde-fou : un souvenir DOIT toujours avoir un mode de récupération, sinon
+    # il serait invisible pour get_memories_text. Défaut : invariant (y compris
+    # pour le vocabulaire, par cohérence — il en est ensuite exclu à la lecture).
+    if retrieval is None:
         retrieval = "invariant"
     username = await asyncio.to_thread(get_username, user_id)
     meta = {
         "target_agent": target_agent,
+        "kind": kind,
         "scope": scope,
         "user_id": user_id if user_id is not None else -1,
         "username": username or "",
         "date": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
     }
-    # kind n'existe que pour semantic_research : jamais stocké pour les autres agents,
-    # même si un appelant (endpoint admin) le fournit par erreur.
-    if target_agent == "semantic_research" and kind is not None:
-        meta["kind"] = kind
     if retrieval is not None:
         meta["retrieval"] = retrieval
 
     # Pour le vocabulaire, ajouter le terme de base dans les métadonnées
-    if is_semantic_vocab:
+    if is_vocab:
         meta["base_term"] = base_term
 
     # Indexation asymétrique : pour un souvenir contextuel, la clé de recherche

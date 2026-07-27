@@ -11,9 +11,9 @@ sémantique).
   messages elliptiques « oui/non » à partir de l'historique avant de stocker).
 
 target_agent : supervisor, sql_research, semantic_research, conversational.
-kind         : UNIQUEMENT pour target_agent=semantic_research — vocabulary
-               (synonymes) | behavior (correction de comportement). Absent pour
-               les autres agents : target_agent seul les classifie.
+kind         : behavior (défaut, pour tous les agents) | vocabulary (synonymes —
+               valide UNIQUEMENT pour target_agent=semantic_research, seul agent
+               doté d'un mécanisme de vocabulaire).
 retrieval    : invariant (toujours injecté) | contextual (indexé par la requête
                déclencheuse, récupéré par similarité). Voir get_memories_text.
                L'agent memory (save_memory) n'écrit QUE du contextual ; les
@@ -25,8 +25,7 @@ from app.agents.deps import ChatDeps
 from app.services import vectorstore as vs
 
 VALID_TARGET_AGENTS = ("supervisor", "sql_research", "semantic_research", "conversational")
-# kind n'existe que pour semantic_research (les autres agents n'ont pas ce champ).
-VALID_SEMANTIC_KINDS = ("vocabulary", "behavior")
+VALID_KINDS = ("behavior", "vocabulary")
 
 
 async def relevant_memories(ctx: RunContext[ChatDeps], target_agent: str, k: int = 5) -> str:
@@ -52,7 +51,7 @@ async def save_memory(
     ctx: RunContext[ChatDeps],
     target_agent: str,
     content: str,
-    kind: str | None = None,
+    kind: str = "behavior",
     trigger: str | None = None,
     base_term: str | None = None,
 ) -> dict:
@@ -70,10 +69,9 @@ async def save_memory(
             et réutilisable (français, sans markdown). Reformule les messages
             elliptiques (« oui », « non ») à partir de l'historique.
             Pour `kind=vocabulary` : les synonymes séparés par des virgules (ex: "lent, slow, rapide").
-        kind : UNIQUEMENT si `target_agent="semantic_research"` — `vocabulary`
-            (synonymes/vocabulaire) ou `behavior` (correction de comportement de
-            cet agent). NE JAMAIS fournir ce paramètre pour les autres agents :
-            `target_agent` suffit à les classifier.
+        kind : `behavior` (défaut — laisse cette valeur pour toute correction normale,
+            quel que soit `target_agent`) ou `vocabulary` (synonymes — UNIQUEMENT
+            valide si `target_agent="semantic_research"`).
         trigger : OBLIGATOIRE (sauf `kind=vocabulary`). La requête utilisateur
             DÉCLENCHEUSE (celle de l'historique qui a causé la correction), reformulée
             en requête autonome et générale. Sert de clé pour retrouver la règle quand
@@ -82,12 +80,10 @@ async def save_memory(
     """
     if target_agent not in VALID_TARGET_AGENTS:
         return {"ok": False, "error": f"target_agent invalide: {target_agent}"}
-
-    if target_agent == "semantic_research":
-        if kind not in VALID_SEMANTIC_KINDS:
-            return {"ok": False, "error": "kind requis pour semantic_research : 'vocabulary' ou 'behavior'"}
-    elif kind is not None:
-        return {"ok": False, "error": f"kind ne doit pas être fourni pour target_agent={target_agent}"}
+    if kind not in VALID_KINDS:
+        return {"ok": False, "error": f"kind invalide: {kind}"}
+    if kind == "vocabulary" and target_agent != "semantic_research":
+        return {"ok": False, "error": "kind=vocabulary n'est valide que pour target_agent=semantic_research"}
 
     # Vocabulaire (semantic_research uniquement) : structure dédiée, hors trigger/retrieval
     if kind == "vocabulary":

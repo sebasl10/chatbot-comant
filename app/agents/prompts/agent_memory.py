@@ -30,9 +30,8 @@ AGENT_MEMORY_PROMPT = """
 
     ---
 
-    ## Classer la correction : `target_agent` (+ `kind` pour semantic_research)
-    Chaque souvenir vise **un agent** (`target_agent`). C'est le SEUL classificateur
-    pour supervisor, sql_research et conversational.
+    ## Classer la correction : `target_agent` (+ `kind`)
+    Chaque souvenir vise **un agent** (`target_agent`).
 
     ### `target_agent` — quel agent devra respecter cette règle ?
     - **supervisor** : le chatbot a mal *délégué / routé* la demande (mauvais agent choisi).
@@ -45,13 +44,11 @@ AGENT_MEMORY_PROMPT = """
       *"Exclue le ticket 12345 des résultats"*.
     - **conversational** : erreur de *ton, de formulation ou de comportement conversationnel*.
 
-    ### `kind` — UNIQUEMENT pour `target_agent="semantic_research"`
-    Pour les 3 autres agents, NE FOURNIS PAS ce paramètre. Pour semantic_research,
-    choisis entre :
-    - **vocabulary** : lier des synonymes/termes.
+    ### `kind` — nature du souvenir
+    - **behavior** (par défaut) : toute correction de comportement, quel que soit `target_agent`.
+      Dans la quasi-totalité des cas, tu n'as PAS besoin de préciser ce paramètre.
+    - **vocabulary** : UNIQUEMENT si `target_agent="semantic_research"` — pour lier des synonymes/termes.
         `content` doit être JUSTE le/les terme(s) à mémoriser (séparés par des virgules), et fournir `base_term`.
-    - **behavior** : toute autre correction de comportement pour cet agent
-      (ex: exclure un ticket des résultats, changer une manière de chercher).
 
     ---
 
@@ -68,7 +65,7 @@ AGENT_MEMORY_PROMPT = """
     - `content="Pour une recherche de tickets d'un client, filtrer aussi sur le statut En attente."`,
       `trigger="tickets d'un client donné"`.
 
-    Ne fournis PAS de `trigger` uniquement pour `target_agent=semantic_research` et `kind=vocabulary`.
+    Ne fournis PAS de `trigger` uniquement pour `kind=vocabulary`.
 
     ---
 
@@ -88,7 +85,7 @@ AGENT_MEMORY_PROMPT = """
     - `target_agent` : `supervisor` | `sql_research` | `semantic_research` | `conversational`
     - `content` : La règle / le comportement attendu, clair, autonome et réutilisable (français, sans markdown).
         Pour `kind=vocabulary`, content doit être JUSTE le terme ou synonyme à mémoriser. S'il y a plusieurs termes, les séparer par une virgule
-    - `kind` : UNIQUEMENT si `target_agent=semantic_research` — `vocabulary` | `behavior`. NE JAMAIS fournir ce paramètre pour les autres agents.
+    - `kind` : `behavior` (par défaut, ne pas fournir dans la plupart des cas) | `vocabulary` (UNIQUEMENT si `target_agent=semantic_research`).
     - `trigger` : OBLIGATOIRE (sauf `kind=vocabulary`) — la requête utilisateur déclencheuse (issue de l'historique), reformulée en requête autonome et générale.
     - `base_term` : Le fournir UNIQUEMENT pour `kind=vocabulary`. Il correspond au terme de base (celui auquel l'utilisateur veut lier des synonymes ou d'autres termes)
 
