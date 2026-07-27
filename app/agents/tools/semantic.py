@@ -27,12 +27,7 @@ async def semantic_ticket_search(ctx: RunContext[ChatDeps], query: str) -> dict:
     ticket_ids = result['ticket_ids']
     if ticket_ids:
         ids_str = ", ".join(str(tid) for tid in ticket_ids)
-        # ORDER BY FIELD : MySQL ne garantit pas l'ordre du IN (...), or ticket_ids est
-        # déjà trié par pertinence (priorité lexicale puis score sémantique).
-        sql_query = (
-            f"SELECT t.id, t.summary, t.description FROM ticket t "
-            f"WHERE t.id IN ({ids_str}) ORDER BY FIELD(t.id, {ids_str})"
-        )
+        sql_query = f"SELECT t.id, t.summary, t.description FROM ticket t WHERE t.id IN ({ids_str}) "
     else:
         sql_query = "SELECT t.id, t.summary, t.description FROM ticket t WHERE t.id IN ()"
         

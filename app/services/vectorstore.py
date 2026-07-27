@@ -462,10 +462,6 @@ async def remove_term_from_vocabulary(term: str, base_term: str) -> Dict[str, An
 
 
 # ── Gérer les souvenirs ──────────────────────────────────────
-# Portée par défaut selon l'agent (quand ``scope`` n'est pas fourni explicitement).
-# ``kind`` existe pour TOUS les souvenirs : "behavior" (défaut) ou "vocabulary"
-# (uniquement possible pour semantic_research, seul agent avec un mécanisme de
-# vocabulaire). Un souvenir "vocabulary" est toujours global (synonymes partagés).
 _TARGET_AGENT_DEFAULT_SCOPE = {
     "supervisor": "global",         # corrections/exemples de délégation : comportement système
     "sql_research": "global",       # règles de construction SQL : comportement système
@@ -481,11 +477,7 @@ def _default_scope(target_agent: str, kind: str | None) -> str:
 
 def _debug_memory(action: str, header: str, docs: list[str], metas: list[dict] | None = None) -> None:
     """
-    Affiche un bloc de débogage pour toute écriture/lecture de souvenir :
-    contenu + métadonnées, pour vérifier quand et quoi est stocké/récupéré.
-
-    ``action`` : "STORE" | "RETRIEVE" | ...
-    ``header`` : contexte (target_agent, query, where, id…).
+    Affiche un bloc de débogage pour toute écriture/lecture de souvenir
     """
     print(f"\n{'━' * 64}")
     print(f"[MEMORY {action}] {header}")
@@ -498,12 +490,7 @@ def _debug_memory(action: str, header: str, docs: list[str], metas: list[dict] |
     print('━' * 64)
 
 
-def _memory_where(
-    target_agent: str,
-    user_id: int | None,
-    retrieval: str | None = None,
-    exclude_kind: str | None = None,
-) -> dict:
+def _memory_where(target_agent: str, user_id: int | None, retrieval: str | None = None, exclude_kind: str | None = None,) -> dict:
     """
     Filtre les souvenirs destinés à ``target_agent`` : ceux de l'utilisateur plus
     ceux de portée globale, éventuellement restreints à un mode de récupération
@@ -676,7 +663,6 @@ async def delete_memory(memory_id: str) -> bool:
     col = await memories_collection()
     await col.delete(ids=[memory_id])
     return True
-
 
 async def update_memory(
     memory_id: str,
