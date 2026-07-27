@@ -2,9 +2,9 @@
 Initialisation des exemples de routage de base pour l'agent superviseur.
 
 Les exemples sont stockés dans la collection ``memories`` avec
-``target_agent="supervisor"``, ``kind="routing"``, ``scope="global"`` et
-``retrieval="contextual"`` : le ``trigger`` (la requête type) est la clé
-embeddée, le ``content`` (« Délègue via … ») est le payload injecté. Ils sont
+``target_agent="supervisor"``, ``scope="global"`` et ``retrieval="contextual"`` :
+le ``trigger`` (la requête type) est la clé embeddée, le ``content``
+(« Délègue via … ») est le payload injecté. Ils sont
 récupérés par similarité entre la nouvelle demande et les triggers, puis injectés
 dans le system prompt du superviseur (``relevant_memories``), aux côtés des
 corrections de routage écrites par l'agent memory.
@@ -75,7 +75,6 @@ async def init_examples():
             continue
         await vs.add_memory(
             target_agent="supervisor",
-            kind="routing",
             content=content,
             user_id=None,
             retrieval="contextual",
@@ -104,7 +103,7 @@ async def list_examples():
         return
     for i, (doc_id, doc, meta) in enumerate(zip(ids, docs, metas), 1):
         meta = meta or {}
-        tag = f"{meta.get('kind', '?')}/{meta.get('retrieval', '?')}/{meta.get('scope', '?')}"
+        tag = f"{meta.get('retrieval', '?')}/{meta.get('scope', '?')}"
         if meta.get("retrieval") == "contextual":
             # doc = trigger (clé), meta["correction"] = payload injecté
             print(f"\n  {i}. [{tag}] trigger: {doc}")

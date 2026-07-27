@@ -22,6 +22,7 @@ class MemoryRequest(BaseModel):
     retrieval: str | None = None
     trigger: str | None = None
     user_id: int | None = None
+    scope: str | None = None
 
 class EmbeddingRequest(BaseModel):
     ticket_id: int

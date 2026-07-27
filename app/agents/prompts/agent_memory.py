@@ -30,9 +30,8 @@ AGENT_MEMORY_PROMPT = """
 
     ---
 
-    ## Classer la correction : `target_agent` + `kind`
-    Chaque souvenir vise **un agent** (`target_agent`) et a **une nature** (`kind`).
-    Choisis les deux en analysant CE que l'utilisateur corrige.
+    ## Classer la correction : `target_agent` (+ `kind`)
+    Chaque souvenir vise **un agent** (`target_agent`).
 
     ### `target_agent` — quel agent devra respecter cette règle ?
     - **supervisor** : le chatbot a mal *délégué / routé* la demande (mauvais agent choisi).
@@ -40,17 +39,16 @@ AGENT_MEMORY_PROMPT = """
     - **sql_research** : erreur dans la *génération d'une requête SQL* (filtres, colonnes, syntaxe).
       Exemple : *"Tu as ajouté un point-virgule à la fin de la requête SQL, ne le fais jamais"* ou
       *"Tu dois filtrer sur le status 'En attente d'une compilation', pas 'Rien à faire'"*.
-    - **semantic_research** : erreur dans une *recherche par thème/sujet* (tickets à exclure, vocabulaire).
-      Exemple : *"Exclure le ticket 12345 des résultats"*, *"Considère 'lent' et 'slow' comme synonymes de 'performance'"*.
+    - **semantic_research** : erreur dans une *recherche par thème/sujet* (vocabulaire ou comportement).
+      Exemple : *"Considère 'lent' et 'slow' comme synonymes de 'performance'"*,
+      *"Exclue le ticket 12345 des résultats"*.
     - **conversational** : erreur de *ton, de formulation ou de comportement conversationnel*.
 
-    ### `kind` — nature de la correction
-    - **routing** : correction de délégation (va avec `target_agent=supervisor`).
-    - **sql_rule** : règle de construction de requête SQL (va avec `target_agent=sql_research`).
-    - **exclude** : un ticket à ne PAS inclure dans les résultats (`target_agent=semantic_research`).
-    - **vocabulary** : lier des synonymes/termes (`target_agent=semantic_research`).
+    ### `kind` — nature du souvenir
+    - **behavior** (par défaut) : toute correction de comportement, quel que soit `target_agent`.
+      Dans la quasi-totalité des cas, tu n'as PAS besoin de préciser ce paramètre.
+    - **vocabulary** : UNIQUEMENT si `target_agent="semantic_research"` — pour lier des synonymes/termes.
         `content` doit être JUSTE le/les terme(s) à mémoriser (séparés par des virgules), et fournir `base_term`.
-    - **other** : toute autre correction (ex: "tu as retourné un appel d'outil brut, ne fais jamais ça").
 
     ---
 
@@ -81,13 +79,13 @@ AGENT_MEMORY_PROMPT = """
     ## Outils disponibles
     Tu peux appeler **UN SEUL** des outils suivants en fonction de la demande :
 
-    ### 1. `save_memory(target_agent, kind, content, trigger, base_term)`
+    ### 1. `save_memory(target_agent, content, kind, trigger, base_term)`
     - **Utilisation** : Pour enregistrer un nouveau souvenir.
     - **Paramètres** :
     - `target_agent` : `supervisor` | `sql_research` | `semantic_research` | `conversational`
-    - `kind` : `routing` | `sql_rule` | `exclude` | `vocabulary` | `other`
     - `content` : La règle / le comportement attendu, clair, autonome et réutilisable (français, sans markdown).
         Pour `kind=vocabulary`, content doit être JUSTE le terme ou synonyme à mémoriser. S'il y a plusieurs termes, les séparer par une virgule
+    - `kind` : `behavior` (par défaut, ne pas fournir dans la plupart des cas) | `vocabulary` (UNIQUEMENT si `target_agent=semantic_research`).
     - `trigger` : OBLIGATOIRE (sauf `kind=vocabulary`) — la requête utilisateur déclencheuse (issue de l'historique), reformulée en requête autonome et générale.
     - `base_term` : Le fournir UNIQUEMENT pour `kind=vocabulary`. Il correspond au terme de base (celui auquel l'utilisateur veut lier des synonymes ou d'autres termes)
 

@@ -37,7 +37,7 @@ async def delegate_new_research(ctx: RunContext[ChatDeps], request: str) -> str:
     """
     Délègue une NOUVELLE recherche par filtres exacts à l'agent SQL, puis persiste la recherche créée.
     Args:
-        request: Message exact envoyé par l'utilisateur, sans modification, sans reformulation, sans ajout de texte
+        request: Message contenant la requête de l'utilisateur (message envoyé par l'utilisateur ou construit à partir de l'historique)
     """
     print("[DELEGATE] SQL research agent")
     print(f"Message: {request}")
@@ -46,6 +46,24 @@ async def delegate_new_research(ctx: RunContext[ChatDeps], request: str) -> str:
     result = await sql_research_agent.run(request, deps=ctx.deps, usage=ctx.usage)
     if ctx.deps.last_sql:
         await persist_new_research(ctx.deps, False, intention="recherche")
+    return result.output
+
+async def delegate_refine_search(ctx: RunContext[ChatDeps], request: str) -> str:
+    """
+    Délègue l'AFFINAGE de la dernière recherche à l'agent SQL, puis met à jour
+    la recherche existante.
+    Args:
+        request: Message exact envoyé par l'utilisateur, sans modification, sans reformulation, sans ajout de texte
+    """
+    print("[DELEGATE] SQL research agent (affinage)")
+    ctx.deps.events.early_intention("affinage")
+    ctx.deps.mode = "affinage"
+    ctx.deps.previous_sql = _previous_sql(ctx.deps)
+    print(f"LAST SQL: {ctx.deps.previous_sql}")
+    prompt = f"Requête SQL précédente : {ctx.deps.previous_sql}\nDemande d'affinage : {request}"
+    result = await sql_research_agent.run(prompt, deps=ctx.deps, usage=ctx.usage)
+    if ctx.deps.last_sql:
+        await persist_affinage(ctx.deps, intention="affinage")
     return result.output
 
 async def delegate_semantic_search(ctx: RunContext[ChatDeps], request: str) -> str:
@@ -76,7 +94,7 @@ async def delegate_correction(ctx: RunContext[ChatDeps], message: str) -> str:
 supervisor_agent = Agent(
     get_agent_model(),
     deps_type=ChatDeps,
-    output_type=[str, delegate_conversation, delegate_new_research, delegate_semantic_search, delegate_correction],
+    output_type=[str, delegate_conversation, delegate_new_research, delegate_refine_search, delegate_semantic_search, delegate_correction],
     retries=2,
 )
 guard_against_tool_call_leak(supervisor_agent)
@@ -89,25 +107,6 @@ async def _system(ctx: RunContext[ChatDeps]) -> str:
     memories = await relevant_memories(ctx, "supervisor")
     memory_block = f"\n\n## GUIDE DE ROUTAGE (exemples et corrections à respecter)\n{memories}" if memories else ""
     return AGENT_SUPERVISOR_PROMPT + memory_block
-
-@supervisor_agent.tool
-async def delegate_refine_search(ctx: RunContext[ChatDeps], request: str) -> str:
-    """
-    Délègue l'AFFINAGE de la dernière recherche à l'agent SQL, puis met à jour
-    la recherche existante.
-    Args:
-        request: Message exact envoyé par l'utilisateur, sans modification, sans reformulation, sans ajout de texte
-    """
-    print("[DELEGATE] SQL research agent (affinage)")
-    ctx.deps.events.early_intention("affinage")
-    ctx.deps.mode = "affinage"
-    ctx.deps.previous_sql = _previous_sql(ctx.deps)
-    print(f"LAST SQL: {ctx.deps.previous_sql}")
-    prompt = f"Requête SQL précédente : {ctx.deps.previous_sql}\nDemande d'affinage : {request}"
-    result = await sql_research_agent.run(prompt, deps=ctx.deps, usage=ctx.usage)
-    if ctx.deps.last_sql:
-        await persist_affinage(ctx.deps, intention="affinage")
-    return result.output
 
 @supervisor_agent.tool
 async def rename_research(ctx: RunContext[ChatDeps], name: str, research_id: int = 0) -> str:

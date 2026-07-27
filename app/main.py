@@ -68,12 +68,14 @@ async def get_memories():
 
 @app.post("/memory/add")
 async def create_memory_chroma_endpoint(request: MemoryRequest):
+    print(request)
     await add_memory(
         target_agent=request.target_agent,
         kind=request.kind,
-        content=request.content,
+        scope=request.scope,
         user_id=request.user_id,
         retrieval=request.retrieval,
+        content=request.content,
         trigger=request.trigger,
         base_term=request.base_term,
     )
@@ -84,7 +86,17 @@ async def delete_memory_chroma_endpoint(request: MemoryRequest):
 
 @app.post("/memory/modify")
 async def update_memory_endpoint(request: MemoryRequest):
-    await update_memory(request.id, request.content)
+    await update_memory(
+        memory_id=request.id,
+        target_agent=request.target_agent,
+        kind=request.kind,
+        scope=request.scope,
+        user_id=request.user_id,
+        retrieval=request.retrieval,
+        content=request.content,
+        trigger=request.trigger,
+        base_term=request.base_term,
+    )
 
 
 @app.post("/embed/add")

@@ -11,7 +11,9 @@ sémantique).
   messages elliptiques « oui/non » à partir de l'historique avant de stocker).
 
 target_agent : supervisor, sql_research, semantic_research, conversational.
-kind         : sql_rule, exclude, vocabulary, routing, other.
+kind         : behavior (défaut, pour tous les agents) | vocabulary (synonymes —
+               valide UNIQUEMENT pour target_agent=semantic_research, seul agent
+               doté d'un mécanisme de vocabulaire).
 retrieval    : invariant (toujours injecté) | contextual (indexé par la requête
                déclencheuse, récupéré par similarité). Voir get_memories_text.
                L'agent memory (save_memory) n'écrit QUE du contextual ; les
@@ -23,7 +25,7 @@ from app.agents.deps import ChatDeps
 from app.services import vectorstore as vs
 
 VALID_TARGET_AGENTS = ("supervisor", "sql_research", "semantic_research", "conversational")
-VALID_KINDS = ("sql_rule", "exclude", "vocabulary", "routing", "other")
+VALID_KINDS = ("behavior", "vocabulary")
 
 
 async def relevant_memories(ctx: RunContext[ChatDeps], target_agent: str, k: int = 5) -> str:
@@ -48,8 +50,8 @@ async def relevant_memories(ctx: RunContext[ChatDeps], target_agent: str, k: int
 async def save_memory(
     ctx: RunContext[ChatDeps],
     target_agent: str,
-    kind: str,
     content: str,
+    kind: str = "behavior",
     trigger: str | None = None,
     base_term: str | None = None,
 ) -> dict:
@@ -62,13 +64,14 @@ async def save_memory(
     Args:
         target_agent : agent qui devra respecter ce souvenir —
             `supervisor` (délégation/routage) | `sql_research` (règles SQL) |
-            `semantic_research` (recherche sémantique, exclusions, vocabulaire) |
-            `conversational`.
-        kind : `sql_rule` | `exclude` | `vocabulary` | `routing` | `other`.
+            `semantic_research` (recherche sémantique, vocabulaire) | `conversational`.
         content : la RÈGLE / le comportement attendu, en une phrase claire, autonome
             et réutilisable (français, sans markdown). Reformule les messages
             elliptiques (« oui », « non ») à partir de l'historique.
-            Pour `vocabulary` : les synonymes séparés par des virgules (ex: "lent, slow, rapide").
+            Pour `kind=vocabulary` : les synonymes séparés par des virgules (ex: "lent, slow, rapide").
+        kind : `behavior` (défaut — laisse cette valeur pour toute correction normale,
+            quel que soit `target_agent`) ou `vocabulary` (synonymes — UNIQUEMENT
+            valide si `target_agent="semantic_research"`).
         trigger : OBLIGATOIRE (sauf `kind=vocabulary`). La requête utilisateur
             DÉCLENCHEUSE (celle de l'historique qui a causé la correction), reformulée
             en requête autonome et générale. Sert de clé pour retrouver la règle quand
@@ -79,17 +82,21 @@ async def save_memory(
         return {"ok": False, "error": f"target_agent invalide: {target_agent}"}
     if kind not in VALID_KINDS:
         return {"ok": False, "error": f"kind invalide: {kind}"}
+    if kind == "vocabulary" and target_agent != "semantic_research":
+        return {"ok": False, "error": "kind=vocabulary n'est valide que pour target_agent=semantic_research"}
 
-    # Vocabulaire : structure dédiée (global, base_term + synonymes), hors trigger/retrieval
-    if kind == "vocabulary" and base_term:
+    # Vocabulaire (semantic_research uniquement) : structure dédiée, hors trigger/retrieval
+    if kind == "vocabulary":
+        if not base_term:
+            return {"ok": False, "error": "base_term requis pour kind=vocabulary"}
         synonyms = [s.strip() for s in content.split(",") if s.strip()]
         print(f"[SAVE MEMORY] vocabulary - base_term: '{base_term}', synonyms: {synonyms}")
         await vs.add_synonyms(base_term, synonyms, ctx.deps.user_id, ctx.deps.username)
         ctx.deps.events.correction(target_agent=target_agent, kind=kind, memory=f"{base_term}: {content}")
         return {"ok": True, "target_agent": target_agent, "kind": kind}
 
-    # Tous les souvenirs écrits par l'agent sont contextuels (indexés par leur
-    # déclencheur). Seul l'endpoint /memory/add peut créer des invariants.
+    # Tous les autres souvenirs écrits par l'agent sont contextuels (indexés par
+    # leur déclencheur). Seul l'endpoint /memory/add peut créer des invariants.
     if not trigger:
         return {"ok": False, "error": "trigger requis (la requête utilisateur déclencheuse de la correction)"}
 
@@ -118,35 +125,48 @@ async def delete_memory(ctx: RunContext[ChatDeps]) -> dict:
     if not last_memory:
         return {"ok": False, "error": "Aucun souvenir récent à supprimer."}
 
-    print(f"Memory ID: {last_memory['id']}")
-    print(f"Memory Content: {last_memory['content']}")
+    meta = last_memory.get("metadata") or {}
+    # Règle du souvenir = la correction (contextuel) ou le document lui-même (invariant).
+    rule = meta.get("correction") or last_memory["content"]
+    print(f"Memory ID: {last_memory['id']} (retrieval={meta.get('retrieval')})")
+    print(f"Règle: {rule}")
 
     try:
         await vs.delete_memory(last_memory['id'])
         ctx.deps.events.action("delete_memory", memory_id=last_memory['id'])
-        return {"ok": True, "message": "Souvenir supprimé.", "content": last_memory['content']}
+        return {"ok": True, "message": "Souvenir supprimé.", "content": rule}
     except Exception as e:
         return {"ok": False, "error": str(e)}
 
 
 async def update_memory(ctx: RunContext[ChatDeps], new_content: str) -> dict:
     """
-    Met à jour le dernier souvenir créé (utilise ctx.deps.last_memory_id).
-    Args:m
-        new_content: Nouveau contenu du souvenir
+    Met à jour la RÈGLE du dernier souvenir créé par l'utilisateur.
+
+    `new_content` = la nouvelle règle / le nouveau comportement attendu. Le
+    routage vers le bon champ est automatique : pour un souvenir contextuel, la
+    requête déclencheuse (le document) reste inchangée et seule la règle
+    (`metadata.correction`) est mise à jour ; pour un invariant, c'est le document.
+
+    Args:
+        new_content: Nouvelle règle du souvenir (français, sans markdown).
     """
     print("[TOOL CALL] update_memory")
     last_memory = await vs.get_last_memory(ctx.deps.user_id)
     if not last_memory:
         return {"ok": False, "error": "Aucun souvenir récent à modifier."}
-    print(f"Memory ID: {last_memory['id']}")
-    print(f"Memory Content: {last_memory['content']}")
-    print(f"Nouveau contenu: {new_content}")
+
+    meta = last_memory.get("metadata") or {}
+    # Règle actuelle = la correction (contextuel) ou le document lui-même (invariant).
+    old_rule = meta.get("correction") or last_memory["content"]
+    print(f"Memory ID: {last_memory['id']} (retrieval={meta.get('retrieval')})")
+    print(f"Ancienne règle: {old_rule}")
+    print(f"Nouvelle règle: {new_content}")
     try:
         success = await vs.update_memory(last_memory['id'], new_content, ctx.deps.username)
         if success:
             ctx.deps.events.action("update_memory", memory_id=last_memory['id'])
-            return {"ok": True, "message": "Souvenir mis à jour.", "old_content": last_memory['content'], "new_content": new_content}
+            return {"ok": True, "message": "Souvenir mis à jour.", "old_content": old_rule, "new_content": new_content}
         else:
             return {"ok": False, "error": "Souvenir non trouvé."}
     except Exception as e:
