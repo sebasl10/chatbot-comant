@@ -22,7 +22,7 @@ from bs4 import BeautifulSoup
 TICKETS = "tickets"
 MEMORIES = "memories"
 CONVERSATION_SUMMARIES = "conversation_summaries"
-MEMORY_MAX_DISTANCE = 0.50
+MEMORY_MAX_DISTANCE = 0.45
 DEFAULT_HNSW_CONFIG = {
     "hnsw": {
         "space": "cosine",
