@@ -1,23 +1,5 @@
-"""Tools mémoire (souvenirs / corrections), backed Chroma.
-
-Stockage dans la collection Chroma ``memories`` (filtrage par métadonnées
-``target_agent``/``kind``/``scope``/``user_id`` + recherche
-sémantique).
-
-- Lecture : ``relevant_memories(ctx, target_agent)`` récupère en top-k
-  sémantique les souvenirs destinés à un agent, à partir du message utilisateur
-  brut (``ctx.deps.message``).
-- Écriture : ``save_memory`` (appelé par l'agent memory, qui reformule les
-  messages elliptiques « oui/non » à partir de l'historique avant de stocker).
-
-target_agent : supervisor, sql_research, semantic_research, conversational, memory.
-kind         : behavior (défaut, pour tous les agents) | vocabulary (synonymes —
-               valide UNIQUEMENT pour target_agent=semantic_research, seul agent
-               doté d'un mécanisme de vocabulaire).
-retrieval    : invariant (toujours injecté) | contextual (indexé par la requête
-               déclencheuse, récupéré par similarité). Voir get_memories_text.
-               L'agent memory (save_memory) n'écrit QUE du contextual ; les
-               invariants ne peuvent venir que de l'endpoint /memory/add.
+"""
+Tools mémoire (souvenirs / corrections), backed Chroma.
 """
 
 from pydantic_ai import RunContext
@@ -33,11 +15,8 @@ async def relevant_memories(ctx: RunContext[ChatDeps], target_agent: str, k: int
     Récupère les souvenirs destinés à ``target_agent``, les ``k`` plus proches
     sémantiquement du message utilisateur brut (``ctx.deps.message``). Vide si aucun.
     """
-    # Embedding du message calculé une seule fois par tour, réutilisé par le
-    # superviseur puis le spécialiste délégué (même message, même embedding).
     if ctx.deps.memory_query_embedding is None and ctx.deps.message:
         ctx.deps.memory_query_embedding = await vs.embed_memory_query(ctx.deps.message)
-    # Le détail (contenu + métadonnées) est loggué dans vs.get_memories_text.
     return await vs.get_memories_text(
         target_agent,
         ctx.deps.user_id,
@@ -47,15 +26,9 @@ async def relevant_memories(ctx: RunContext[ChatDeps], target_agent: str, k: int
     )
 
 
-async def save_memory(
-    ctx: RunContext[ChatDeps],
-    target_agent: str,
-    content: str,
-    kind: str = "behavior",
-    trigger: str | None = None,
-    base_term: str | None = None,
-) -> dict:
-    """Enregistre un nouveau souvenir/correction pour l'utilisateur.
+async def save_memory(ctx: RunContext[ChatDeps], target_agent: str, content: str, kind: str = "behavior", trigger: str | None = None, base_term: str | None = None) -> dict:
+    """
+    Enregistre un nouveau souvenir/correction pour l'utilisateur.
 
     À utiliser quand l'utilisateur corrige le comportement du chatbot ou ajoute
     une règle/synonyme à retenir. Le souvenir est TOUJOURS lié à la situation qui
@@ -128,21 +101,15 @@ async def save_memory(
 
     print(f"[SAVE MEMORY] target_agent={target_agent} kind={kind} retrieval=contextual "
           f"trigger={trigger!r} content={content!r}")
-    await vs.add_memory(
-        target_agent=target_agent,
-        kind=kind,
-        content=content,
-        user_id=ctx.deps.user_id,
-        retrieval="contextual",
-        trigger=trigger,
-    )
+    await vs.add_memory(target_agent=target_agent, kind=kind, content=content, user_id=ctx.deps.user_id, retrieval="contextual", trigger=trigger)
     ctx.deps.events.correction(target_agent=target_agent, kind=kind, memory=content)
 
     return {"ok": True, "target_agent": target_agent, "kind": kind, "retrieval": "contextual"}
 
 
 async def delete_memory(ctx: RunContext[ChatDeps]) -> dict:
-    """Supprime le dernier souvenir créé par l'utilisateur.
+    """
+    Supprime le dernier souvenir créé par l'utilisateur.
 
     Condition : l'utilisateur doit demander EXPLICITEMENT de supprimer le
     dernier souvenir (ex: "Oublie ce que je viens de dire", "Supprime mon
@@ -178,18 +145,14 @@ async def delete_memory(ctx: RunContext[ChatDeps]) -> dict:
 
 
 async def update_memory(ctx: RunContext[ChatDeps], new_content: str) -> dict:
-    """Met à jour la RÈGLE du dernier souvenir créé par l'utilisateur.
+    """
+    Met à jour la RÈGLE du dernier souvenir créé par l'utilisateur.
 
     Condition : l'utilisateur doit demander EXPLICITEMENT de modifier le
     dernier souvenir enregistré (ex: "Corrige mon dernier souvenir pour dire
     que...", "Modifie ce que je viens de dire sur les filtres SQL"). Ne
     fonctionne que sur le dernier souvenir créé, toutes conversations
     confondues.
-
-    `new_content` = la nouvelle règle / le nouveau comportement attendu. Le
-    routage vers le bon champ est automatique : pour un souvenir contextuel, la
-    requête déclencheuse (le document) reste inchangée et seule la règle
-    (`metadata.correction`) est mise à jour ; pour un invariant, c'est le document.
 
     Après l'appel, confirme en rappelant l'ANCIEN et le NOUVEAU contenu du
     souvenir.

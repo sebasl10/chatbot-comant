@@ -3,7 +3,7 @@ Base vectorielle Chroma — tickets, mémoires, résumés de conversation.
 
 Collections :
 - ``tickets``                : embeddings de tickets.
-- ``memories``               : souvenirs/corrections + exemples de routage, filtrables par métadonnées ``{target_agent, kind, scope, user_id}`` (``kind`` = "behavior" par défaut, "vocabulary" uniquement pour semantic_research) et recherchables sémantiquement. Guide aussi le superviseur (``target_agent=supervisor``).
+- ``memories``               : souvenirs/corrections.
 - ``conversation_summaries`` : résumés de conversation.
 """
 
