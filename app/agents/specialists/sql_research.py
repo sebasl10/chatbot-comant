@@ -20,10 +20,8 @@ from app.agents.model import get_agent_model
 from app.agents.tools.db import run_sql
 from app.agents.tools.entity import validate_entities
 from app.agents.tools.memory import relevant_memories
-from app.prompts.recherche import build_recherche_prompt
-from app.prompts.affinage import build_affinage_prompt
 from app.services.database import get_db_schema
-from app.agents.prompts.agent_sql_search import SQL_AGENT_TOOLS_PROMPT
+from app.agents.prompts.agent_sql_search import SQL_AGENT_TOOLS_PROMPT, build_recherche_prompt, build_affinage_prompt
 from app.agents.util.output_guard import guard_against_tool_call_leak
 
 

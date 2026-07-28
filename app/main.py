@@ -11,7 +11,6 @@ from app.agents.deps import ChatDeps
 from app.agents.orchestrator import run_chat_stream
 from app.services.database import get_username
 from app.services.conversation_name import create_name
-from app.services.finetuning_couples import export_finetuning_service
 from app.services.vectorstore import get_all_memories, delete_memory, update_memory, add_memory, add_ticket_to_chroma
 
 app = FastAPI(title="LLM API Comant", version="0.1.0")
@@ -103,8 +102,3 @@ async def update_memory_endpoint(request: MemoryRequest):
 async def add_embedding(request: EmbeddingRequest):
     await add_ticket_to_chroma(request.ticket_id)
 
-
-@app.get("/admin/export-finetuning", tags=["admin"])
-def export_finetuning():
-    export_finetuning_service()
-    
