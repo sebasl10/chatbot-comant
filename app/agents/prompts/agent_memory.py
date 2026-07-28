@@ -11,38 +11,18 @@ AGENT_MEMORY_PROMPT = """
 
     ---
 
-    ## Reformulation à partir de l'historique (IMPORTANT)
-    Le souvenir que tu stockes doit être **autonome** : compréhensible plus tard
-    sans l'historique, car il sera retrouvé pour d'autres conversations.
-
-    Si le dernier message de l'utilisateur est **elliptique** — un simple « oui »,
-    « non », « exactement », « voilà », ou une réponse à une question que le chatbot
-    vient de poser — tu dois **reconstituer la correction complète à partir de
-    l'historique** avant de la stocker. Ne stocke JAMAIS « oui » ou « non » tel quel.
-
-    Exemple :
-    - Chatbot : *« Veux-tu que je retienne de ne jamais ajouter de point-virgule à la fin des requêtes SQL ? »*
-    - Utilisateur : *« oui »*
-    - `content` à stocker : *« Ne jamais ajouter de point-virgule à la fin d'une requête SQL. »*
-
-    Le `content` doit toujours décrire **le comportement attendu** (la règle), pas
-    le message brut de l'utilisateur.
-
-    ---
-
     ## Classer la correction : `target_agent` (+ `kind`)
     Chaque souvenir vise **un agent** (`target_agent`).
 
     ### `target_agent` — quel agent devra respecter cette règle ?
     - **supervisor** : le chatbot a mal *délégué / routé* la demande (mauvais agent choisi).
-      Exemple : *"Tu as délégué à l'agent memory, mais tu devais déléguer à l'agent semantic_search"*.
+      Exemple : *"Tu as délégué à l'agent memory, mais tu devais déléguer à l'agent semantic_search"*, *"Tu as fait une recherche sémantique, mais tu devais faire une recherche par filtres"*
     - **sql_research** : erreur dans la *génération d'une requête SQL* (filtres, colonnes, syntaxe).
-      Exemple : *"Tu as ajouté un point-virgule à la fin de la requête SQL, ne le fais jamais"* ou
-      *"Tu dois filtrer sur le status 'En attente d'une compilation', pas 'Rien à faire'"*.
+      Exemple : *"Tu as ajouté un point-virgule à la fin de la requête SQL, ne le fais jamais"* ou *"Tu dois filtrer sur le status 'En attente d'une compilation', pas 'Rien à faire'"*.
     - **semantic_research** : erreur dans une *recherche par thème/sujet* (vocabulaire ou comportement).
-      Exemple : *"Considère 'lent' et 'slow' comme synonymes de 'performance'"*,
-      *"Exclue le ticket 12345 des résultats"*.
-    - **conversational** : erreur de *ton, de formulation ou de comportement conversationnel*.
+      Exemple : *"Considère 'lent' et 'slow' comme synonymes de 'performance'"*, *"Kinematic doit être lié à cinématique pour les recherches"*
+    - **conversational** : erreur de formulation ou de comportement conversationnel.
+      Exemple : *"Tu devais répondre ma question à partir de l'historique de la conversation"*
 
     ### `kind` — nature du souvenir
     - **behavior** (par défaut) : toute correction de comportement, quel que soit `target_agent`.
@@ -54,16 +34,16 @@ AGENT_MEMORY_PROMPT = """
 
     ## Le `trigger` (OBLIGATOIRE, sauf vocabulaire)
     Chaque souvenir que tu enregistres est **lié à la situation qui l'a déclenché**. Tu dois
-    fournir un `trigger` : la **requête utilisateur qui a causé la correction** — retrouve-la
-    dans l'historique (la demande d'AVANT la correction) et reformule-la en une **requête
-    autonome et générale**. Elle sert de clé : quand une future demande lui ressemblera
+    fournir un `trigger` : la **requête utilisateur qui a causé la correction**. Dans la plupart des cas, il s'agit de
+    l'avant-dernier message de l'utilisateur (celui qui a déclenché le comportement incorrect du chatbot), retrouve-la
+    dans l'historique. Elle sert de clé : quand une future demande lui ressemblera
     sémantiquement, la règle (`content`) sera réinjectée à l'agent concerné.
 
     Exemple :
     - Historique : utilisateur *« Cherche les tickets du client PTC »* → le bot construit une mauvaise requête.
-    - Utilisateur : *« tu dois aussi filtrer sur le statut En attente »*.
-    - `content="Pour une recherche de tickets d'un client, filtrer aussi sur le statut En attente."`,
-      `trigger="tickets d'un client donné"`.
+    - Utilisateur : *« Tu t'es trompé, tu dois utiliser le champ name de la table Client pour filtrer un client par son nom »*.
+    - `content="Pour une recherche de tickets d'un client, utiliser le champ name de la table Client pour filtrer par nom de client."`,
+      `trigger="Cherche les tickets du client PTC"`.
 
     Ne fournis PAS de `trigger` uniquement pour `kind=vocabulary`.
 
