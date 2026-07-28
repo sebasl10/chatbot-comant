@@ -262,6 +262,35 @@ async def get_vocabulary_for_term(base_term: str) -> Dict[str, Any]:
         "count": len(synonyms)
     }
 
+async def find_existing_vocabulary_terms(terms: List[str]) -> Dict[str, str]:
+    """
+    Vérifie si des termes existent déjà QUELQUE PART dans le vocabulaire
+    (n'importe quel ``base_term``), avant d'en ajouter de nouveaux — pour éviter
+    un doublon pur (même terme, même base_term) ou un rattachement silencieux
+    d'un même mot à deux concepts différents sans que ce soit visible.
+
+    Renvoie ``{terme normalisé (lower/strip) -> base_term existant}`` pour
+    chaque terme de ``terms`` déjà présent dans le vocabulaire. Un terme absent
+    du résultat est totalement nouveau.
+    """
+    col = await memories_collection()
+    res = await col.get(where={"kind": "vocabulary"}, include=["documents", "metadatas"])
+    docs = res.get("documents", []) or []
+    metas = res.get("metadatas", []) or []
+
+    targets = {t.strip().lower() for t in terms if t and t.strip()}
+    found: Dict[str, str] = {}
+    for doc, meta in zip(docs, metas):
+        if not doc:
+            continue
+        base_term = (meta or {}).get("base_term", "")
+        for existing_term in doc.split(","):
+            key = existing_term.strip().lower()
+            if key in targets and key not in found:
+                found[key] = base_term
+    return found
+
+
 async def add_synonyms(base_term: str, synonyms: List[str], user_id: int | None = None, username: str | None = None) -> str:
     """
     Ajoute un ensemble de synonymes pour un terme de base (kind=vocabulary, global).

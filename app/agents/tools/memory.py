@@ -89,6 +89,16 @@ async def save_memory(ctx: RunContext[ChatDeps], target_agent: str, content: str
         - `action="replaced"` : une règle CONTRADICTOIRE existait (`previous_content`) et
           a été automatiquement remplacée par la nouvelle (`content`). Mentionne le
           remplacement dans ta confirmation (ex: "j'ai remplacé la règle sur X par Y").
+
+        Pour `kind=vocabulary`, pas de champ `action` : chaque terme est traité
+        séparément (si l'utilisateur en donne plusieurs dans le même message) —
+        regarde plutôt :
+        - `added` : les termes réellement nouveaux, effectivement ajoutés.
+        - `already_existing` (optionnel) : `{terme: base_term existant}` pour les
+          termes déjà présents dans le vocabulaire (n'importe quel base_term) —
+          PAS ajoutés. Dis à l'utilisateur qu'ils existaient déjà (en précisant
+          sous quel terme de base si différent de celui demandé), et confirme
+          uniquement l'ajout des termes de `added`.
     """
     if target_agent not in VALID_TARGET_AGENTS:
         return {"ok": False, "error": f"target_agent invalide: {target_agent}"}
@@ -103,9 +113,22 @@ async def save_memory(ctx: RunContext[ChatDeps], target_agent: str, content: str
             return {"ok": False, "error": "base_term requis pour kind=vocabulary"}
         synonyms = [s.strip() for s in content.split(",") if s.strip()]
         print(f"[SAVE MEMORY] vocabulary - base_term: '{base_term}', synonyms: {synonyms}")
-        await vs.add_synonyms(base_term, synonyms, ctx.deps.user_id, ctx.deps.username)
-        ctx.deps.events.correction(target_agent=target_agent, kind=kind, memory=f"{base_term}: {content}")
-        return {"ok": True, "target_agent": target_agent, "kind": kind}
+
+        # Chaque terme est traité séparément : un terme déjà présent quelque
+        # part dans le vocabulaire (n'importe quel base_term) n'est PAS
+        # ajouté — seuls les termes réellement nouveaux le sont.
+        existing = await vs.find_existing_vocabulary_terms(synonyms)
+        already_existing = {s: existing[s.lower()] for s in synonyms if s.lower() in existing}
+        new_terms = [s for s in synonyms if s.lower() not in existing]
+
+        if new_terms:
+            await vs.add_synonyms(base_term, new_terms, ctx.deps.user_id, ctx.deps.username)
+            ctx.deps.events.correction(target_agent=target_agent, kind=kind, memory=f"{base_term}: {', '.join(new_terms)}")
+
+        result = {"ok": True, "target_agent": target_agent, "kind": kind, "base_term": base_term, "added": new_terms}
+        if already_existing:
+            result["already_existing"] = already_existing
+        return result
 
     if not trigger:
         return {"ok": False, "error": "trigger requis (la requête utilisateur déclencheuse de la correction)"}
