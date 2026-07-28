@@ -11,7 +11,7 @@ from app.agents.deps import ChatDeps
 from app.agents.orchestrator import run_chat_stream
 from app.services.database import get_username
 from app.services.conversation_name import create_name
-from app.services.vectorstore import get_all_memories, delete_memory, update_memory, add_memory, add_ticket_to_chroma
+from app.services.vectorstore import get_all_memories, delete_memory, update_memory, add_memory, add_ticket_to_chroma, recover_memory
 
 app = FastAPI(title="LLM API Comant", version="0.1.0")
 app.add_middleware(
@@ -82,6 +82,10 @@ async def create_memory_chroma_endpoint(request: MemoryRequest):
 @app.post("/memory/delete")
 async def delete_memory_chroma_endpoint(request: MemoryRequest):
     await delete_memory(request.id)
+
+@app.post("/memory/recover")
+async def recover_memory_endpoint(request: MemoryRequest):
+    await recover_memory(request.id)
 
 @app.post("/memory/modify")
 async def update_memory_endpoint(request: MemoryRequest):

@@ -683,20 +683,29 @@ async def supersede_memory(old_id: str, new_id: str) -> None:
     _debug_memory("SUPERSEDE", f"id={old_id} -> {new_id}", [f"remplacé par {new_id}"], [meta])
 
 
+async def recover_memory(memory_id: str) -> bool:
+    """
+    Réactive un souvenir "superseded"
+    """
+    col = await memories_collection()
+    res = await col.get(ids=[memory_id], include=["metadatas"])
+    if not res.get("ids"):
+        return False
+    meta = res["metadatas"][0] if res.get("metadatas") else {}
+    if not isinstance(meta, dict):
+        meta = {}
+    meta = {k: v for k, v in meta.items() if k != "superseded_by"}
+    meta["status"] = "active"
+    meta["updated_at"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    await col.update(ids=[memory_id], metadatas=[meta])
+    _debug_memory("RECOVER", f"id={memory_id}", ["réactivé"], [meta])
+    return True
+
+
 async def get_all_memories() -> dict:
     """
     Récupère tous les souvenirs de la collection ``memories``, sous une forme
-    **normalisée** pour l'affichage (frontend) : le ``document`` ambigu est
-    résolu en champs explicites selon la structure du souvenir.
-
-    Chaque souvenir a TOUJOURS les mêmes clés (``null`` si non applicable) :
-    - identité/classification : ``id``, ``target_agent``, ``kind``, ``retrieval``,
-      ``scope``, ``user_id``, ``username``, ``date`` (création), ``updated_at``
-      (dernière révision ; = ``date`` si jamais modifié).
-    - contenu selon la forme :
-        * contextuel : ``trigger`` (la requête déclencheuse) + ``rule`` (la règle injectée).
-        * invariant  : ``rule`` (le document EST la règle), ``trigger`` = null.
-        * vocabulaire: ``base_term`` + ``synonyms`` (le document), ``rule``/``trigger`` = null.
+    normalisée pour l'affichage (frontend) 
     """
     col = await memories_collection()
     res = await col.get(include=["documents", "metadatas"])
@@ -727,6 +736,8 @@ async def get_all_memories() -> dict:
             "username": meta.get('username'),
             "date": meta.get('date'),
             "updated_at": meta.get('updated_at') or meta.get('date'),
+            "status": meta.get('status') or "active",
+            "superseded_by": meta.get('superseded_by'),
             "trigger": trigger,
             "rule": rule,
             "base_term": base_term,
