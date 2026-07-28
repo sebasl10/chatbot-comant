@@ -22,6 +22,7 @@ from bs4 import BeautifulSoup
 TICKETS = "tickets"
 MEMORIES = "memories"
 CONVERSATION_SUMMARIES = "conversation_summaries"
+MEMORY_MAX_DISTANCE = 0.50
 DEFAULT_HNSW_CONFIG = {
     "hnsw": {
         "space": "cosine",
@@ -331,16 +332,30 @@ def _default_scope(target_agent: str, kind: str | None) -> str:
         return "global"
     return _TARGET_AGENT_DEFAULT_SCOPE.get(target_agent, "user")
 
-def _debug_memory(action: str, header: str, docs: list[str], metas: list[dict] | None = None) -> None:
+def _debug_memory(
+    action: str,
+    header: str,
+    docs: list[str],
+    metas: list[dict] | None = None,
+    distances: list[float | None] | None = None,
+) -> None:
     """
-    Affiche un bloc de débogage pour toute écriture/lecture de souvenir
+    Affiche un bloc de débogage pour toute écriture/lecture de souvenir.
+    ``distances`` (optionnel, aligné sur ``docs``) : distance cosinus du souvenir
+    à la requête, pour calibrer ``MEMORY_MAX_DISTANCE``. None pour un invariant,
+    récupéré par filtre de métadonnées et donc sans distance.
     """
     print(f"\n{'━' * 64}")
     print(f"[MEMORY {action}] {header}")
     print(f"  → {len(docs)} souvenir(s)")
     for i, doc in enumerate(docs):
         meta = metas[i] if metas and i < len(metas) else None
-        print(f"  {i + 1}. {doc}")
+        # Pas de suffixe hors lecture (STORE/UPDATE n'ont pas de distance).
+        suffix = ""
+        if distances is not None:
+            dist = distances[i] if i < len(distances) else None
+            suffix = f"  (distance={dist:.3f})" if dist is not None else "  (invariant)"
+        print(f"  {i + 1}. {doc}{suffix}")
         if meta is not None:
             print(f"     meta: {meta}")
     print('━' * 64)
@@ -382,28 +397,20 @@ async def get_memories_text(
     query: str | None = None,
     query_embedding: list[float] | None = None,
     k: int = 5,
+    max_distance: float = MEMORY_MAX_DISTANCE,
 ) -> str:
     """
     Renvoie les souvenirs à injecter pour ``target_agent``, en combinant deux voies :
 
     1. **Invariants** (``retrieval="invariant"``) : règles universelles, TOUJOURS
        injectées (filtre métadonnées, sans similarité).
-    2. **Contextuels** (``retrieval="contextual"``) : les ``k`` dont la *requête
-       déclencheuse* (le ``document`` embeddé) est la plus proche du message.
-       Indexation asymétrique : on compare requête ↔ requête, pas requête ↔ règle.
-
-    ``query_embedding`` : embedding déjà calculé du message (via ``embed_memory_query``),
-    pour éviter de ré-embedder le même message d'un agent à l'autre. Sinon il est
-    calculé à partir de ``query``. ``query`` reste utilisé pour le log d'accès.
-
-    Le vocabulaire (``kind="vocabulary"``, aussi marqué ``retrieval="invariant"``
-    pour la cohérence des métadonnées) est explicitement EXCLU des deux voies : il
-    a son propre mécanisme de récupération (``get_vocabulary_for_term`` /
-    ``semantic_ticket_search``), pas les blocs de règles injectés ici.
+    2. **Contextuels** (``retrieval="contextual"``) : parmi les ``k`` dont la
+       *requête déclencheuse* (le ``document`` embeddé) est la plus proche du
+       message, ceux à une distance cosinus <= ``max_distance``.
     """
     col = await memories_collection()
 
-    # 1) Invariants — toujours injectés (hors vocabulaire, cf. ci-dessus)
+    # 1) Invariants — toujours injectés
     inv_res = await col.get(
         where=_memory_where(target_agent, user_id, retrieval="invariant", exclude_kind="vocabulary"),
         include=["documents", "metadatas"],
@@ -411,9 +418,10 @@ async def get_memories_text(
     inv_docs = inv_res.get("documents", []) or []
     inv_metas = inv_res.get("metadatas", []) or []
 
-    # 2) Contextuels — top-k par similarité message ↔ requête déclencheuse
+    # 2) Contextuels — top-k par similarité message ↔ requête déclencheuse, puis coupe à max_distance
     ctx_docs: list = []
     ctx_metas: list = []
+    ctx_dists: list[float | None] = []
     if query_embedding is None and query:
         query_embedding = await embed_memory_query(query)
     if query_embedding is not None:
@@ -421,16 +429,24 @@ async def get_memories_text(
             query_embeddings=[query_embedding],
             n_results=k,
             where=_memory_where(target_agent, user_id, retrieval="contextual"),
-            include=["documents", "metadatas"],
+            include=["documents", "metadatas", "distances"],
         )
-        ctx_docs = cres["documents"][0] if cres["documents"] else []
-        ctx_metas = cres["metadatas"][0] if cres.get("metadatas") else []
+        raw_docs = cres["documents"][0] if cres["documents"] else []
+        raw_metas = cres["metadatas"][0] if cres.get("metadatas") else []
+        raw_dists = cres["distances"][0] if cres.get("distances") else []
+
+        _debug_memory("ACCESS", f"agent={target_agent} query={query!r} (top-{k} avant seuil)",
+                       raw_docs, raw_metas, raw_dists)
+        for i, doc in enumerate(raw_docs):
+            dist = raw_dists[i] if i < len(raw_dists) else None
+            if dist is not None and dist > max_distance:
+                continue
+            ctx_docs.append(doc)
+            ctx_metas.append(raw_metas[i] if i < len(raw_metas) else {})
+            ctx_dists.append(dist)
 
     docs = inv_docs + ctx_docs
     metas = inv_metas + ctx_metas
-    # Accès : agent + query ; résultats : contenu + métadonnées de chaque souvenir.
-    _debug_memory("ACCESS", f"agent={target_agent} query={query!r}", docs, metas)
-
     lines = [_memory_payload(d, m) for d, m in zip(docs, metas)]
     return "\n\n---\n\n".join(l for l in lines if l)
 
