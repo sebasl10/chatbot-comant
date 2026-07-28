@@ -58,7 +58,8 @@ async def save_memory(ctx: RunContext[ChatDeps], target_agent: str, content: str
         content: la RÈGLE / le comportement attendu, en une phrase claire, autonome
             et réutilisable (français, sans markdown). Reformule les messages
             elliptiques (« oui », « non ») à partir de l'historique.
-            Pour `kind=vocabulary` : les synonymes séparés par des virgules (ex: "lent, slow, rapide").
+            Pour `kind=vocabulary` : les synonymes séparés par des virgules (ex: "lent, slow, rapide"). 
+            *Dans ce cas, ne rajoute JAMAIS de texte additionel ni des termes qui ne sont pas dans le message de l'utilisateur.*
         kind: `behavior` (défaut — laisse cette valeur pour toute correction normale,
             quel que soit `target_agent` ; dans la quasi-totalité des cas tu n'as PAS
             besoin de fournir ce paramètre) ou `vocabulary` (synonymes — UNIQUEMENT
@@ -90,9 +91,7 @@ async def save_memory(ctx: RunContext[ChatDeps], target_agent: str, content: str
           a été automatiquement remplacée par la nouvelle (`content`). Mentionne le
           remplacement dans ta confirmation (ex: "j'ai remplacé la règle sur X par Y").
 
-        Pour `kind=vocabulary`, pas de champ `action` : chaque terme est traité
-        séparément (si l'utilisateur en donne plusieurs dans le même message) —
-        regarde plutôt :
+        Pour `kind=vocabulary`, pas de champ `action`, regarde plutôt :
         - `added` : les termes réellement nouveaux, effectivement ajoutés.
         - `already_existing` (optionnel) : `{terme: base_term existant}` pour les
           termes déjà présents dans le vocabulaire (n'importe quel base_term) —
@@ -114,9 +113,6 @@ async def save_memory(ctx: RunContext[ChatDeps], target_agent: str, content: str
         synonyms = [s.strip() for s in content.split(",") if s.strip()]
         print(f"[SAVE MEMORY] vocabulary - base_term: '{base_term}', synonyms: {synonyms}")
 
-        # Chaque terme est traité séparément : un terme déjà présent quelque
-        # part dans le vocabulaire (n'importe quel base_term) n'est PAS
-        # ajouté — seuls les termes réellement nouveaux le sont.
         existing = await vs.find_existing_vocabulary_terms(synonyms)
         already_existing = {s: existing[s.lower()] for s in synonyms if s.lower() in existing}
         new_terms = [s for s in synonyms if s.lower() not in existing]
