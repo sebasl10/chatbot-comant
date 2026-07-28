@@ -1,19 +1,8 @@
 """
-MemoryJudgeAgent — réconciliation mémoire à l'écriture (couche 1).
+MemoryJudgeAgent — réconciliation mémoire à l'écriture .
 
-Appelé par ``save_memory`` (app/agents/tools/memory.py) avant d'écrire un
-nouveau souvenir contextuel, sur les candidats renvoyés par
-``vs.find_similar_contextual_memories`` (souvenirs existants dont la requête
-déclencheuse est proche du nouveau trigger). Classe la relation entre le
-nouveau souvenir et chaque candidat : le juge ne fait QUE classifier, il
-n'écrit rien lui-même — c'est ``save_memory`` qui agit selon le verdict.
-
-Un appel LLM séparé, invisible pour ``memory_agent`` : la similarité vectorielle
-seule ne suffit pas à distinguer un doublon d'un conflit (deux règles
-contradictoires sur la même situation sont aussi proches, en embedding, qu'une
-paraphrase). Contrairement aux autres spécialistes, cet agent n'est pas
-``deps_type=ChatDeps`` : il ne fait que classifier du texte, sans contexte
-conversationnel.
+Appelé avant d'écrire un nouveau souvenir contextuel, sur les candidats renvoyés. Classe la relation entre le
+nouveau souvenir et chaque candidat.
 """
 
 from typing import Literal
@@ -29,9 +18,7 @@ MemoryRelation = Literal["duplicate", "conflict", "complement", "unrelated"]
 class MemoryVerdict(BaseModel):
     candidate_id: str
     relation: MemoryRelation
-    # Requis uniquement si relation == "complement" : la règle fusionnée,
-    # une phrase unique couvrant le candidat ET le nouveau souvenir.
-    merged_content: str | None = None
+    merged_content: str | None = None # Requis uniquement si relation == "complement" : la règle fusionnée, une phrase unique couvrant le candidat ET le nouveau souvenir.
 
 
 memory_judge_agent = Agent(
@@ -44,9 +31,7 @@ memory_judge_agent = Agent(
 
 async def judge_candidates(new_trigger: str, new_content: str, candidates: list[dict]) -> list[MemoryVerdict]:
     """
-    ``candidates`` : sortie de ``vs.find_similar_contextual_memories``
-    (``{id, trigger, rule, distance}``). Renvoie un ``MemoryVerdict`` par
-    candidat, dans le même ordre. Liste vide si ``candidates`` est vide.
+    Renvoie un ``MemoryVerdict`` par candidat, dans le même ordre. Liste vide si ``candidates`` est vide.
     """
     if not candidates:
         return []

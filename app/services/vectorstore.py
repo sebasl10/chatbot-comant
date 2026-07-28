@@ -373,20 +373,12 @@ def _debug_memory(
     print('━' * 64)
 
 
-def _memory_where(
-    target_agent: str,
-    user_id: int | None,
-    retrieval: str | None = None,
-    exclude_kind: str | None = None,
-    active_only: bool = False,
-) -> dict:
+def _memory_where(target_agent: str, user_id: int | None, retrieval: str | None = None, exclude_kind: str | None = None, active_only: bool = False) -> dict:
     """
     Filtre les souvenirs destinés à ``target_agent`` : ceux de l'utilisateur plus
     ceux de portée globale, éventuellement restreints à un mode de récupération
     (``retrieval`` = "invariant" | "contextual"), excluant un ``kind`` donné,
-    et/ou excluant les souvenirs remplacés (``active_only=True`` -> écarte
-    ``status="superseded"``, cf. réconciliation à l'écriture / couche 1).
-    Construit un ``$and`` plat.
+    et/ou excluant les souvenirs remplacés (``active_only=True``)
     """
     conds: list[dict] = [{"target_agent": target_agent}]
     if user_id is not None:
@@ -406,21 +398,11 @@ def _memory_payload(doc: str, meta: dict | None) -> str:
 
 async def embed_memory_query(text: str) -> list[float]:
     """Embedding (avec préfixe d'instruction) d'un message pour la recherche de souvenirs."""
-    instruction  = (
-        "Représente une requête utilisateur pour retrouver des requêtes passées "
-        "similaires ayant déclenché une correction."
-    )
+    instruction  = "Given an user's query, retrive similar queries."
     return await asyncio.to_thread(get_embedding, f"Instruct: {instruction}\nQuery: {text}")
 
 
-async def get_memories_text(
-    target_agent: str,
-    user_id: int | None,
-    query: str | None = None,
-    query_embedding: list[float] | None = None,
-    k: int = 5,
-    max_distance: float = MEMORY_MAX_DISTANCE,
-) -> str:
+async def get_memories_text(target_agent: str, user_id: int | None, query: str | None = None, query_embedding: list[float] | None = None, k: int = 5, max_distance: float = MEMORY_MAX_DISTANCE) -> str:
     """
     Renvoie les souvenirs à injecter pour ``target_agent``, en combinant deux voies :
 
@@ -616,8 +598,6 @@ async def update_memory(
         "username": username or "",
         "date": existing_meta.get("date") or datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
         "updated_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-        # Une édition normale (update_memory) ne change PAS le statut : seul
-        # supersede_memory bascule un souvenir en "superseded".
         "status": existing_meta.get("status", "active"),
     }
     if "superseded_by" in existing_meta:
@@ -648,22 +628,12 @@ async def update_memory(
     return True
 
 
-async def find_similar_contextual_memories(
-    target_agent: str,
-    user_id: int | None,
-    trigger_embedding: list[float],
-    k: int = 3,
-    max_distance: float = MEMORY_RECONCILE_MAX_DISTANCE,
-) -> list[dict]:
+async def find_similar_contextual_memories(target_agent: str, user_id: int | None, trigger_embedding: list[float], k: int = 3, max_distance: float = MEMORY_RECONCILE_MAX_DISTANCE,) -> list[dict]:
     """
-    Réconciliation à l'écriture (couche 1) : cherche, parmi les souvenirs
-    contextuels ACTIFS déjà stockés pour ``target_agent``, ceux dont la requête
-    déclencheuse est proche de ``trigger_embedding`` (distance <= ``max_distance``).
+    Cherche, parmi les souvenirs contextuels ACTIFS déjà stockés pour ``target_agent``, ceux dont la requête déclencheuse est proche 
+    de ``trigger_embedding`` (distance <= ``max_distance``).
 
-    Renvoie des candidats plausibles à soumettre au juge (duplicate/conflict/
-    complement/unrelated) — PAS une décision. Chaque candidat :
-    ``{id, trigger, rule, distance}``, trié par distance croissante (le plus
-    proche gouverne en cas de verdicts contradictoires entre candidats).
+    Renvoie des candidats plausibles à soumettre au juge.
     """
     col = await memories_collection()
     cres = await col.query(

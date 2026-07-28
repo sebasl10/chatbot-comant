@@ -107,27 +107,21 @@ async def save_memory(ctx: RunContext[ChatDeps], target_agent: str, content: str
         ctx.deps.events.correction(target_agent=target_agent, kind=kind, memory=f"{base_term}: {content}")
         return {"ok": True, "target_agent": target_agent, "kind": kind}
 
-    # Tous les autres souvenirs écrits par l'agent sont contextuels (indexés par
-    # leur déclencheur). Seul l'endpoint /memory/add peut créer des invariants.
     if not trigger:
         return {"ok": False, "error": "trigger requis (la requête utilisateur déclencheuse de la correction)"}
 
     print(f"[SAVE MEMORY] target_agent={target_agent} kind={kind} retrieval=contextual "
           f"trigger={trigger!r} content={content!r}")
 
-    # Réconciliation à l'écriture (couche 1) : avant de créer un nouveau
-    # souvenir, on cherche des candidats proches déjà stockés et on les fait
-    # classer par un juge (duplicate/conflict/complement/unrelated). Si le
-    # juge échoue (modèle indisponible, sortie invalide), on ne bloque pas
-    # l'enregistrement : on retombe sur le comportement d'avant cette couche.
+    # Avant de créer un nouveau souvenir, on cherche des candidats proches déjà stockés et on les fait
+    # classer par un juge (duplicate/conflict/complement/unrelated).
+    
     chosen_candidate, chosen_verdict = None, None
     try:
         trigger_embedding = await vs.embed_memory_query(trigger)
         candidates = await vs.find_similar_contextual_memories(target_agent, ctx.deps.user_id, trigger_embedding)
         if candidates:
             verdicts = {v.candidate_id: v for v in await judge_candidates(trigger, content, candidates)}
-            # Les candidats sont triés par distance croissante : le plus proche
-            # avec un verdict actionnable gouverne en cas de désaccord entre eux.
             for candidate in candidates:
                 verdict = verdicts.get(candidate["id"])
                 if verdict and verdict.relation != "unrelated":
@@ -156,10 +150,7 @@ async def save_memory(ctx: RunContext[ChatDeps], target_agent: str, content: str
         }
 
     if chosen_verdict and chosen_verdict.relation == "conflict":
-        new_id = await vs.add_memory(
-            target_agent=target_agent, kind=kind, content=content,
-            user_id=ctx.deps.user_id, retrieval="contextual", trigger=trigger,
-        )
+        new_id = await vs.add_memory(target_agent=target_agent, kind=kind, content=content, user_id=ctx.deps.user_id, retrieval="contextual", trigger=trigger)
         await vs.supersede_memory(chosen_candidate["id"], new_id)
         print(f"[MEMORY RECONCILE] conflit : {chosen_candidate['id']!r} remplacé par {new_id!r}")
         ctx.deps.events.correction(target_agent=target_agent, kind=kind, memory=content)
