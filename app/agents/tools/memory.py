@@ -59,7 +59,8 @@ async def save_memory(ctx: RunContext[ChatDeps], target_agent: str, content: str
             et réutilisable (français, sans markdown). Reformule les messages
             elliptiques (« oui », « non ») à partir de l'historique.
             Pour `kind=vocabulary` : les synonymes séparés par des virgules (ex: "lent, slow, rapide"). 
-            *Dans ce cas, ne rajoute JAMAIS de texte additionel ni des termes qui ne sont pas dans le message de l'utilisateur.*
+            *Dans ce cas, ne rajoute JAMAIS de texte additionel. Utilise uniquement les termes qui du message de 
+            l'utilisateur, ne'ajoute pas des termes que tu trouves dans l'historique et n'invente pas d'autres mots*
         kind: `behavior` (défaut — laisse cette valeur pour toute correction normale,
             quel que soit `target_agent` ; dans la quasi-totalité des cas tu n'as PAS
             besoin de fournir ce paramètre) ou `vocabulary` (synonymes — UNIQUEMENT
@@ -104,16 +105,12 @@ async def save_memory(ctx: RunContext[ChatDeps], target_agent: str, content: str
     if kind == "vocabulary" and target_agent != "semantic_research":
         return {"ok": False, "error": "kind=vocabulary n'est valide que pour target_agent=semantic_research"}
 
-    # Vocabulaire (semantic_research uniquement) : structure dédiée, hors trigger/retrieval
+    # Vocabulaire (semantic_research uniquement)
     if kind == "vocabulary":
         if not base_term:
             return {"ok": False, "error": "base_term requis pour kind=vocabulary"}
         synonyms = [s.strip() for s in content.split(",") if s.strip()]
         print(f"[SAVE MEMORY] vocabulary - base_term: '{base_term}', synonyms: {synonyms}")
-
-        # Chaque terme est traité séparément : on ne compare qu'aux synonymes
-        # DÉJÀ liés à CE base_term (pas au vocabulaire entier) — un même terme
-        # peut légitimement être synonyme de plusieurs bases différentes.
         existing_synonyms = {s.lower() for s in (await vs.get_vocabulary_for_term(base_term))["synonyms"]}
         already_existing = [s for s in synonyms if s.lower() in existing_synonyms]
         new_terms = [s for s in synonyms if s.lower() not in existing_synonyms]

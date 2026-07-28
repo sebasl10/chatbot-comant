@@ -13,7 +13,7 @@ from app.services.vectorstore import tickets_collection, TICKETS, get_embedding
 
 async def main():
     # ── CONFIGURATION ────────────────────────────────────────────────────────
-    query = "cinématique"  # ← MODIFIE TA QUERY ICI
+    query = "client Festo et PMI contiennent des informations sémantiques"  # ← MODIFIE TA QUERY ICI
     collection_name = TICKETS
     threshold= 0.55
     query_instruction = "Given a technical term or topic, retrieve customer support tickets that mention or relate to it, even briefly."
