@@ -209,7 +209,7 @@ async def update_memory(ctx: RunContext[ChatDeps], new_content: str) -> dict:
     print(f"Ancienne règle: {old_rule}")
     print(f"Nouvelle règle: {new_content}")
     try:
-        success = await vs.update_memory(last_memory['id'], new_content, ctx.deps.username)
+        success = await vs.update_memory(last_memory['id'], content=new_content)
         if success:
             ctx.deps.events.action("update_memory", memory_id=last_memory['id'])
             return {"ok": True, "message": "Souvenir mis à jour.", "old_content": old_rule, "new_content": new_content}

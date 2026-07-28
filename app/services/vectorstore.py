@@ -480,13 +480,15 @@ async def add_memory(
         retrieval = "invariant"
         
     username = await asyncio.to_thread(get_username, user_id)
+    now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     meta = {
         "target_agent": target_agent,
         "kind": kind,
         "scope": scope,
         "user_id": user_id if user_id is not None else -1,
         "username": username or "",
-        "date": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+        "date": now,
+        "updated_at": now,
     }
     if retrieval is not None:
         meta["retrieval"] = retrieval
@@ -564,7 +566,7 @@ async def update_memory(
 
     username = existing_meta.get("username")
     if user_id is not None:
-        username = await asyncio.to_thread(get_username, user_id)
+        username = await asyncio.to_thread(get_username, user_id) or username
 
     meta = {
         "target_agent": target_agent,
@@ -572,7 +574,8 @@ async def update_memory(
         "scope": scope,
         "user_id": user_id if user_id is not None else -1,
         "username": username or "",
-        "date": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+        "date": existing_meta.get("date") or datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+        "updated_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
     }
     if retrieval is not None:
         meta["retrieval"] = retrieval
@@ -607,7 +610,8 @@ async def get_all_memories() -> dict:
 
     Chaque souvenir a TOUJOURS les mêmes clés (``null`` si non applicable) :
     - identité/classification : ``id``, ``target_agent``, ``kind``, ``retrieval``,
-      ``scope``, ``user_id``, ``username``, ``date``.
+      ``scope``, ``user_id``, ``username``, ``date`` (création), ``updated_at``
+      (dernière révision ; = ``date`` si jamais modifié).
     - contenu selon la forme :
         * contextuel : ``trigger`` (la requête déclencheuse) + ``rule`` (la règle injectée).
         * invariant  : ``rule`` (le document EST la règle), ``trigger`` = null.
@@ -641,6 +645,7 @@ async def get_all_memories() -> dict:
             "user_id": meta.get('user_id'),
             "username": meta.get('username'),
             "date": meta.get('date'),
+            "updated_at": meta.get('updated_at') or meta.get('date'),
             "trigger": trigger,
             "rule": rule,
             "base_term": base_term,
