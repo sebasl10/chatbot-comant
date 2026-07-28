@@ -5,6 +5,7 @@ Tools mémoire (souvenirs / corrections), backed Chroma.
 from pydantic_ai import RunContext
 from app.agents.deps import ChatDeps
 from app.services import vectorstore as vs
+from app.agents.specialists.memory_judge import judge_candidates
 
 VALID_TARGET_AGENTS = ("supervisor", "sql_research", "semantic_research", "conversational", "memory")
 VALID_KINDS = ("behavior", "vocabulary")
@@ -76,6 +77,18 @@ async def save_memory(ctx: RunContext[ChatDeps], target_agent: str, content: str
             `trigger="Cherche les tickets du client PTC"`.
         base_term: UNIQUEMENT pour `kind=vocabulary` — le terme de base auquel les
             synonymes doivent être liés (ex: "performance").
+
+    Returns:
+        Avant confirmation, base-toi TOUJOURS sur `action` (et `message`) plutôt
+        que de supposer qu'un nouveau souvenir a été créé :
+        - `action="created"` : nouveau souvenir enregistré normalement.
+        - `action="duplicate"` : rien enregistré, une règle équivalente existait déjà
+          (`existing_content`). Dis-le à l'utilisateur au lieu de confirmer une création.
+        - `action="merged"` : fusionné avec une règle existante proche (`content` =
+          la règle fusionnée). Confirme avec cette règle fusionnée, pas la tienne seule.
+        - `action="replaced"` : une règle CONTRADICTOIRE existait (`previous_content`) et
+          a été automatiquement remplacée par la nouvelle (`content`). Mentionne le
+          remplacement dans ta confirmation (ex: "j'ai remplacé la règle sur X par Y").
     """
     if target_agent not in VALID_TARGET_AGENTS:
         return {"ok": False, "error": f"target_agent invalide: {target_agent}"}
@@ -101,10 +114,65 @@ async def save_memory(ctx: RunContext[ChatDeps], target_agent: str, content: str
 
     print(f"[SAVE MEMORY] target_agent={target_agent} kind={kind} retrieval=contextual "
           f"trigger={trigger!r} content={content!r}")
+
+    # Réconciliation à l'écriture (couche 1) : avant de créer un nouveau
+    # souvenir, on cherche des candidats proches déjà stockés et on les fait
+    # classer par un juge (duplicate/conflict/complement/unrelated). Si le
+    # juge échoue (modèle indisponible, sortie invalide), on ne bloque pas
+    # l'enregistrement : on retombe sur le comportement d'avant cette couche.
+    chosen_candidate, chosen_verdict = None, None
+    try:
+        trigger_embedding = await vs.embed_memory_query(trigger)
+        candidates = await vs.find_similar_contextual_memories(target_agent, ctx.deps.user_id, trigger_embedding)
+        if candidates:
+            verdicts = {v.candidate_id: v for v in await judge_candidates(trigger, content, candidates)}
+            # Les candidats sont triés par distance croissante : le plus proche
+            # avec un verdict actionnable gouverne en cas de désaccord entre eux.
+            for candidate in candidates:
+                verdict = verdicts.get(candidate["id"])
+                if verdict and verdict.relation != "unrelated":
+                    chosen_candidate, chosen_verdict = candidate, verdict
+                    break
+    except Exception as e:
+        print(f"[MEMORY RECONCILE] échec du juge, écriture normale : {e}")
+
+    if chosen_verdict and chosen_verdict.relation == "duplicate":
+        print(f"[MEMORY RECONCILE] duplicate de {chosen_candidate['id']!r}, rien écrit")
+        return {
+            "ok": True, "target_agent": target_agent, "kind": kind, "action": "duplicate",
+            "message": "Ce souvenir existe déjà, aucune nouvelle règle ajoutée.",
+            "existing_content": chosen_candidate["rule"],
+        }
+
+    if chosen_verdict and chosen_verdict.relation == "complement":
+        merged = chosen_verdict.merged_content or content
+        await vs.update_memory(chosen_candidate["id"], content=merged)
+        print(f"[MEMORY RECONCILE] fusion avec {chosen_candidate['id']!r}: {merged!r}")
+        ctx.deps.events.correction(target_agent=target_agent, kind=kind, memory=merged)
+        return {
+            "ok": True, "target_agent": target_agent, "kind": kind, "action": "merged",
+            "message": "Souvenir fusionné avec une règle existante proche.",
+            "content": merged,
+        }
+
+    if chosen_verdict and chosen_verdict.relation == "conflict":
+        new_id = await vs.add_memory(
+            target_agent=target_agent, kind=kind, content=content,
+            user_id=ctx.deps.user_id, retrieval="contextual", trigger=trigger,
+        )
+        await vs.supersede_memory(chosen_candidate["id"], new_id)
+        print(f"[MEMORY RECONCILE] conflit : {chosen_candidate['id']!r} remplacé par {new_id!r}")
+        ctx.deps.events.correction(target_agent=target_agent, kind=kind, memory=content)
+        return {
+            "ok": True, "target_agent": target_agent, "kind": kind, "action": "replaced",
+            "message": "Une règle contradictoire existait : elle a été remplacée par la nouvelle.",
+            "previous_content": chosen_candidate["rule"], "content": content,
+        }
+
     await vs.add_memory(target_agent=target_agent, kind=kind, content=content, user_id=ctx.deps.user_id, retrieval="contextual", trigger=trigger)
     ctx.deps.events.correction(target_agent=target_agent, kind=kind, memory=content)
 
-    return {"ok": True, "target_agent": target_agent, "kind": kind, "retrieval": "contextual"}
+    return {"ok": True, "target_agent": target_agent, "kind": kind, "retrieval": "contextual", "action": "created"}
 
 
 async def delete_memory(ctx: RunContext[ChatDeps]) -> dict:

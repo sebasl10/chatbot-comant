@@ -23,6 +23,11 @@ TICKETS = "tickets"
 MEMORIES = "memories"
 CONVERSATION_SUMMARIES = "conversation_summaries"
 MEMORY_MAX_DISTANCE = 0.45
+# Seuil (plus serré que MEMORY_MAX_DISTANCE) utilisé pour rassembler des
+# CANDIDATS à la réconciliation à l'écriture (couche 1) : on veut ici des
+# quasi-doublons plausibles à soumettre au juge, pas simplement des souvenirs
+# "liés" au sens de la couche 2 (lecture).
+MEMORY_RECONCILE_MAX_DISTANCE = 0.40
 DEFAULT_HNSW_CONFIG = {
     "hnsw": {
         "space": "cosine",
@@ -332,6 +337,13 @@ def _default_scope(target_agent: str, kind: str | None) -> str:
         return "global"
     return _TARGET_AGENT_DEFAULT_SCOPE.get(target_agent, "user")
 
+
+def default_scope(target_agent: str, kind: str | None = None) -> str:
+    """Wrapper public de ``_default_scope``, pour les appelants hors module
+    (ex: la réconciliation à l'écriture) qui doivent connaître le scope d'un
+    souvenir avant même de l'écrire."""
+    return _default_scope(target_agent, kind)
+
 def _debug_memory(
     action: str,
     header: str,
@@ -361,11 +373,19 @@ def _debug_memory(
     print('━' * 64)
 
 
-def _memory_where(target_agent: str, user_id: int | None, retrieval: str | None = None, exclude_kind: str | None = None,) -> dict:
+def _memory_where(
+    target_agent: str,
+    user_id: int | None,
+    retrieval: str | None = None,
+    exclude_kind: str | None = None,
+    active_only: bool = False,
+) -> dict:
     """
     Filtre les souvenirs destinés à ``target_agent`` : ceux de l'utilisateur plus
     ceux de portée globale, éventuellement restreints à un mode de récupération
-    (``retrieval`` = "invariant" | "contextual") et/ou excluant un ``kind`` donné.
+    (``retrieval`` = "invariant" | "contextual"), excluant un ``kind`` donné,
+    et/ou excluant les souvenirs remplacés (``active_only=True`` -> écarte
+    ``status="superseded"``, cf. réconciliation à l'écriture / couche 1).
     Construit un ``$and`` plat.
     """
     conds: list[dict] = [{"target_agent": target_agent}]
@@ -375,6 +395,8 @@ def _memory_where(target_agent: str, user_id: int | None, retrieval: str | None 
         conds.append({"retrieval": retrieval})
     if exclude_kind is not None:
         conds.append({"kind": {"$ne": exclude_kind}})
+    if active_only:
+        conds.append({"status": {"$ne": "superseded"}})
     return conds[0] if len(conds) == 1 else {"$and": conds}
 
 def _memory_payload(doc: str, meta: dict | None) -> str:
@@ -412,7 +434,7 @@ async def get_memories_text(
 
     # 1) Invariants — toujours injectés
     inv_res = await col.get(
-        where=_memory_where(target_agent, user_id, retrieval="invariant", exclude_kind="vocabulary"),
+        where=_memory_where(target_agent, user_id, retrieval="invariant", exclude_kind="vocabulary", active_only=True),
         include=["documents", "metadatas"],
     )
     inv_docs = inv_res.get("documents", []) or []
@@ -428,7 +450,7 @@ async def get_memories_text(
         cres = await col.query(
             query_embeddings=[query_embedding],
             n_results=k,
-            where=_memory_where(target_agent, user_id, retrieval="contextual"),
+            where=_memory_where(target_agent, user_id, retrieval="contextual", active_only=True),
             include=["documents", "metadatas", "distances"],
         )
         raw_docs = cres["documents"][0] if cres["documents"] else []
@@ -505,6 +527,8 @@ async def add_memory(
         "username": username or "",
         "date": now,
         "updated_at": now,
+        # "active" | "superseded" (réconciliation à l'écriture, cf. supersede_memory).
+        "status": "active",
     }
     if retrieval is not None:
         meta["retrieval"] = retrieval
@@ -592,7 +616,12 @@ async def update_memory(
         "username": username or "",
         "date": existing_meta.get("date") or datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
         "updated_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+        # Une édition normale (update_memory) ne change PAS le statut : seul
+        # supersede_memory bascule un souvenir en "superseded".
+        "status": existing_meta.get("status", "active"),
     }
+    if "superseded_by" in existing_meta:
+        meta["superseded_by"] = existing_meta["superseded_by"]
     if retrieval is not None:
         meta["retrieval"] = retrieval
 
@@ -617,6 +646,72 @@ async def update_memory(
     await col.update(**kwargs)
     _debug_memory("UPDATE", f"id={memory_id}", [document], [meta])
     return True
+
+
+async def find_similar_contextual_memories(
+    target_agent: str,
+    user_id: int | None,
+    trigger_embedding: list[float],
+    k: int = 3,
+    max_distance: float = MEMORY_RECONCILE_MAX_DISTANCE,
+) -> list[dict]:
+    """
+    Réconciliation à l'écriture (couche 1) : cherche, parmi les souvenirs
+    contextuels ACTIFS déjà stockés pour ``target_agent``, ceux dont la requête
+    déclencheuse est proche de ``trigger_embedding`` (distance <= ``max_distance``).
+
+    Renvoie des candidats plausibles à soumettre au juge (duplicate/conflict/
+    complement/unrelated) — PAS une décision. Chaque candidat :
+    ``{id, trigger, rule, distance}``, trié par distance croissante (le plus
+    proche gouverne en cas de verdicts contradictoires entre candidats).
+    """
+    col = await memories_collection()
+    cres = await col.query(
+        query_embeddings=[trigger_embedding],
+        n_results=k,
+        where=_memory_where(target_agent, user_id, retrieval="contextual", active_only=True),
+        include=["documents", "metadatas", "distances"],
+    )
+    docs = cres["documents"][0] if cres.get("documents") else []
+    metas = cres["metadatas"][0] if cres.get("metadatas") else []
+    ids = cres["ids"][0] if cres.get("ids") else []
+    dists = cres["distances"][0] if cres.get("distances") else []
+
+    candidates = []
+    for i, doc in enumerate(docs):
+        dist = dists[i] if i < len(dists) else None
+        if dist is None or dist > max_distance:
+            continue
+        meta = metas[i] if i < len(metas) else {}
+        candidates.append({
+            "id": ids[i] if i < len(ids) else None,
+            "trigger": doc,
+            "rule": (meta or {}).get("correction") or doc,
+            "distance": dist,
+        })
+    return candidates
+
+
+async def supersede_memory(old_id: str, new_id: str) -> None:
+    """
+    Marque un souvenir comme remplacé par un autre (réconciliation à l'écriture,
+    verdict "conflict" : la récence gagne). Ne supprime rien : ``status`` passe
+    à "superseded" et ``superseded_by`` pointe vers le nouveau souvenir, pour
+    garder une trace et permettre un rollback manuel. Le souvenir "superseded"
+    est ensuite exclu par ``active_only`` (``get_memories_text`` et
+    ``find_similar_contextual_memories``).
+    """
+    col = await memories_collection()
+    res = await col.get(ids=[old_id], include=["metadatas"])
+    if not res.get("ids"):
+        return
+    meta = res["metadatas"][0] if res.get("metadatas") else {}
+    if not isinstance(meta, dict):
+        meta = {}
+    meta = {**meta, "status": "superseded", "superseded_by": new_id}
+    await col.update(ids=[old_id], metadatas=[meta])
+    _debug_memory("SUPERSEDE", f"id={old_id} -> {new_id}", [f"remplacé par {new_id}"], [meta])
+
 
 async def get_all_memories() -> dict:
     """
