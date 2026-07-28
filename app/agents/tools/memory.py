@@ -93,10 +93,8 @@ async def save_memory(ctx: RunContext[ChatDeps], target_agent: str, content: str
 
         Pour `kind=vocabulary`, pas de champ `action`, regarde plutôt :
         - `added` : les termes réellement nouveaux, effectivement ajoutés.
-        - `already_existing` (optionnel) : `{terme: base_term existant}` pour les
-          termes déjà présents dans le vocabulaire (n'importe quel base_term) —
-          PAS ajoutés. Dis à l'utilisateur qu'ils existaient déjà (en précisant
-          sous quel terme de base si différent de celui demandé), et confirme
+        - `already_existing` (optionnel) : termes déjà synonymes de CE `base_term`
+          — PAS ré-ajoutés. Dis à l'utilisateur qu'ils l'étaient déjà, et confirme
           uniquement l'ajout des termes de `added`.
     """
     if target_agent not in VALID_TARGET_AGENTS:
@@ -113,9 +111,12 @@ async def save_memory(ctx: RunContext[ChatDeps], target_agent: str, content: str
         synonyms = [s.strip() for s in content.split(",") if s.strip()]
         print(f"[SAVE MEMORY] vocabulary - base_term: '{base_term}', synonyms: {synonyms}")
 
-        existing = await vs.find_existing_vocabulary_terms(synonyms)
-        already_existing = {s: existing[s.lower()] for s in synonyms if s.lower() in existing}
-        new_terms = [s for s in synonyms if s.lower() not in existing]
+        # Chaque terme est traité séparément : on ne compare qu'aux synonymes
+        # DÉJÀ liés à CE base_term (pas au vocabulaire entier) — un même terme
+        # peut légitimement être synonyme de plusieurs bases différentes.
+        existing_synonyms = {s.lower() for s in (await vs.get_vocabulary_for_term(base_term))["synonyms"]}
+        already_existing = [s for s in synonyms if s.lower() in existing_synonyms]
+        new_terms = [s for s in synonyms if s.lower() not in existing_synonyms]
 
         if new_terms:
             await vs.add_synonyms(base_term, new_terms, ctx.deps.user_id, ctx.deps.username)
