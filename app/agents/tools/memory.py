@@ -10,7 +10,7 @@ sémantique).
 - Écriture : ``save_memory`` (appelé par l'agent memory, qui reformule les
   messages elliptiques « oui/non » à partir de l'historique avant de stocker).
 
-target_agent : supervisor, sql_research, semantic_research, conversational.
+target_agent : supervisor, sql_research, semantic_research, conversational, memory.
 kind         : behavior (défaut, pour tous les agents) | vocabulary (synonymes —
                valide UNIQUEMENT pour target_agent=semantic_research, seul agent
                doté d'un mécanisme de vocabulaire).
@@ -24,7 +24,7 @@ from pydantic_ai import RunContext
 from app.agents.deps import ChatDeps
 from app.services import vectorstore as vs
 
-VALID_TARGET_AGENTS = ("supervisor", "sql_research", "semantic_research", "conversational")
+VALID_TARGET_AGENTS = ("supervisor", "sql_research", "semantic_research", "conversational", "memory")
 VALID_KINDS = ("behavior", "vocabulary")
 
 
@@ -62,21 +62,47 @@ async def save_memory(
     l'a déclenché : il faut fournir le `trigger` (sauf pour le vocabulaire).
 
     Args:
-        target_agent : agent qui devra respecter ce souvenir —
-            `supervisor` (délégation/routage) | `sql_research` (règles SQL) |
-            `semantic_research` (recherche sémantique, vocabulaire) | `conversational`.
-        content : la RÈGLE / le comportement attendu, en une phrase claire, autonome
+        target_agent: agent qui devra respecter ce souvenir.
+            - `supervisor` : le chatbot a mal délégué/routé la demande (mauvais agent choisi).
+              Ex: "Tu as délégué à l'agent memory, mais tu devais déléguer à l'agent semantic_search",
+              "Tu as fait une recherche sémantique, mais tu devais faire une recherche par filtres".
+            - `sql_research` : erreur dans la génération d'une requête SQL (filtres, colonnes, syntaxe).
+              Ex: "Tu as ajouté un point-virgule à la fin de la requête SQL, ne le fais jamais",
+              "Tu dois filtrer sur le status 'En attente d'une compilation', pas 'Rien à faire'".
+            - `semantic_research` : erreur dans une recherche par thème/sujet (vocabulaire ou comportement).
+              Ex: "Considère 'lent' et 'slow' comme synonymes de 'performance'",
+              "Kinematic doit être lié à cinématique pour les recherches".
+            - `conversational` : erreur de formulation ou de comportement conversationnel.
+              Ex: "Tu devais répondre ma question à partir de l'historique de la conversation".
+            - `memory` : erreur dans TA PROPRE classification/gestion d'un souvenir (mauvais
+              `target_agent`/`kind` choisi, mauvais outil utilisé (save/update/delete), trigger
+              mal reformulé). C'est une méta-correction sur ton propre comportement, pas sur un
+              des 4 agents ci-dessus.
+              Ex: "Tu as classé mon souvenir sur sql_research, alors qu'il fallait le mettre sur
+              semantic_research", "Tu aurais dû mettre à jour mon souvenir, pas le supprimer",
+              "Ce n'était pas un synonyme, ne le classe pas en vocabulary".
+        content: la RÈGLE / le comportement attendu, en une phrase claire, autonome
             et réutilisable (français, sans markdown). Reformule les messages
             elliptiques (« oui », « non ») à partir de l'historique.
             Pour `kind=vocabulary` : les synonymes séparés par des virgules (ex: "lent, slow, rapide").
-        kind : `behavior` (défaut — laisse cette valeur pour toute correction normale,
-            quel que soit `target_agent`) ou `vocabulary` (synonymes — UNIQUEMENT
+        kind: `behavior` (défaut — laisse cette valeur pour toute correction normale,
+            quel que soit `target_agent` ; dans la quasi-totalité des cas tu n'as PAS
+            besoin de fournir ce paramètre) ou `vocabulary` (synonymes — UNIQUEMENT
             valide si `target_agent="semantic_research"`).
-        trigger : OBLIGATOIRE (sauf `kind=vocabulary`). La requête utilisateur
-            DÉCLENCHEUSE (celle de l'historique qui a causé la correction), reformulée
-            en requête autonome et générale. Sert de clé pour retrouver la règle quand
-            une future demande y ressemblera.
-        base_term : UNIQUEMENT pour `kind=vocabulary` — le terme de base (ex: "performance").
+        trigger: OBLIGATOIRE (sauf `kind=vocabulary`). La requête utilisateur
+            DÉCLENCHEUSE : celle de l'historique qui a causé le comportement incorrect
+            à corriger (généralement l'avant-dernier message utilisateur), reformulée
+            en requête autonome et générale. Sert de clé : quand une future demande y
+            ressemblera sémantiquement, la règle (`content`) sera réinjectée à l'agent
+            concerné.
+            Exemple : historique -> utilisateur "Cherche les tickets du client PTC" (le
+            bot construit une mauvaise requête) -> utilisateur "Tu t'es trompé, tu dois
+            utiliser le champ name de la table Client pour filtrer un client par son nom"
+            -> `content="Pour une recherche de tickets d'un client, utiliser le champ
+            name de la table Client pour filtrer par nom de client."`,
+            `trigger="Cherche les tickets du client PTC"`.
+        base_term: UNIQUEMENT pour `kind=vocabulary` — le terme de base auquel les
+            synonymes doivent être liés (ex: "performance").
     """
     if target_agent not in VALID_TARGET_AGENTS:
         return {"ok": False, "error": f"target_agent invalide: {target_agent}"}
@@ -116,8 +142,20 @@ async def save_memory(
 
 
 async def delete_memory(ctx: RunContext[ChatDeps]) -> dict:
-    """
-    Supprime le dernier souvenir créé
+    """Supprime le dernier souvenir créé par l'utilisateur.
+
+    Condition : l'utilisateur doit demander EXPLICITEMENT de supprimer le
+    dernier souvenir (ex: "Oublie ce que je viens de dire", "Supprime mon
+    dernier souvenir"). Peut être appelé même s'il n'y a pas de souvenir créé
+    dans CETTE conversation : un utilisateur peut vouloir supprimer un souvenir
+    créé lors d'une autre conversation — la suppression porte sur tous les
+    souvenirs de l'utilisateur, toutes conversations confondues.
+
+    Si le résultat est {'ok': True, ...} : confirme la suppression en
+    rappelant le contenu du souvenir supprimé (`content`).
+    Si le résultat est {'ok': False, ...} : explique à l'utilisateur qu'il n'a
+    aucun souvenir enregistré à supprimer, SANS préciser "dans cette
+    conversation" (la gestion des souvenirs couvre toutes les conversations).
     """
     print("[TOOL CALL] delete_memory")
     last_memory = await vs.get_last_memory(ctx.deps.user_id)
@@ -140,13 +178,21 @@ async def delete_memory(ctx: RunContext[ChatDeps]) -> dict:
 
 
 async def update_memory(ctx: RunContext[ChatDeps], new_content: str) -> dict:
-    """
-    Met à jour la RÈGLE du dernier souvenir créé par l'utilisateur.
+    """Met à jour la RÈGLE du dernier souvenir créé par l'utilisateur.
+
+    Condition : l'utilisateur doit demander EXPLICITEMENT de modifier le
+    dernier souvenir enregistré (ex: "Corrige mon dernier souvenir pour dire
+    que...", "Modifie ce que je viens de dire sur les filtres SQL"). Ne
+    fonctionne que sur le dernier souvenir créé, toutes conversations
+    confondues.
 
     `new_content` = la nouvelle règle / le nouveau comportement attendu. Le
     routage vers le bon champ est automatique : pour un souvenir contextuel, la
     requête déclencheuse (le document) reste inchangée et seule la règle
     (`metadata.correction`) est mise à jour ; pour un invariant, c'est le document.
+
+    Après l'appel, confirme en rappelant l'ANCIEN et le NOUVEAU contenu du
+    souvenir.
 
     Args:
         new_content: Nouvelle règle du souvenir (français, sans markdown).

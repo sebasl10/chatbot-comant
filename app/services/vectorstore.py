@@ -322,6 +322,7 @@ _TARGET_AGENT_DEFAULT_SCOPE = {
     "sql_research": "global",       # règles de construction SQL : comportement système
     "semantic_research": "user",    # correction de comportement, propre à l'utilisateur
     "conversational": "user",       # préférence de ton/comportement, propre à l'utilisateur
+    "memory": "global",             # méta-correction sur la classification : comportement système
 }
 
 
@@ -448,7 +449,7 @@ async def add_memory(
     Ajoute un souvenir.
 
     - ``target_agent`` : agent qui devra lire ce souvenir (supervisor,
-      sql_research, semantic_research, conversational).
+      sql_research, semantic_research, conversational, memory).
     - ``kind`` : "behavior" (défaut, toute correction de comportement) ou
       "vocabulary" (synonymes — uniquement valide pour ``target_agent="semantic_research"``,
       seul agent doté d'un mécanisme de vocabulaire).
