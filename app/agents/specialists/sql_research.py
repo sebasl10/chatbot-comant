@@ -1,15 +1,5 @@
-"""SQLResearchAgent — recherche par filtres exacts + affinage.
-
-Réutilise les prompts métier existants (``build_recherche_prompt`` /
-``build_affinage_prompt`` : schéma live, valeurs de référence, règles métier,
-few-shot) comme *system prompt dynamique*, et y ajoute un addendum d'utilisation
-des outils qui active la boucle d'auto-correction :
-
-    écrire SQL → run_sql → si erreur, corriger et re-run (borné) → réponse.
-
-Les souvenirs SQL de l'utilisateur (``target_agent=sql_research``) sont injectés
-dans le prompt en top-k sémantique pour être respectés dès la génération
-(plus besoin d'une 2e passe de vérification).
+"""
+SQLResearchAgent — recherche par filtres exacts + affinage.
 """
 import asyncio
 

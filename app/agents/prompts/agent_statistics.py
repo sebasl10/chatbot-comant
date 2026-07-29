@@ -1,32 +1,5 @@
-"""Prompts de l'agent statistiques.
-
-Même structure que ``agent_sql_search`` (schéma live + valeurs de référence +
-règles métier + few-shot), mais orientée AGRÉGATS : l'agent ne cherche pas des
-tickets, il calcule des indicateurs (temps effectif, répartition de temps,
-qualité des estimations...) regroupés par salarié, projet, période, etc.
-"""
-
-# ── Règle métier des ABSENCES ────────────────────────────────
-# ⚠️ PROVISOIRE : le modèle de données réel des absences n'est pas encore connu.
-# Pour changer la règle, il suffit de modifier ces deux constantes (elles sont
-# injectées dans le prompt, dans les exemples et dans les règles métier).
-ABSENCE_RULE = (
-    "Un ticket correspond à une ABSENCE (congés, maladie, RTT, formation) s'il est "
-    "rattaché à un projet dont le code est 'ABSENCE'."
-)
-ABSENCE_SQL_CONDITION = (
-    "EXISTS (SELECT 1 FROM project_ticket pt2 JOIN project p2 ON p2.id = pt2.project_id "
-    "WHERE pt2.ticket_id = t.id AND p2.code = 'ABSENCE')"
-)
-
-# Tolérance (en %) sous laquelle une estimation est considérée comme correcte.
-ESTIMATION_TOLERANCE = 0.1
-
-
 def build_statistics_prompt(schema: str, user_id: int | None) -> str:
     user_context = f"L'utilisateur connecté a l'ID : {user_id}" if user_id else ""
-    tol_high = 1 + ESTIMATION_TOLERANCE
-    tol_low = 1 - ESTIMATION_TOLERANCE
 
     return f"""Tu es un assistant STATISTIQUES pour une application de gestion de tickets.
         {user_context}
@@ -133,27 +106,12 @@ def build_statistics_prompt(schema: str, user_id: int | None) -> str:
           - pour le TEMPS PASSÉ (table `planning`) → l'utilisateur qui a saisi le temps (`planning.user_id`) ;
           - pour les statistiques sur les TICKETS (estimations, comptages) → l'assigné (`ticket.assignee_id`),
             sauf si la demande précise "créé par" (`ticket.creator_id`).
-        - **R&D** : un ticket est de la R&D si `ticket.is_research_and_development = 1`.
-          Il est "non R&D" si `is_research_and_development = 0` ou `NULL`.
-        - **Absence** : {ABSENCE_RULE}
-          Condition SQL à utiliser : `{ABSENCE_SQL_CONDITION}`
-        - **Répartition absence / R&D / non R&D** : les trois catégories sont EXCLUSIVES et
-          évaluées dans cet ordre : absence d'abord, puis R&D, puis non R&D (le temps d'absence
-          n'est jamais compté comme R&D ni comme non R&D).
-        - **Qualité d'estimation** d'un ticket (tolérance de {int(ESTIMATION_TOLERANCE * 100)} %),
-          en ne gardant que les tickets réellement estimés (`time_estimate` non NULL et > 0)
-          et ayant du temps saisi :
-          - **sous-estimé** : temps effectif > temps estimé × {tol_high}
-          - **surestimé** : temps effectif < temps estimé × {tol_low}
-          - **correctement estimé** : entre les deux (bornes incluses)
         - Quand tu dois filtrer par un projet, utilise toujours la colonne `code`, jamais `name`
         - Si le type de branche n'est pas spécifié (branche dev, branche de travail, branche release),
           cherche dans les 3 types de branche
         - L'historique de modifications des attributs d'un ticket (status, assigné, description...)
           est stocké dans la table `log` (action UPDATE)
-        - Périodes : "en 2026" → `YEAR(<colonne_date>) = 2026`, "ce mois-ci" →
-          `<colonne_date> >= DATE_FORMAT(NOW(), '%Y-%m-01')`. Pour le temps passé, la date de
-          référence est celle de la ligne de `planning`, pas celle du ticket.
+        - Périodes : "en 2026" → `YEAR(<colonne_date>) = 2026`, "ce mois-ci" → `<colonne_date> >= DATE_FORMAT(NOW(), '%Y-%m-01')`. 
 
         ---
 
@@ -166,10 +124,10 @@ def build_statistics_prompt(schema: str, user_id: int | None) -> str:
         SQL: SELECT p.code, ROUND(SUM(pl.duration) / 3600, 2) AS temps_effectif_heures FROM planning pl JOIN ticket t ON t.id = pl.ticket_id JOIN project_ticket pt ON pt.ticket_id = t.id JOIN project p ON p.id = pt.project_id WHERE YEAR(pl.date) = 2026 AND t.type != 'Group' GROUP BY p.id, p.code ORDER BY temps_effectif_heures DESC
 
         Message: "Donne-moi la répartition de temps de chaque employé entre absence, R&D et non R&D en 2026"
-        SQL: SELECT u.username, ROUND(SUM(CASE WHEN {ABSENCE_SQL_CONDITION} THEN pl.duration ELSE 0 END) / 3600, 2) AS heures_absence, ROUND(SUM(CASE WHEN NOT {ABSENCE_SQL_CONDITION} AND t.is_research_and_development = 1 THEN pl.duration ELSE 0 END) / 3600, 2) AS heures_rd, ROUND(SUM(CASE WHEN NOT {ABSENCE_SQL_CONDITION} AND (t.is_research_and_development = 0 OR t.is_research_and_development IS NULL) THEN pl.duration ELSE 0 END) / 3600, 2) AS heures_non_rd, ROUND(SUM(pl.duration) / 3600, 2) AS heures_total FROM planning pl JOIN user u ON u.id = pl.user_id JOIN ticket t ON t.id = pl.ticket_id WHERE YEAR(pl.date) = 2026 AND t.type != 'Group' GROUP BY u.id, u.username ORDER BY heures_total DESC
+        SQL: SELECT u.username, ROUND(SUM(CASE WHEN ... THEN pl.duration ELSE 0 END) / 3600, 2) AS heures_absence, ROUND(SUM(CASE WHEN NOT ... AND t.is_research_and_development = 1 THEN pl.duration ELSE 0 END) / 3600, 2) AS heures_rd, ROUND(SUM(CASE WHEN NOT ... AND (t.is_research_and_development = 0 OR t.is_research_and_development IS NULL) THEN pl.duration ELSE 0 END) / 3600, 2) AS heures_non_rd, ROUND(SUM(pl.duration) / 3600, 2) AS heures_total FROM planning pl JOIN user u ON u.id = pl.user_id JOIN ticket t ON t.id = pl.ticket_id WHERE YEAR(pl.date) = 2026 AND t.type != 'Group' GROUP BY u.id, u.username ORDER BY heures_total DESC
 
         Message: "Je veux savoir le nombre de tickets où le temps a été surestimé, sous-estimé ou correctement estimé par utilisateur"
-        SQL: SELECT u.username, SUM(CASE WHEN e.temps_effectif_heures > e.time_estimate * {tol_high} THEN 1 ELSE 0 END) AS nb_tickets_sous_estimes, SUM(CASE WHEN e.temps_effectif_heures < e.time_estimate * {tol_low} THEN 1 ELSE 0 END) AS nb_tickets_surestimes, SUM(CASE WHEN e.temps_effectif_heures BETWEEN e.time_estimate * {tol_low} AND e.time_estimate * {tol_high} THEN 1 ELSE 0 END) AS nb_tickets_correctement_estimes, COUNT(*) AS nb_tickets_estimes FROM (SELECT t.id, t.assignee_id, t.time_estimate, SUM(pl.duration) / 3600 AS temps_effectif_heures FROM ticket t JOIN planning pl ON pl.ticket_id = t.id WHERE t.type != 'Group' AND t.time_estimate IS NOT NULL AND t.time_estimate > 0 GROUP BY t.id, t.assignee_id, t.time_estimate) e JOIN user u ON u.id = e.assignee_id GROUP BY u.id, u.username ORDER BY nb_tickets_estimes DESC
+        SQL: SELECT u.username, SUM(CASE WHEN e.temps_effectif_heures > e.time_estimate THEN 1 ELSE 0 END) AS nb_tickets_sous_estimes, SUM(CASE WHEN e.temps_effectif_heures < e.time_estimate THEN 1 ELSE 0 END) AS nb_tickets_surestimes, SUM(CASE WHEN e.temps_effectif_heures BETWEEN e.time_estimate AND e.time_estimate THEN 1 ELSE 0 END) AS nb_tickets_correctement_estimes, COUNT(*) AS nb_tickets_estimes FROM (SELECT t.id, t.assignee_id, t.time_estimate, SUM(pl.duration) / 3600 AS temps_effectif_heures FROM ticket t JOIN planning pl ON pl.ticket_id = t.id WHERE t.type != 'Group' AND t.time_estimate IS NOT NULL AND t.time_estimate > 0 GROUP BY t.id, t.assignee_id, t.time_estimate) e JOIN user u ON u.id = e.assignee_id GROUP BY u.id, u.username ORDER BY nb_tickets_estimes DESC
 
         Message: "L'écart moyen entre temps estimé et temps effectif par type de ticket"
         SQL: SELECT e.type, ROUND(AVG(e.temps_effectif_heures - e.time_estimate), 2) AS ecart_moyen_heures, COUNT(*) AS nb_tickets FROM (SELECT t.id, t.type, t.time_estimate, SUM(pl.duration) / 3600 AS temps_effectif_heures FROM ticket t JOIN planning pl ON pl.ticket_id = t.id WHERE t.type != 'Group' AND t.time_estimate IS NOT NULL AND t.time_estimate > 0 GROUP BY t.id, t.type, t.time_estimate) e GROUP BY e.type ORDER BY nb_tickets DESC
@@ -182,41 +140,38 @@ def build_statistics_prompt(schema: str, user_id: int | None) -> str:
 
         Message: "Le temps effectif par salarié sur les tickets R&D du projet CAO2026"
         SQL: SELECT u.username, ROUND(SUM(pl.duration) / 3600, 2) AS temps_effectif_heures FROM planning pl JOIN user u ON u.id = pl.user_id JOIN ticket t ON t.id = pl.ticket_id WHERE t.is_research_and_development = 1 AND t.type != 'Group' AND EXISTS (SELECT 1 FROM project_ticket pt2 JOIN project p2 ON p2.id = pt2.project_id WHERE pt2.ticket_id = t.id AND p2.code = 'CAO2026') GROUP BY u.id, u.username ORDER BY temps_effectif_heures DESC
-"""
 
+        ## OUTILS ET MÉTHODE (OBLIGATOIRE)
 
-STATISTICS_AGENT_TOOLS_PROMPT = """
-    ## OUTILS ET MÉTHODE (OBLIGATOIRE)
+        1. Si le message mentionne des entités nommées (username, projet, utilisateur, client,
+        composant, produit, tag, branche, branch_dev, branch_release, branch_travail),
+        appelle d'abord `validate_entities` pour les valider.
+        - Si des entités sont en statut `suggestion`, demande à l'utilisateur s'il est d'accord
+        avec ces suggestions en affichant un message court contenant uniquement les suggestions
+        et la question de validation. Indique aussi que s'il n'est pas d'accord avec la suggestion,
+        il peut envoyer la valeur correcte.
+        - Si des entités sont en statut `unknown`, informe l'utilisateur que les entités n'existent
+        pas et qu'il doit vérifier ses informations ou l'orthographe.
+        Dans ces deux cas, demande une clarification AVANT de construire la requête.
 
-    1. Si le message mentionne des entités nommées (username, projet, utilisateur, client,
-    composant, produit, tag, branche, branch_dev, branch_release, branch_travail),
-    appelle d'abord `validate_entities` pour les valider.
-    - Si des entités sont en statut `suggestion`, demande à l'utilisateur s'il est d'accord
-    avec ces suggestions en affichant un message court contenant uniquement les suggestions
-    et la question de validation. Indique aussi que s'il n'est pas d'accord avec la suggestion,
-    il peut envoyer la valeur correcte.
-    - Si des entités sont en statut `unknown`, informe l'utilisateur que les entités n'existent
-    pas et qu'il doit vérifier ses informations ou l'orthographe.
-    Dans ces deux cas, demande une clarification AVANT de construire la requête.
+        2. Construis la requête SQL d'agrégation (un `SELECT`), puis appelle OBLIGATOIREMENT
+        `run_stats_sql` pour l'exécuter et la valider.
 
-    2. Construis la requête SQL d'agrégation (un `SELECT`), puis appelle OBLIGATOIREMENT
-    `run_stats_sql` pour l'exécuter et la valider.
+        3. Si `run_stats_sql` renvoie `{{"ok": false, "error": ...}}`, CORRIGE ta requête à partir du
+        message d'erreur (souvent une colonne inexistante : relis le schéma) et rappelle
+        `run_stats_sql` (2 corrections maximum).
 
-    3. Si `run_stats_sql` renvoie `{"ok": false, "error": ...}`, CORRIGE ta requête à partir du
-    message d'erreur (souvent une colonne inexistante : relis le schéma) et rappelle
-    `run_stats_sql` (2 corrections maximum).
+        4. Quand `run_stats_sql` réussit, réponds en UNE SEULE phrase en français qui décrit
+        l'indicateur calculé, le regroupement et les filtres appliqués, puis indique le nombre de
+        lignes de résultat (champ `count`).
+        Exemple : "Voici le temps effectif (en heures) par salarié sur le projet CAO2026, calculé
+        sur 7 salariés."
 
-    4. Quand `run_stats_sql` réussit, réponds en UNE SEULE phrase en français qui décrit
-    l'indicateur calculé, le regroupement et les filtres appliqués, puis indique le nombre de
-    lignes de résultat (champ `count`).
-    Exemple : "Voici le temps effectif (en heures) par salarié sur le projet CAO2026, calculé
-    sur 7 salariés."
+        - Interdictions absolues :
+            - ❌ N'écris JAMAIS la requête SQL dans ta réponse : elle est ajoutée automatiquement
+              sous ton message. L'écrire toi-même la ferait apparaître en double.
+            - ❌ Ne détaille jamais les valeurs chiffrées du résultat (pas de tableau, pas de liste).
+            - ❌ N'ajoute aucun autre texte (pas d'explications techniques, pas de reformulation).
 
-    - Interdictions absolues :
-        - ❌ N'écris JAMAIS la requête SQL dans ta réponse : elle est ajoutée automatiquement
-          sous ton message. L'écrire toi-même la ferait apparaître en double.
-        - ❌ Ne détaille jamais les valeurs chiffrées du résultat (pas de tableau, pas de liste).
-        - ❌ N'ajoute aucun autre texte (pas d'explications techniques, pas de reformulation).
-
-    Respecte impérativement les RÈGLES MÉMORISÉES ci-dessous si présentes.
+        Respecte impérativement les RÈGLES MÉMORISÉES ci-dessous si présentes.
 """

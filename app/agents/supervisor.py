@@ -1,11 +1,7 @@
 """
 Superviseur — reçoit le message et délègue à un agent spécialiste.
-
-Le superviseur choisit UN outil de délégation (ou répond via l'agent conversationnel), relaie la réponse du
-spécialiste, et reste léger.
 """
 import asyncio
-from typing import Optional
 from pydantic_ai import Agent, RunContext
 from app.agents.deps import ChatDeps
 from app.agents.model import get_agent_model
@@ -93,11 +89,10 @@ async def delegate_statistics(ctx: RunContext[ChatDeps], request: str) -> str:
     ctx.deps.events.intention("statistiques")
     ctx.deps.last_stats_sql = None
     result = await statistics_agent.run(request, deps=ctx.deps, usage=ctx.usage)
-
-    # V1 : la requête est affichée telle quelle sous la réponse. On l'ajoute ici
-    # (et pas via le modèle) pour garantir qu'elle est identique à celle validée.
+    
     if ctx.deps.last_stats_sql:
-        return f"{result.output}<br/><br/><pre><code>{ctx.deps.last_stats_sql}</code></pre>"
+        return f"{result.output}<br/><br/>{ctx.deps.last_stats_sql}"
+    
     return result.output
 
 async def delegate_correction(ctx: RunContext[ChatDeps], message: str) -> str:
