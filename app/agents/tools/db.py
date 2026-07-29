@@ -45,3 +45,36 @@ async def run_sql(ctx: RunContext[ChatDeps], sql: str) -> dict:
     ctx.deps.last_sql = sql
     ctx.deps.last_count = len(rows)
     return {"ok": True, "count": len(rows)}
+
+
+async def run_stats_sql(ctx: RunContext[ChatDeps], sql: str) -> dict:
+    """
+    Exécute une requête SQL d'agrégation (statistiques) pour la VALIDER, et renvoie
+    le nombre de lignes agrégées, les colonnes calculées et un échantillon du résultat.
+
+    IMPORTANT : en cas d'erreur SQL, renvoie ``{"ok": False, "error": ...}`` SANS lever
+    d'exception. L'agent doit alors CORRIGER sa requête à partir du message d'erreur et
+    rappeler ce tool (boucle d'auto-correction).
+
+    En cas de succès, la requête est mémorisée dans les deps : c'est elle qui sera
+    affichée à l'utilisateur par la couche de délégation.
+
+    Args:
+        sql: Requête SQL d'agrégation construite à partir de la demande de l'utilisateur
+    """
+    print("[TOOL CALL] run_stats_sql")
+    print(f"SQL: {sql}")
+    try:
+        rows = await asyncio.to_thread(execute_select, sql)
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+    ctx.deps.last_stats_sql = sql
+    return {
+        "ok": True,
+        "count": len(rows),
+        "columns": list(rows[0].keys()) if rows else [],
+        # Échantillon (valeurs converties en texte : dates / Decimal ne sont pas
+        # sérialisables telles quelles vers le modèle).
+        "sample": [{k: str(v) for k, v in row.items()} for row in rows[:_MAX_SAMPLE]],
+    }

@@ -24,7 +24,14 @@ AGENT_SUPERVISOR_PROMPT = """
       - Appeler également si l'utilisateur demande les termes ou le vocabulaire lié à un sujet pour la recherche sémantique.
       - Appeler si l'utilisateur demande qui a ajouté un terme au vocabulaire lié à un autre terme ou sujet. Ex: "qui t'a dit que X est lié à Y?", "Qui t'a dit que le terme X fait partie du vocabulaire de Y ?"
       - Appeler si l'utilisateur veut supprimer ou exclure un terme du vocabulaire lié à un autre terme ou sujet. Ex: "supprime X du vocabulaire lié à Y', "X ne doit pas être lié à Y", "X ne doit pas être inclu dans les recherches de Y"
-  - `delegate_correction` : 
+  - `delegate_statistics` :
+      - Appeler avec EXACTEMENT le message envoyé par l'utilisateur, sans le reformuler.
+      - STATISTIQUES / INDICATEURS AGRÉGÉS : l'utilisateur veut des CHIFFRES calculés (somme, moyenne, comptage, répartition, pourcentage, écart, classement), PAS la liste des tickets.
+      - Signaux : "combien de", "nombre de ... par ...", "temps effectif/passé/estimé par ...", "répartition", "moyenne", "total", "pourcentage", "écart", "top/classement", "par salarié", "par employé", "par utilisateur", "par projet", "par mois".
+      - Ex: "Donne-moi le temps effectif par salarié pour le projet CAO2026", "Donne-moi la répartition de temps de chaque employé entre absence, R&D et non R&D en 2026", "Je veux savoir le nombre de tickets où le temps a été surestimé, sous-estimé ou correctement estimé par utilisateur", "Combien de tickets ouverts par projet ?".
+      - Différence avec `delegate_new_research` : la recherche renvoie une LISTE de tickets ("les tickets du projet X qui ont plus de 5h"), la statistique renvoie des VALEURS AGRÉGÉES regroupées ("le temps total par projet"). Si la demande commence par "donne-moi/cherche/trouve les tickets...", c'est une recherche, pas une statistique.
+      - Ce tool ne crée jamais de recherche : il ne faut donc pas l'utiliser pour un affinage (`delegate_refine_search`).
+  - `delegate_correction` :
       - L'utilisateur corrige ton comportement ou te demande de RETENIR une règle/synonyme/exclusion. Ex: "utilise la table projet_ticket", "cinématique inclut aussi vitesse de rotation".
       - Utiliser si l'utilisateur demande d'associer un mot ou un terme au vocabulaire d'un autre terme pour al recherche sémantique. Ex: "je veux que le mot X soit associé aux recherches de Y", "X doit être associé au mot Y pour les recherche sémantiques".
       - Utiliser également si l'utilisateur demande de supprimer ou mettre à jour un souvenir. Il est important de noter que delegate_semantic_search est en charge de la suppression de souvenirs de vocabulaire (kind=vocabulary).

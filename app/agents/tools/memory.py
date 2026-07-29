@@ -7,7 +7,7 @@ from app.agents.deps import ChatDeps
 from app.services import vectorstore as vs
 from app.agents.specialists.memory_judge import judge_candidates
 
-VALID_TARGET_AGENTS = ("supervisor", "sql_research", "semantic_research", "conversational", "memory")
+VALID_TARGET_AGENTS = ("supervisor", "sql_research", "semantic_research", "statistics", "conversational", "memory")
 VALID_KINDS = ("behavior", "vocabulary")
 
 
@@ -46,6 +46,10 @@ async def save_memory(ctx: RunContext[ChatDeps], target_agent: str, content: str
             - `semantic_research` : erreur dans une recherche par thème/sujet (vocabulaire ou comportement).
               Ex: "Considère 'lent' et 'slow' comme synonymes de 'performance'",
               "Kinematic doit être lié à cinématique pour les recherches".
+            - `statistics` : erreur dans le calcul d'un indicateur agrégé (mauvais regroupement,
+              mauvaise règle de calcul du temps, mauvaise catégorie R&D/absence, double comptage).
+              Ex: "Le temps effectif par salarié doit se baser sur planning.user_id, pas sur
+              l'assigné du ticket", "Une estimation est correcte à 20 % près, pas 10 %".
             - `conversational` : erreur de formulation ou de comportement conversationnel.
               Ex: "Tu devais répondre ma question à partir de l'historique de la conversation".
             - `memory` : erreur dans TA PROPRE classification/gestion d'un souvenir (mauvais

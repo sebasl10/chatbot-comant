@@ -36,6 +36,11 @@ class ChatDeps:
     last_sql: str | None = None
     last_count: int = 0
 
+    # Dernière requête d'agrégation exécutée avec succès par le tool run_stats_sql.
+    # La couche de délégation l'affiche telle quelle sous la réponse de l'agent
+    # statistiques (elle n'est pas persistée comme une recherche).
+    last_stats_sql: str | None = None
+
     # Mode courant de l'agent SQL : "recherche" (nouvelle recherche) ou
     # "affinage" (modification d'une recherche existante). Positionné par la
     # couche de délégation du superviseur avant d'invoquer l'agent SQL.

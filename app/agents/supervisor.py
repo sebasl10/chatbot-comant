@@ -12,6 +12,7 @@ from app.agents.model import get_agent_model
 from app.agents.specialists.conversational import conversational_agent
 from app.agents.specialists.sql_research import sql_research_agent
 from app.agents.specialists.semantic_research import semantic_research_agent
+from app.agents.specialists.statistics import statistics_agent
 from app.agents.specialists.memory import memory_agent
 from app.agents.tools.memory import relevant_memories
 from app.agents.tools.research import persist_new_research, persist_affinage
@@ -81,6 +82,24 @@ async def delegate_semantic_search(ctx: RunContext[ChatDeps], request: str) -> s
         await persist_new_research(ctx.deps, True, intention="recherche")
     return result.output
 
+async def delegate_statistics(ctx: RunContext[ChatDeps], request: str) -> str:
+    """
+    Délègue le calcul d'une STATISTIQUE (indicateur agrégé) à l'agent statistiques.
+    Args:
+        request: Message exact envoyé par l'utilisateur, sans modification, sans reformulation, sans ajout de texte
+    """
+    print("[DELEGATE] Statistics agent")
+    print(f"Message: {request}")
+    ctx.deps.events.intention("statistiques")
+    ctx.deps.last_stats_sql = None
+    result = await statistics_agent.run(request, deps=ctx.deps, usage=ctx.usage)
+
+    # V1 : la requête est affichée telle quelle sous la réponse. On l'ajoute ici
+    # (et pas via le modèle) pour garantir qu'elle est identique à celle validée.
+    if ctx.deps.last_stats_sql:
+        return f"{result.output}<br/><br/><pre><code>{ctx.deps.last_stats_sql}</code></pre>"
+    return result.output
+
 async def delegate_correction(ctx: RunContext[ChatDeps], message: str) -> str:
     """
     Délègue l'enregistrement d'une correction/souvenir à l'agent mémoire.
@@ -94,7 +113,7 @@ async def delegate_correction(ctx: RunContext[ChatDeps], message: str) -> str:
 supervisor_agent = Agent(
     get_agent_model(),
     deps_type=ChatDeps,
-    output_type=[str, delegate_conversation, delegate_new_research, delegate_refine_search, delegate_semantic_search, delegate_correction],
+    output_type=[str, delegate_conversation, delegate_new_research, delegate_refine_search, delegate_semantic_search, delegate_statistics, delegate_correction],
     retries=2,
 )
 guard_against_tool_call_leak(supervisor_agent)
