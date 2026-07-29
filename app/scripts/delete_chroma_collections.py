@@ -5,16 +5,14 @@ Usage :
 
 Modifiez la liste COLLECTIONS_TO_DELETE pour definir les collections a supprimer.
 """
-import asyncio
-from app.services import vectorstore as vs
-from app.config import settings
 
+import asyncio
+
+from app.config import settings
+from app.services import vectorstore as vs
 
 # Liste des collections a supprimer - MODIFIEZ CI-DESSOUS
-COLLECTIONS_TO_DELETE = [
-    "supervisor_actions",
-    "memories"
-]
+COLLECTIONS_TO_DELETE = ["supervisor_actions", "memories"]
 
 
 async def main():

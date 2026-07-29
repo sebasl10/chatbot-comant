@@ -1,5 +1,5 @@
-from app.services.ollama import call_ollama
 from app.services.database import update_conversation_name
+from app.services.ollama import call_ollama
 
 CONVERSATION_NAME_SYSTEM_PROMPT = """
 
@@ -72,6 +72,7 @@ Le nom doit être précis, descriptif, grammaticalement correct et refléter les
 ---
 
 """
+
 
 async def create_name(conversation_id: int, historique: list):
     prompt = f"\nMessages de l'utilisateur: {historique}\nGenère le nom de la conversation: "

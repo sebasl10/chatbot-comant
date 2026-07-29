@@ -1,0 +1,25 @@
+[dependency-groups]
+dev = ["ruff>=0.9.0"]
+
+[tool.ruff]
+target-version = "py311"
+line-length = 100
+exclude = [".venv", "__pycache__"]
+
+[tool.ruff.lint]
+select = [
+    "E",   # pycodestyle errors
+    "F",   # pyflakes
+    "I",   # isort (orden de imports)
+    "UP",  # pyupgrade
+    "B",   # flake8-bugbear
+]
+ignore = [
+    "E501",  # el formateador ya controla el ancho de linea
+]
+
+[tool.ruff.lint.per-file-ignores]
+"app/agents/prompts/*.py" = ["E501"]
+
+[tool.ruff.format]
+quote-style = "double"

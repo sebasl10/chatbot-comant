@@ -1,5 +1,6 @@
 import json
 
+
 def _history_context(historique: list[dict]) -> str:
     """
     Formate l'historique au format JSON pour injection dans le prompt d'un LLM.

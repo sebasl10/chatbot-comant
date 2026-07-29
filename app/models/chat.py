@@ -1,5 +1,7 @@
 from pydantic import BaseModel
+
 from app.config import settings
+
 
 class ChatRequest(BaseModel):
     message: str
@@ -9,10 +11,12 @@ class ChatRequest(BaseModel):
     last_message_id: int
     research_id: int
 
+
 class NameRequest(BaseModel):
     historique: list
     conversation_id: int
-    
+
+
 class MemoryRequest(BaseModel):
     id: str | None = None
     content: str | None = None
@@ -24,6 +28,6 @@ class MemoryRequest(BaseModel):
     user_id: int | None = None
     scope: str | None = None
 
+
 class EmbeddingRequest(BaseModel):
     ticket_id: int
-    

@@ -1,5 +1,5 @@
 """
-Persistance des recherches 
+Persistance des recherches
 
 Ces helpers ne sont PAS exposés au LLM : la création/mise à jour d'une recherche
 doit se produire exactement une fois, pilotée par la couche de délégation après
@@ -9,9 +9,12 @@ qu'un agent spécialiste a produit une requête SQL valide (mémorisée dans
 Ils émettent l'événement ``research`` (research_id + sql) que le front consomme
 pour rediriger vers l'onglet Recherche et afficher les résultats.
 """
+
 import asyncio
+
 from app.agents.deps import ChatDeps
 from app.services.database import create_research, update_sql
+
 
 async def persist_new_research(deps: ChatDeps, isSemantic: bool, intention: str = None) -> int:
     """

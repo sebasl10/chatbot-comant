@@ -16,33 +16,70 @@ Usage :
 """
 
 import asyncio
-from app.services import vectorstore as vs
+
 from app.config import settings
+from app.services import vectorstore as vs
 
 # Exemples de base pour l'agent superviseur : (requête type, délégation attendue)
 SUPERVISOR_EXAMPLES = [
     # Recherche exacte (SQL)
     {"user_query": "Cherche les tickets associés au client PTC", "action": "delegate_new_research"},
-    {"user_query": "Trouve tous les tickets avec le statut 'En cours'", "action": "delegate_new_research"},
-    {"user_query": "Liste les tickets de haute priorité créés cette semaine", "action": "delegate_new_research"},
+    {
+        "user_query": "Trouve tous les tickets avec le statut 'En cours'",
+        "action": "delegate_new_research",
+    },
+    {
+        "user_query": "Liste les tickets de haute priorité créés cette semaine",
+        "action": "delegate_new_research",
+    },
     {"user_query": "Montre-moi les tickets assignés à dba", "action": "delegate_new_research"},
     # Recherche sémantique
-    {"user_query": "Cherche les tickets qui parlent d'embeddings", "action": "delegate_semantic_search"},
-    {"user_query": "Trouve des tickets concernant l'apprentissage automatique", "action": "delegate_semantic_search"},
-    {"user_query": "Quels tickets traitent de l'IA générative ?", "action": "delegate_semantic_search"},
-    {"user_query": "Donne-moi les tickets qui parlent d'annotations 3d", "action": "delegate_semantic_search"},
+    {
+        "user_query": "Cherche les tickets qui parlent d'embeddings",
+        "action": "delegate_semantic_search",
+    },
+    {
+        "user_query": "Trouve des tickets concernant l'apprentissage automatique",
+        "action": "delegate_semantic_search",
+    },
+    {
+        "user_query": "Quels tickets traitent de l'IA générative ?",
+        "action": "delegate_semantic_search",
+    },
+    {
+        "user_query": "Donne-moi les tickets qui parlent d'annotations 3d",
+        "action": "delegate_semantic_search",
+    },
     # Affinage de recherche
-    {"user_query": "Filtre la recherche précédente pour ne garder que les tickets urgents", "action": "delegate_refine_search"},
-    {"user_query": "Ajoute un filtre pour exclure les tickets ouverts", "action": "delegate_refine_search"},
-    {"user_query": "Modifie la recherche pour inclure seulement les tickets de 2024", "action": "delegate_refine_search"},
+    {
+        "user_query": "Filtre la recherche précédente pour ne garder que les tickets urgents",
+        "action": "delegate_refine_search",
+    },
+    {
+        "user_query": "Ajoute un filtre pour exclure les tickets ouverts",
+        "action": "delegate_refine_search",
+    },
+    {
+        "user_query": "Modifie la recherche pour inclure seulement les tickets de 2024",
+        "action": "delegate_refine_search",
+    },
     # Conversation
     {"user_query": "Bonjour, comment ça va ?", "action": "delegate_conversation"},
     {"user_query": "Merci pour ton aide", "action": "delegate_conversation"},
-    {"user_query": "Peux-tu m'expliquer comment fonctionne ce système ?", "action": "delegate_conversation"},
+    {
+        "user_query": "Peux-tu m'expliquer comment fonctionne ce système ?",
+        "action": "delegate_conversation",
+    },
     {"user_query": "Quelle est la météo aujourd'hui ?", "action": "delegate_conversation"},
     # Mémoire/Correction
-    {"user_query": "Tu t'es trompé, tu n'as pas utilisé les champs corrects pour construire la requête SQL", "action": "delegate_correction"},
-    {"user_query": "Ne rajoute jamais de points virgule à la fin des requêtes SQL", "action": "delegate_correction"},
+    {
+        "user_query": "Tu t'es trompé, tu n'as pas utilisé les champs corrects pour construire la requête SQL",
+        "action": "delegate_correction",
+    },
+    {
+        "user_query": "Ne rajoute jamais de points virgule à la fin des requêtes SQL",
+        "action": "delegate_correction",
+    },
 ]
 
 
@@ -135,7 +172,9 @@ async def clear_examples():
 async def main():
     import argparse
 
-    parser = argparse.ArgumentParser(description="Exemples de routage du superviseur (collection memories)")
+    parser = argparse.ArgumentParser(
+        description="Exemples de routage du superviseur (collection memories)"
+    )
     parser.add_argument("--init", action="store_true", help="Ajouter les exemples de base")
     parser.add_argument("command", nargs="?", choices=["list", "clear"], help="list | clear")
     args = parser.parse_args()

@@ -1,17 +1,24 @@
 import asyncio
 
+import logfire
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
-import logfire
 
-from app.config import settings
-from app.models.chat import ChatRequest, NameRequest, MemoryRequest, EmbeddingRequest
 from app.agents.deps import ChatDeps
 from app.agents.orchestrator import run_chat_stream
-from app.services.database import get_username
+from app.config import settings
+from app.models.chat import ChatRequest, EmbeddingRequest, MemoryRequest, NameRequest
 from app.services.conversation_name import create_name
-from app.services.vectorstore import get_all_memories, delete_memory, update_memory, add_memory, add_ticket_to_chroma, recover_memory
+from app.services.database import get_username
+from app.services.vectorstore import (
+    add_memory,
+    add_ticket_to_chroma,
+    delete_memory,
+    get_all_memories,
+    recover_memory,
+    update_memory,
+)
 
 app = FastAPI(title="LLM API Comant", version="0.1.0")
 app.add_middleware(
@@ -65,6 +72,7 @@ async def get_memories():
     memories = await get_all_memories()
     return memories
 
+
 @app.post("/memory/add")
 async def create_memory_chroma_endpoint(request: MemoryRequest):
     print(request)
@@ -79,13 +87,16 @@ async def create_memory_chroma_endpoint(request: MemoryRequest):
         base_term=request.base_term,
     )
 
+
 @app.post("/memory/delete")
 async def delete_memory_chroma_endpoint(request: MemoryRequest):
     await delete_memory(request.id)
 
+
 @app.post("/memory/recover")
 async def recover_memory_endpoint(request: MemoryRequest):
     await recover_memory(request.id)
+
 
 @app.post("/memory/modify")
 async def update_memory_endpoint(request: MemoryRequest):
@@ -105,4 +116,3 @@ async def update_memory_endpoint(request: MemoryRequest):
 @app.post("/embed/add")
 async def add_embedding(request: EmbeddingRequest):
     await add_ticket_to_chroma(request.ticket_id)
-
