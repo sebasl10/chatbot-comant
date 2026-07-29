@@ -664,7 +664,7 @@ async def find_similar_contextual_memories(target_agent: str, user_id: int | Non
 
 async def supersede_memory(old_id: str, new_id: str, new_content: str, username: str | None = None) -> None:
     """
-    Marque un souvenir comme remplacé par un autre 
+    Marque un souvenir comme remplacé par un autre
     """
     col = await memories_collection()
     res = await col.get(ids=[old_id], include=["metadatas"])
@@ -684,26 +684,28 @@ async def supersede_memory(old_id: str, new_id: str, new_content: str, username:
     _debug_memory("SUPERSEDE", f"id={old_id} -> {new_id}", [f"remplacé par {new_id}"], [meta])
 
 
-async def recover_memory(new_id: str) -> bool:
+async def recover_memory(old_id: str) -> bool:
     """
-    Annule une supersession : retrouve le(s) souvenir(s) remplacé(s) par ``new_id``, 
-    les réactive (``status="active"``, retire les champs ``superseded_by*``), puis supprime ``new_id`` lui-même.
+    Annule une supersession : réactive le souvenir ``old_id`` (``status="active"``,
+    retire les champs ``superseded_by*``), puis supprime le souvenir qui l'avait remplacé 
     """
     col = await memories_collection()
-    res = await col.get(where={"superseded_by": new_id}, include=["metadatas"])
-    old_ids = res.get("ids") or []
-    if not old_ids:
+    res = await col.get(ids=[old_id], include=["metadatas"])
+    if not res.get("ids"):
         return False
 
-    metas = res.get("metadatas") or []
-    for old_id, meta in zip(old_ids, metas):
-        if not isinstance(meta, dict):
-            meta = {}
-        meta = {k: v for k, v in meta.items() if k not in ("superseded_by", "superseded_by_username", "superseded_by_content")}
-        meta["status"] = "active"
-        meta["updated_at"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        await col.update(ids=[old_id], metadatas=[meta])
-        _debug_memory("RECOVER", f"id={old_id} (annule remplacement par {new_id})", ["réactivé"], [meta])
+    meta = res["metadatas"][0] if res.get("metadatas") else {}
+    if not isinstance(meta, dict):
+        meta = {}
+    new_id = meta.get("superseded_by")
+    if not new_id:
+        return False
+
+    meta = {k: v for k, v in meta.items() if k not in ("superseded_by", "superseded_by_username", "superseded_by_content")}
+    meta["status"] = "active"
+    meta["updated_at"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    await col.update(ids=[old_id], metadatas=[meta])
+    _debug_memory("RECOVER", f"id={old_id} (annule remplacement par {new_id})", ["réactivé"], [meta])
 
     await col.delete(ids=[new_id])
     return True
