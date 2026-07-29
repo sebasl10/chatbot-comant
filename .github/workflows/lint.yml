@@ -28,7 +28,9 @@ jobs:
 
       - name: Fix and format
         run: |
-          ruff check --fix .
+          # --exit-zero: les erreurs non corrigeables automatiquement ne doivent pas
+          # avorter le step avant le format et le commit. Elles sont remontees plus bas.
+          ruff check --fix --exit-zero .
           ruff format .
 
       - name: Commit changes
