@@ -37,7 +37,7 @@ async def save_memory(ctx: RunContext[ChatDeps], target_agent: str, content: str
 
     Args:
         target_agent: agent qui devra respecter ce souvenir.
-            - `supervisor` : le chatbot a mal délégué/routé la demande (mauvais agent choisi).
+            - `supervisor` : le chatbot a mal délégué/routé la demande (mauvais agent choisi ou mauvaise fonctionnaliée identifiée).
               Ex: "Tu as délégué à l'agent memory, mais tu devais déléguer à l'agent semantic_search",
               "Tu as fait une recherche sémantique, mais tu devais faire une recherche par filtres".
             - `sql_research` : erreur dans la génération d'une requête SQL (filtres, colonnes, syntaxe).
