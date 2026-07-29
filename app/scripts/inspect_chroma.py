@@ -3,9 +3,11 @@
 Usage :
     python -m app.scripts.inspect_chroma
 """
+
 import asyncio
-from app.services import vectorstore as vs
+
 from app.config import settings
+from app.services import vectorstore as vs
 
 
 def print_section(title: str):
@@ -71,7 +73,7 @@ async def print_statistics(collection):
     """Affiche les statistiques d'une collection."""
     try:
         count = await collection.count()
-        print(f"\n  📊 Statistiques:")
+        print("\n  📊 Statistiques:")
         print(f"     • Nombre de documents: {count:,}")
 
         # Récupérer un échantillon pour les stats d'embeddings
@@ -101,7 +103,7 @@ async def print_statistics(collection):
                                 type_counts[t] = type_counts.get(t, 0) + 1
                         print(f"     • Répartition par {cat_key}:")
                         for t, cnt in sorted(type_counts.items(), key=lambda x: -x[1]):
-                            print(f"       - {t}: {cnt:,} ({cnt/count*100:.1f}%)")
+                            print(f"       - {t}: {cnt:,} ({cnt / count * 100:.1f}%)")
 
                 # Compter les user_id uniques (si applicable)
                 if all_metadatas and isinstance(all_metadatas[0], dict):
@@ -129,7 +131,7 @@ async def inspect_collection(name: str, collection_func):
         data = await get_first_rows(collection)
         if data:
             print_first_rows(data)
-            
+
     except Exception as e:
         print(f"  ❌ Erreur: {e}")
 
@@ -161,7 +163,7 @@ async def main():
     except Exception as e:
         print(f"  ⚠️  Impossible de lister toutes les collections: {e}")
 
-    print(f"\n✅ Inspection terminée.")
+    print("\n✅ Inspection terminée.")
 
 
 if __name__ == "__main__":

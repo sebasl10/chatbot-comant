@@ -3,7 +3,9 @@ Tool de recherche sémantique de tickets (backed Chroma).
 """
 
 import asyncio
+
 from pydantic_ai import RunContext
+
 from app.agents.deps import ChatDeps
 from app.services import vectorstore as vs
 from app.services.database import get_connection
@@ -46,28 +48,40 @@ def _fetch_lexical_tiers(base_term: str, synonyms: list[str]) -> dict[int, int]:
     comment_type_filter = "c.ticket_id IN (SELECT id FROM ticket WHERE type IN ('Bug', 'Dev', 'Suggestion', 'Requête', 'Documentation'))"
 
     cond, p = _like_clause("t.summary", [base_term])
-    subqueries.append(f"SELECT t.id AS ticket_id, 0 AS tier FROM ticket t WHERE {cond} AND {type_condition}")
+    subqueries.append(
+        f"SELECT t.id AS ticket_id, 0 AS tier FROM ticket t WHERE {cond} AND {type_condition}"
+    )
     params += p
 
     cond, p = _like_clause("t.description", [base_term])
-    subqueries.append(f"SELECT t.id AS ticket_id, 1 AS tier FROM ticket t WHERE {cond} AND {type_condition}")
+    subqueries.append(
+        f"SELECT t.id AS ticket_id, 1 AS tier FROM ticket t WHERE {cond} AND {type_condition}"
+    )
     params += p
 
     cond, p = _like_clause("c.text", [base_term])
-    subqueries.append(f"SELECT c.ticket_id AS ticket_id, 1 AS tier FROM comment c WHERE {cond} AND {comment_type_filter}")
+    subqueries.append(
+        f"SELECT c.ticket_id AS ticket_id, 1 AS tier FROM comment c WHERE {cond} AND {comment_type_filter}"
+    )
     params += p
 
     if synonyms:
         cond, p = _like_clause("t.summary", synonyms)
-        subqueries.append(f"SELECT t.id AS ticket_id, 2 AS tier FROM ticket t WHERE {cond} AND {type_condition}")
+        subqueries.append(
+            f"SELECT t.id AS ticket_id, 2 AS tier FROM ticket t WHERE {cond} AND {type_condition}"
+        )
         params += p
 
         cond, p = _like_clause("t.description", synonyms)
-        subqueries.append(f"SELECT t.id AS ticket_id, 3 AS tier FROM ticket t WHERE {cond} AND {type_condition}")
+        subqueries.append(
+            f"SELECT t.id AS ticket_id, 3 AS tier FROM ticket t WHERE {cond} AND {type_condition}"
+        )
         params += p
 
         cond, p = _like_clause("c.text", synonyms)
-        subqueries.append(f"SELECT c.ticket_id AS ticket_id, 3 AS tier FROM comment c WHERE {cond} AND {comment_type_filter}")
+        subqueries.append(
+            f"SELECT c.ticket_id AS ticket_id, 3 AS tier FROM comment c WHERE {cond} AND {comment_type_filter}"
+        )
         params += p
 
     sql = (
@@ -115,21 +129,19 @@ async def query_tickets(query: str, threshold: float = 0.52, use_synonyms: bool 
         all_embeddings = await vs.get_embeddings([f"Instruct: {query_instruction}\nQuery: {query}"])
         terms_used = [query]
 
-    res = await col.query(
-        query_embeddings=all_embeddings,
-        n_results=3000,
-        include=["distances"]
-    )
+    res = await col.query(query_embeddings=all_embeddings, n_results=3000, include=["distances"])
 
     all_results = []
     for i in range(len(all_embeddings)):
         ids = res["ids"][i]
         distances = res["distances"][i]
         for j in range(len(ids)):
-            all_results.append({
-                "id": int(ids[j]),
-                "distance": distances[j],
-            })
+            all_results.append(
+                {
+                    "id": int(ids[j]),
+                    "distance": distances[j],
+                }
+            )
 
     all_results.sort(key=lambda x: x["distance"])
     filtered_results = [r for r in all_results if r["distance"] <= threshold]
@@ -188,10 +200,12 @@ async def semantic_ticket_search(ctx: RunContext[ChatDeps], query: str) -> dict:
     print(f"Query: {query}")
 
     result = await query_tickets(query)
-    ticket_ids = result['ticket_ids']
+    ticket_ids = result["ticket_ids"]
     if ticket_ids:
         ids_str = ", ".join(str(tid) for tid in ticket_ids)
-        sql_query = f"SELECT t.id, t.summary, t.description FROM ticket t WHERE t.id IN ({ids_str}) "
+        sql_query = (
+            f"SELECT t.id, t.summary, t.description FROM ticket t WHERE t.id IN ({ids_str}) "
+        )
     else:
         sql_query = "SELECT t.id, t.summary, t.description FROM ticket t WHERE t.id IN ()"
 
@@ -217,10 +231,10 @@ async def get_vocabulary_for_term(ctx: RunContext[ChatDeps], term: str) -> dict:
     - "Quels sont les termes liés à X ?"
     - "Qui a ajouté le terme X ?"
     - "Qui t'a dit que X doit être inclus ?"
-    
+
     Args:
         term: Le terme de base pour lequel on veut récupérer les synonymes
-    
+
     Returns:
         dict avec les clés:
         - base_term: le terme de base
@@ -230,10 +244,10 @@ async def get_vocabulary_for_term(ctx: RunContext[ChatDeps], term: str) -> dict:
     """
     print("[TOOL CALL] get_vocabulary_for_term")
     print(f"Term: {term}")
-    
+
     result = await vs.get_vocabulary_for_term(term)
     print(f"[RESULTS] Vocabulaire pour '{term}': {result}")
-    
+
     return result
 
 
@@ -243,11 +257,11 @@ async def remove_term_from_vocabulary(ctx: RunContext[ChatDeps], term: str, base
     Utilisé pour répondre à des questions comme :
     - "supprime X du vocabulaire lié à Y"
     - "X ne doit pas être lié à Y"
-    
+
     Args:
         term: Le terme à supprimer (ex: "lent")
         base_term: Le terme de base dont on veut supprimer le synonyme (ex: "performance")
-    
+
     Returns:
         dict avec les clés:
         - success: bool indiquant si la suppression a réussi
@@ -257,8 +271,8 @@ async def remove_term_from_vocabulary(ctx: RunContext[ChatDeps], term: str, base
     """
     print("[TOOL CALL] remove_term_from_vocabulary")
     print(f"Term to remove: {term}, Base term: {base_term}")
-    
+
     result = await vs.remove_term_from_vocabulary(term, base_term)
     print(f"[RESULTS] Suppression de '{term}' du vocabulaire de '{base_term}': {result}")
-    
+
     return result

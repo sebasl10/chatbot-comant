@@ -3,9 +3,11 @@
 Usage :
     python -m app.scripts.inspect_memories
 """
+
 import asyncio
-from app.services import vectorstore as vs
+
 from app.config import settings
+from app.services import vectorstore as vs
 
 
 def print_section(title: str):
@@ -35,7 +37,7 @@ async def get_all_memories(collection, batch_size: int = 100):
     try:
         # Récupérer le count
         count_raw = await collection.count()
-        count = int(count_raw) if hasattr(count_raw, '__len__') else int(count_raw)
+        count = int(count_raw) if hasattr(count_raw, "__len__") else int(count_raw)
 
         all_data = {
             "ids": [],
@@ -49,13 +51,13 @@ async def get_all_memories(collection, batch_size: int = 100):
             batch = await collection.get(
                 limit=min(batch_size, count - offset),
                 offset=offset,
-                include=["documents", "metadatas"]
+                include=["documents", "metadatas"],
             )
             all_data["ids"].extend(batch.get("ids", []))
             all_data["documents"].extend(batch.get("documents", []))
             all_data["metadatas"].extend(batch.get("metadatas", []))
             offset += batch_size
-        
+
         return all_data
     except Exception as e:
         print(f"  ⚠️  Erreur lors de la récupération des mémoires: {e}")
@@ -80,16 +82,12 @@ def print_memories_by_type(data: dict):
         if mem_type not in memories_by_type:
             memories_by_type[mem_type] = []
 
-        memories_by_type[mem_type].append({
-            "id": doc_id,
-            "document": doc,
-            "metadata": meta
-        })
-    
+        memories_by_type[mem_type].append({"id": doc_id, "document": doc, "metadata": meta})
+
     # Afficher chaque type
     for mem_type, memories in memories_by_type.items():
         print_type_header(mem_type, len(memories))
-        
+
         for i, mem in enumerate(memories, 1):
             print(f"\n  {i}. {mem['document']}")
             if mem["metadata"]:
@@ -107,21 +105,21 @@ async def main():
         collection = await vs.memories_collection()
 
         # Récupérer toutes les mémoires
-        print_section(f"Collection: memories (🧠)")
+        print_section("Collection: memories (🧠)")
         data = await get_all_memories(collection)
 
         if data:
             # Afficher le nombre total
             count = len(data.get("ids", []))
             print(f"\n  📊 Total: {count:,} mémoires")
-            
+
             # Afficher groupées par type
             print_memories_by_type(data)
-        
+
     except Exception as e:
         print(f"  ❌ Erreur: {e}")
-    
-    print(f"\n✅ Inspection terminée.")
+
+    print("\n✅ Inspection terminée.")
 
 
 if __name__ == "__main__":

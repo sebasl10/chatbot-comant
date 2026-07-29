@@ -177,7 +177,10 @@ def build_recherche_prompt(schema: str, user_id: int | None) -> str:
             ```.
 """
 
-def build_affinage_prompt(schema: str, last_sql: str, user_id: int | None, history: list[dict]) -> str:
+
+def build_affinage_prompt(
+    schema: str, last_sql: str, user_id: int | None, history: list[dict]
+) -> str:
     user_context = f"L'utilisateur connecté a l'ID : {user_id}" if user_id else ""
 
     return f"""Tu es un assistant SQL pour une application de gestion de tickets.

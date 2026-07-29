@@ -7,15 +7,18 @@ contre les valeurs réelles présentes en base (fuzzy match via rapidfuzz).
 """
 
 import asyncio
+
 from pydantic import BaseModel
 from pydantic_ai import RunContext
+
 from app.agents.deps import ChatDeps
-from app.services.entity_cache import link_entities, CACHEABLE_COLUMNS
+from app.services.entity_cache import CACHEABLE_COLUMNS, link_entities
 
 ENTITY_TYPES = ", ".join(sorted(CACHEABLE_COLUMNS.keys()))
 
+
 class Entity(BaseModel):
-    type: str  
+    type: str
     value: str
 
 
@@ -26,7 +29,7 @@ async def validate_entities(ctx: RunContext[ChatDeps], entities: list[Entity]) -
     `type` doit être l'un de : {types}. Renvoie chaque entité avec son statut
     (ok / suggestion / unknown). Si des entités sont `unknown` ou `suggestion`,
     l'agent doit demander une clarification à l'utilisateur avant de générer le SQL.
-    
+
     Args:
         entities: Liste d'instances de la classe Entity avec 'type' le type de l'entité et 'value' sa valeur
     """

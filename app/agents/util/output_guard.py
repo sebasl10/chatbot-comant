@@ -12,14 +12,21 @@ modèle à corriger le tir via ``ModelRetry``.
 """
 
 import re
+
 from pydantic_ai import Agent, ModelRetry
 
 _LEAK_PATTERNS = [
-    re.compile(r"[a-zA-Z_][a-zA-Z0-9_]*\s*\[ARGS\]\s*\{"),  # nom_outil[ARGS]{...} (format natif Mistral)
+    re.compile(
+        r"[a-zA-Z_][a-zA-Z0-9_]*\s*\[ARGS\]\s*\{"
+    ),  # nom_outil[ARGS]{...} (format natif Mistral)
     re.compile(r"\[TOOL_CALLS\]"),  # préfixe natif Mistral
     re.compile(r"<tool_call>", re.IGNORECASE),  # format Hermes/Qwen
-    re.compile(r'"name"\s*:\s*"[a-zA-Z_][a-zA-Z0-9_]*"\s*,\s*"arguments"\s*:'),  # JSON générique {"name": .., "arguments": ..}
-    re.compile(r"^\s*[a-z_][a-z0-9_]*\(\s*[\"{]"),  # nom_outil("...") / nom_outil({...}) en début de réponse
+    re.compile(
+        r'"name"\s*:\s*"[a-zA-Z_][a-zA-Z0-9_]*"\s*,\s*"arguments"\s*:'
+    ),  # JSON générique {"name": .., "arguments": ..}
+    re.compile(
+        r"^\s*[a-z_][a-z0-9_]*\(\s*[\"{]"
+    ),  # nom_outil("...") / nom_outil({...}) en début de réponse
 ]
 
 _RETRY_MESSAGE = (

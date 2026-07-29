@@ -16,7 +16,7 @@ class ChatDeps:
     # Infos passées par le front pour l'affinage
     research_id: int = 0
     last_message_id: int = 0
-    
+
     historique: list[dict] = field(default_factory=list)
     events: EventSink = field(default_factory=EventSink)
     message: str = ""

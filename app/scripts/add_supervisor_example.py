@@ -21,8 +21,9 @@ Actions disponibles :
 
 import argparse
 import asyncio
-from app.services import vectorstore as vs
+
 from app.config import settings
+from app.services import vectorstore as vs
 
 VALID_ACTIONS = [
     "delegate_new_research",
@@ -73,12 +74,24 @@ async def main():
     subparsers = parser.add_subparsers(dest="command", help="Commande à exécuter")
 
     add_parser = subparsers.add_parser("add", help="Ajouter un exemple")
-    add_parser.add_argument("--query", "-q", type=str, required=True, help="La requête utilisateur type")
-    add_parser.add_argument("--action", "-a", type=str, required=True, help="Délégation à associer (ex: delegate_new_research)")
+    add_parser.add_argument(
+        "--query", "-q", type=str, required=True, help="La requête utilisateur type"
+    )
+    add_parser.add_argument(
+        "--action",
+        "-a",
+        type=str,
+        required=True,
+        help="Délégation à associer (ex: delegate_new_research)",
+    )
 
     search_parser = subparsers.add_parser("search", help="Rechercher des exemples similaires")
-    search_parser.add_argument("--query", "-q", type=str, required=True, help="Requête pour la recherche")
-    search_parser.add_argument("--n-results", "-n", type=int, default=5, help="Nombre de résultats (défaut: 5)")
+    search_parser.add_argument(
+        "--query", "-q", type=str, required=True, help="Requête pour la recherche"
+    )
+    search_parser.add_argument(
+        "--n-results", "-n", type=int, default=5, help="Nombre de résultats (défaut: 5)"
+    )
 
     subparsers.add_parser("list", help="Lister tous les souvenirs superviseur")
 
@@ -90,6 +103,7 @@ async def main():
         await search_examples(args.query, args.n_results)
     elif args.command == "list":
         from app.scripts.init_supervisor_actions import list_examples
+
         await list_examples()
     else:
         parser.print_help()

@@ -1,18 +1,24 @@
 """
 SemanticResearchAgent — recherche par thème/sujet (sémantique).
 """
+
 from pydantic_ai import Agent, RunContext
 from pydantic_ai.capabilities import Capability
+
 from app.agents.deps import ChatDeps
 from app.agents.model import get_agent_model
-from app.agents.tools.memory import relevant_memories
-from app.agents.tools.semantic import semantic_ticket_search, get_vocabulary_for_term, remove_term_from_vocabulary
 from app.agents.prompts.agent_semantic_research import (
     BASE_SEMANTIC_RESEARCH_PROMPT,
-    VOCABULARY_CAPABILITY_DESCRIPTION,
-    VOCABULARY_CAPABILITY_INSTRUCTIONS,
     TICKET_SEARCH_CAPABILITY_DESCRIPTION,
     TICKET_SEARCH_CAPABILITY_INSTRUCTIONS,
+    VOCABULARY_CAPABILITY_DESCRIPTION,
+    VOCABULARY_CAPABILITY_INSTRUCTIONS,
+)
+from app.agents.tools.memory import relevant_memories
+from app.agents.tools.semantic import (
+    get_vocabulary_for_term,
+    remove_term_from_vocabulary,
+    semantic_ticket_search,
 )
 from app.agents.util.output_guard import guard_against_tool_call_leak
 

@@ -747,6 +747,7 @@ curl http://localhost:8000/admin/export-finetuning -o finetuning.jsonl
 **Via le code :**
 ```python
 from app.services.finetuning_couples import export_finetuning_service
+
 export_finetuning_service()
 ```
 

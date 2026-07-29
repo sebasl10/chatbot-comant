@@ -5,10 +5,13 @@ Ces fonctions sont enregistrées comme tools Pydantic AI sur les agents SQL.
 Les appels bloquants (pymysql) sont déportés sur un thread pour ne pas figer
 la boucle asyncio pendant le streaming.
 """
+
 import asyncio
+
 from pydantic_ai import RunContext
+
 from app.agents.deps import ChatDeps
-from app.services.database import get_db_schema, execute_select
+from app.services.database import execute_select, get_db_schema
 
 _MAX_SAMPLE = 5
 
@@ -31,7 +34,7 @@ async def run_sql(ctx: RunContext[ChatDeps], sql: str) -> dict:
 
     En cas de succès, la requête est mémorisée dans les deps pour permettre à la
     couche de délégation de créer/mettre à jour la recherche persistée.
-    
+
     Args:
         sql: Requête SQL créée à partir de la requête de l'utilisateur
     """
