@@ -23,10 +23,6 @@ TICKETS = "tickets"
 MEMORIES = "memories"
 CONVERSATION_SUMMARIES = "conversation_summaries"
 MEMORY_MAX_DISTANCE = 0.45
-# Seuil (plus serré que MEMORY_MAX_DISTANCE) utilisé pour rassembler des
-# CANDIDATS à la réconciliation à l'écriture (couche 1) : on veut ici des
-# quasi-doublons plausibles à soumettre au juge, pas simplement des souvenirs
-# "liés" au sens de la couche 2 (lecture).
 MEMORY_RECONCILE_MAX_DISTANCE = 0.40
 DEFAULT_HNSW_CONFIG = {
     "hnsw": {
@@ -509,7 +505,6 @@ async def add_memory(
         "username": username or "",
         "date": now,
         "updated_at": now,
-        # "active" | "superseded" (réconciliation à l'écriture, cf. supersede_memory).
         "status": "active",
     }
     if retrieval is not None:
@@ -744,8 +739,6 @@ async def get_all_memories() -> dict:
             "date": meta.get('date'),
             "updated_at": meta.get('updated_at') or meta.get('date'),
             "status": meta.get('status') or "active",
-            # Ces champs sont posés par supersede_memory : id, auteur et
-            # contenu du souvenir qui a remplacé celui-ci (null si "active").
             "superseded_by": meta.get('superseded_by'),
             "superseded_by_username": meta.get('superseded_by_username'),
             "superseded_by_content": meta.get('superseded_by_content'),
@@ -786,44 +779,3 @@ async def get_last_memory(user_id: int | None) -> dict | None:
         "content": docs[last_index],
         "metadata": metas[last_index]
     }
-
-# ── Résumés de conversation ─────────────────────────────────────────────────
-
-async def add_conversation_summary(user_id: int, conversation_id: int, summary: str, embedding: list[float] | None = None) -> str:
-    """
-    Enregistre un résumé de conversation (rappel de contexte inter-sessions).
-    """
-    meta = {
-        "user_id": user_id,
-        "conversation_id": conversation_id,
-        "date": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-    }
-    doc_id = str(uuid.uuid4())
-    kwargs = {"ids": [doc_id], "documents": [summary], "metadatas": [meta]}
-    if embedding is not None:
-        kwargs["embeddings"] = [embedding]
-    col = await summaries_collection()
-    await col.add(**kwargs)
-    return doc_id
-
-async def search_conversation_summaries(user_id: int, query: str, k: int = 3) -> str:
-    """
-    Renvoie les ``k`` résumés de conversation les plus pertinents pour l'utilisateur.
-    Utilise un embedding avec préfixe d'instruction pour améliorer la recherche.
-    """
-    col = await summaries_collection()
-    if await col.count() == 0:
-        return ""
-
-    # Préfixe pour la recherche de résumés de conversation
-    summary_instruction = (
-        "Représente une requête pour retrouver des résumés de conversation pertinents. "
-        "Inclut le contexte conversationnel, les thèmes abordés et les concepts associés."
-    )
-
-    query_embedding = await asyncio.to_thread(get_embedding, f"Instruct: {summary_instruction}\nQuery: {query}")
-    res = await col.query(
-        query_embeddings=[query_embedding], n_results=k, where={"user_id": user_id}, include=["documents"]
-    )
-    docs = res["documents"][0] if res["documents"] else []
-    return "\n\n---\n\n".join(docs)
