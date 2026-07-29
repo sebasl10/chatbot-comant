@@ -662,14 +662,9 @@ async def find_similar_contextual_memories(target_agent: str, user_id: int | Non
     return candidates
 
 
-async def supersede_memory(old_id: str, new_id: str) -> None:
+async def supersede_memory(old_id: str, new_id: str, new_content: str, username: str | None = None) -> None:
     """
-    Marque un souvenir comme remplacé par un autre (réconciliation à l'écriture,
-    verdict "conflict" : la récence gagne). Ne supprime rien : ``status`` passe
-    à "superseded" et ``superseded_by`` pointe vers le nouveau souvenir, pour
-    garder une trace et permettre un rollback manuel. Le souvenir "superseded"
-    est ensuite exclu par ``active_only`` (``get_memories_text`` et
-    ``find_similar_contextual_memories``).
+    Marque un souvenir comme remplacé par un autre 
     """
     col = await memories_collection()
     res = await col.get(ids=[old_id], include=["metadatas"])
@@ -678,27 +673,39 @@ async def supersede_memory(old_id: str, new_id: str) -> None:
     meta = res["metadatas"][0] if res.get("metadatas") else {}
     if not isinstance(meta, dict):
         meta = {}
-    meta = {**meta, "status": "superseded", "superseded_by": new_id}
+    meta = {
+        **meta,
+        "status": "superseded",
+        "superseded_by": new_id,
+        "superseded_by_username": username or "",
+        "superseded_by_content": new_content,
+    }
     await col.update(ids=[old_id], metadatas=[meta])
     _debug_memory("SUPERSEDE", f"id={old_id} -> {new_id}", [f"remplacé par {new_id}"], [meta])
 
 
-async def recover_memory(memory_id: str) -> bool:
+async def recover_memory(new_id: str) -> bool:
     """
-    Réactive un souvenir "superseded"
+    Annule une supersession : retrouve le(s) souvenir(s) remplacé(s) par ``new_id``, 
+    les réactive (``status="active"``, retire les champs ``superseded_by*``), puis supprime ``new_id`` lui-même.
     """
     col = await memories_collection()
-    res = await col.get(ids=[memory_id], include=["metadatas"])
-    if not res.get("ids"):
+    res = await col.get(where={"superseded_by": new_id}, include=["metadatas"])
+    old_ids = res.get("ids") or []
+    if not old_ids:
         return False
-    meta = res["metadatas"][0] if res.get("metadatas") else {}
-    if not isinstance(meta, dict):
-        meta = {}
-    meta = {k: v for k, v in meta.items() if k != "superseded_by"}
-    meta["status"] = "active"
-    meta["updated_at"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    await col.update(ids=[memory_id], metadatas=[meta])
-    _debug_memory("RECOVER", f"id={memory_id}", ["réactivé"], [meta])
+
+    metas = res.get("metadatas") or []
+    for old_id, meta in zip(old_ids, metas):
+        if not isinstance(meta, dict):
+            meta = {}
+        meta = {k: v for k, v in meta.items() if k not in ("superseded_by", "superseded_by_username", "superseded_by_content")}
+        meta["status"] = "active"
+        meta["updated_at"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        await col.update(ids=[old_id], metadatas=[meta])
+        _debug_memory("RECOVER", f"id={old_id} (annule remplacement par {new_id})", ["réactivé"], [meta])
+
+    await col.delete(ids=[new_id])
     return True
 
 
@@ -737,7 +744,11 @@ async def get_all_memories() -> dict:
             "date": meta.get('date'),
             "updated_at": meta.get('updated_at') or meta.get('date'),
             "status": meta.get('status') or "active",
+            # Ces champs sont posés par supersede_memory : id, auteur et
+            # contenu du souvenir qui a remplacé celui-ci (null si "active").
             "superseded_by": meta.get('superseded_by'),
+            "superseded_by_username": meta.get('superseded_by_username'),
+            "superseded_by_content": meta.get('superseded_by_content'),
             "trigger": trigger,
             "rule": rule,
             "base_term": base_term,

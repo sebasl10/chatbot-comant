@@ -168,7 +168,7 @@ async def save_memory(ctx: RunContext[ChatDeps], target_agent: str, content: str
 
     if chosen_verdict and chosen_verdict.relation == "conflict":
         new_id = await vs.add_memory(target_agent=target_agent, kind=kind, content=content, user_id=ctx.deps.user_id, retrieval="contextual", trigger=trigger)
-        await vs.supersede_memory(chosen_candidate["id"], new_id)
+        await vs.supersede_memory(chosen_candidate["id"], new_id, content, ctx.deps.username)
         print(f"[MEMORY RECONCILE] conflit : {chosen_candidate['id']!r} remplacé par {new_id!r}")
         ctx.deps.events.correction(target_agent=target_agent, kind=kind, memory=content)
         return {
