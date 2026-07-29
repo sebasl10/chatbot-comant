@@ -11,25 +11,25 @@ Les souvenirs SQL de l'utilisateur (``target_agent=sql_research``) sont injecté
 dans le prompt en top-k sémantique pour être respectés dès la génération
 (plus besoin d'une 2e passe de vérification).
 """
+
 import asyncio
 
 from pydantic_ai import Agent, RunContext
 
 from app.agents.deps import ChatDeps
 from app.agents.model import get_agent_model
+from app.agents.prompts.agent_sql_search import (
+    SQL_AGENT_TOOLS_PROMPT,
+    build_affinage_prompt,
+    build_recherche_prompt,
+)
 from app.agents.tools.db import run_sql
 from app.agents.tools.entity import validate_entities
 from app.agents.tools.memory import relevant_memories
-from app.services.database import get_db_schema
-from app.agents.prompts.agent_sql_search import SQL_AGENT_TOOLS_PROMPT, build_recherche_prompt, build_affinage_prompt
 from app.agents.util.output_guard import guard_against_tool_call_leak
+from app.services.database import get_db_schema
 
-
-sql_research_agent = Agent(
-    get_agent_model(),
-    deps_type=ChatDeps,
-    retries=2
-)
+sql_research_agent = Agent(get_agent_model(), deps_type=ChatDeps, retries=2)
 sql_research_agent.tool(validate_entities)
 sql_research_agent.tool(run_sql)
 guard_against_tool_call_leak(sql_research_agent)

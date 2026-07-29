@@ -1,12 +1,13 @@
 """
 MemoryAgent — enregistrement des corrections/souvenirs.
 """
+
 from pydantic_ai import Agent, RunContext
 
 from app.agents.deps import ChatDeps
 from app.agents.model import get_agent_model
-from app.agents.tools.memory import save_memory, delete_memory, update_memory, relevant_memories
 from app.agents.prompts.agent_memory import AGENT_MEMORY_PROMPT
+from app.agents.tools.memory import delete_memory, relevant_memories, save_memory, update_memory
 from app.agents.util.output_guard import guard_against_tool_call_leak
 
 memory_agent = Agent(get_agent_model(), deps_type=ChatDeps, retries=2)

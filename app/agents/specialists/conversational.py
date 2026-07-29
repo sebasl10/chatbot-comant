@@ -1,7 +1,9 @@
 """
 ConversationalAgent — salutations, aide, hors-périmètre, conversation libre.
 """
+
 import asyncio
+
 from pydantic_ai import Agent, RunContext
 
 from app.agents.deps import ChatDeps

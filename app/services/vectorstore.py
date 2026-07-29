@@ -8,16 +8,19 @@ Collections :
 """
 
 from __future__ import annotations
+
 import asyncio
-from typing import Any, Dict, List
-import requests
-from chromadb import AsyncHttpClient
-from chromadb.api.types import Documents, EmbeddingFunction, Embeddings
 import uuid
 from datetime import datetime
-from app.config import settings
-from app.services.database import get_username, get_connection
+from typing import Any
+
+import requests
 from bs4 import BeautifulSoup
+from chromadb import AsyncHttpClient
+from chromadb.api.types import Documents, EmbeddingFunction, Embeddings
+
+from app.config import settings
+from app.services.database import get_connection, get_username
 
 TICKETS = "tickets"
 MEMORIES = "memories"
@@ -25,13 +28,9 @@ CONVERSATION_SUMMARIES = "conversation_summaries"
 MEMORY_MAX_DISTANCE = 0.45
 MEMORY_RECONCILE_MAX_DISTANCE = 0.40
 DEFAULT_HNSW_CONFIG = {
-    "hnsw": {
-        "space": "cosine",
-        "max_neighbors": 32,
-        "ef_construction": 1000,
-        "ef_search": 1000
-    }
+    "hnsw": {"space": "cosine", "max_neighbors": 32, "ef_construction": 1000, "ef_search": 1000}
 }
+
 
 class OllamaEmbeddingFunction(EmbeddingFunction):
     """
@@ -121,7 +120,9 @@ async def memories_collection():
 async def summaries_collection():
     return await _collection(CONVERSATION_SUMMARIES)
 
+
 # ── Ajouter/mettre à jouter l'embedding d'un ticket dans Chroma ────────────
+
 
 def _fetch_ticket_text(ticket_id: int) -> str | None:
     """
@@ -151,12 +152,12 @@ def _fetch_ticket_text(ticket_id: int) -> str | None:
             return soup.get_text(separator=" ", strip=True)
 
         text_parts = []
-        if ticket['summary']:
-            text_parts.append(remove_html_tags(ticket['summary']))
-        if ticket['description']:
-            text_parts.append(remove_html_tags(ticket['description']))
+        if ticket["summary"]:
+            text_parts.append(remove_html_tags(ticket["summary"]))
+        if ticket["description"]:
+            text_parts.append(remove_html_tags(ticket["description"]))
         for comment in comments:
-            text_parts.append(remove_html_tags(comment['text']))
+            text_parts.append(remove_html_tags(comment["text"]))
 
         full_text = "\n".join(text_parts)
 
@@ -193,7 +194,7 @@ async def add_ticket_to_chroma(ticket_id: int) -> bool:
             await col.update(
                 ids=[existing_id],
                 documents=[full_text],
-                metadatas=[{"ticket_id": ticket_id, "source": "api_add"}]
+                metadatas=[{"ticket_id": ticket_id, "source": "api_add"}],
             )
             print(f"Ticket {ticket_id} mis à jour dans Chroma")
         else:
@@ -201,7 +202,7 @@ async def add_ticket_to_chroma(ticket_id: int) -> bool:
             await col.add(
                 ids=[ticket_id_str],
                 documents=[full_text],
-                metadatas=[{"ticket_id": ticket_id, "source": "api_add"}]
+                metadatas=[{"ticket_id": ticket_id, "source": "api_add"}],
             )
             print(f"Ticket {ticket_id} ajouté à Chroma")
 
@@ -211,10 +212,12 @@ async def add_ticket_to_chroma(ticket_id: int) -> bool:
     except Exception as e:
         print(f"Erreur lors de l'ajout du ticket {ticket_id}: {e}")
         import traceback
+
         traceback.print_exc()
         return False
 
-async def get_vocabulary_for_term(base_term: str) -> Dict[str, Any]:
+
+async def get_vocabulary_for_term(base_term: str) -> dict[str, Any]:
     """
     Récupère le vocabulaire (synonymes) pour un terme de base avec ses métadonnées.
     Utilisé pour répondre à des questions comme "Qui a ajouté le terme X ?".
@@ -227,12 +230,7 @@ async def get_vocabulary_for_term(base_term: str) -> Dict[str, Any]:
     """
     col = await memories_collection()
 
-    where = {
-        "$and":[
-            {"kind": "vocabulary"},
-            {"base_term": base_term}
-        ]
-    }
+    where = {"$and": [{"kind": "vocabulary"}, {"base_term": base_term}]}
 
     res = await col.get(where=where, include=["documents", "metadatas"])
     docs = res.get("documents", [])
@@ -255,10 +253,13 @@ async def get_vocabulary_for_term(base_term: str) -> Dict[str, Any]:
         "base_term": base_term,
         "synonyms": synonyms,
         "metadata": metadata,
-        "count": len(synonyms)
+        "count": len(synonyms),
     }
 
-async def add_synonyms(base_term: str, synonyms: List[str], user_id: int | None = None, username: str | None = None) -> str:
+
+async def add_synonyms(
+    base_term: str, synonyms: list[str], user_id: int | None = None, username: str | None = None
+) -> str:
     """
     Ajoute un ensemble de synonymes pour un terme de base (kind=vocabulary, global).
     """
@@ -270,10 +271,11 @@ async def add_synonyms(base_term: str, synonyms: List[str], user_id: int | None 
         kind="vocabulary",
         content=content,
         user_id=user_id,
-        base_term=base_term
+        base_term=base_term,
     )
 
-async def remove_term_from_vocabulary(term: str, base_term: str) -> Dict[str, Any]:
+
+async def remove_term_from_vocabulary(term: str, base_term: str) -> dict[str, Any]:
     """
     Supprime une entrée de vocabulaire spécifique.
 
@@ -282,12 +284,7 @@ async def remove_term_from_vocabulary(term: str, base_term: str) -> Dict[str, An
     """
     col = await memories_collection()
 
-    where = {
-        "$and":[
-            {"kind": "vocabulary"},
-            {"base_term": base_term}
-        ]
-    }
+    where = {"$and": [{"kind": "vocabulary"}, {"base_term": base_term}]}
 
     res = await col.get(where=where, include=["documents"])
     docs = res.get("documents", [])
@@ -295,7 +292,7 @@ async def remove_term_from_vocabulary(term: str, base_term: str) -> Dict[str, An
 
     doc_id_to_delete = None
     for i, doc in enumerate(docs):
-        clean_doc = doc.strip().strip('"\'').lower()
+        clean_doc = doc.strip().strip("\"'").lower()
         if clean_doc == term.strip().lower():
             doc_id_to_delete = ids[i] if i < len(ids) else None
             break
@@ -305,7 +302,7 @@ async def remove_term_from_vocabulary(term: str, base_term: str) -> Dict[str, An
             "success": False,
             "message": f"Aucune entrée trouvée avec le document '{term}' pour le terme de base '{base_term}'",
             "base_term": base_term,
-            "removed_term": term
+            "removed_term": term,
         }
 
     await col.delete(ids=[doc_id_to_delete])
@@ -314,17 +311,17 @@ async def remove_term_from_vocabulary(term: str, base_term: str) -> Dict[str, An
         "success": True,
         "message": f"L'entrée '{term}' a été supprimée du vocabulaire de '{base_term}'",
         "base_term": base_term,
-        "removed_term": term
+        "removed_term": term,
     }
 
 
 # ── Gérer les souvenirs ──────────────────────────────────────
 _TARGET_AGENT_DEFAULT_SCOPE = {
-    "supervisor": "global",         # corrections/exemples de délégation : comportement système
-    "sql_research": "global",       # règles de construction SQL : comportement système
-    "semantic_research": "user",    # correction de comportement, propre à l'utilisateur
-    "conversational": "user",       # préférence de ton/comportement, propre à l'utilisateur
-    "memory": "global",             # méta-correction sur la classification : comportement système
+    "supervisor": "global",  # corrections/exemples de délégation : comportement système
+    "sql_research": "global",  # règles de construction SQL : comportement système
+    "semantic_research": "user",  # correction de comportement, propre à l'utilisateur
+    "conversational": "user",  # préférence de ton/comportement, propre à l'utilisateur
+    "memory": "global",  # méta-correction sur la classification : comportement système
 }
 
 
@@ -339,6 +336,7 @@ def default_scope(target_agent: str, kind: str | None = None) -> str:
     (ex: la réconciliation à l'écriture) qui doivent connaître le scope d'un
     souvenir avant même de l'écrire."""
     return _default_scope(target_agent, kind)
+
 
 def _debug_memory(
     action: str,
@@ -366,10 +364,16 @@ def _debug_memory(
         print(f"  {i + 1}. {doc}{suffix}")
         if meta is not None:
             print(f"     meta: {meta}")
-    print('━' * 64)
+    print("━" * 64)
 
 
-def _memory_where(target_agent: str, user_id: int | None, retrieval: str | None = None, exclude_kind: str | None = None, active_only: bool = False) -> dict:
+def _memory_where(
+    target_agent: str,
+    user_id: int | None,
+    retrieval: str | None = None,
+    exclude_kind: str | None = None,
+    active_only: bool = False,
+) -> dict:
     """
     Filtre les souvenirs destinés à ``target_agent`` : ceux de l'utilisateur plus
     ceux de portée globale, éventuellement restreints à un mode de récupération
@@ -387,18 +391,27 @@ def _memory_where(target_agent: str, user_id: int | None, retrieval: str | None 
         conds.append({"status": {"$ne": "superseded"}})
     return conds[0] if len(conds) == 1 else {"$and": conds}
 
+
 def _memory_payload(doc: str, meta: dict | None) -> str:
     """Texte à injecter dans le prompt : la correction (contextuel) ou le
     document lui-même (invariant, où le document EST la règle)."""
     return (meta or {}).get("correction") or doc
 
+
 async def embed_memory_query(text: str) -> list[float]:
     """Embedding (avec préfixe d'instruction) d'un message pour la recherche de souvenirs."""
-    instruction  = "Given an user's query, retrive similar queries."
+    instruction = "Given an user's query, retrive similar queries."
     return await asyncio.to_thread(get_embedding, f"Instruct: {instruction}\nQuery: {text}")
 
 
-async def get_memories_text(target_agent: str, user_id: int | None, query: str | None = None, query_embedding: list[float] | None = None, k: int = 5, max_distance: float = MEMORY_MAX_DISTANCE) -> str:
+async def get_memories_text(
+    target_agent: str,
+    user_id: int | None,
+    query: str | None = None,
+    query_embedding: list[float] | None = None,
+    k: int = 5,
+    max_distance: float = MEMORY_MAX_DISTANCE,
+) -> str:
     """
     Renvoie les souvenirs à injecter pour ``target_agent``, en combinant deux voies :
 
@@ -412,7 +425,13 @@ async def get_memories_text(target_agent: str, user_id: int | None, query: str |
 
     # 1) Invariants — toujours injectés
     inv_res = await col.get(
-        where=_memory_where(target_agent, user_id, retrieval="invariant", exclude_kind="vocabulary", active_only=True),
+        where=_memory_where(
+            target_agent,
+            user_id,
+            retrieval="invariant",
+            exclude_kind="vocabulary",
+            active_only=True,
+        ),
         include=["documents", "metadatas"],
     )
     inv_docs = inv_res.get("documents", []) or []
@@ -435,8 +454,13 @@ async def get_memories_text(target_agent: str, user_id: int | None, query: str |
         raw_metas = cres["metadatas"][0] if cres.get("metadatas") else []
         raw_dists = cres["distances"][0] if cres.get("distances") else []
 
-        _debug_memory("ACCESS", f"agent={target_agent} query={query!r} (top-{k} avant seuil)",
-                       raw_docs, raw_metas, raw_dists)
+        _debug_memory(
+            "ACCESS",
+            f"agent={target_agent} query={query!r} (top-{k} avant seuil)",
+            raw_docs,
+            raw_metas,
+            raw_dists,
+        )
         for i, doc in enumerate(raw_docs):
             dist = raw_dists[i] if i < len(raw_dists) else None
             if dist is not None and dist > max_distance:
@@ -449,6 +473,7 @@ async def get_memories_text(target_agent: str, user_id: int | None, query: str |
     metas = inv_metas + ctx_metas
     lines = [_memory_payload(d, m) for d, m in zip(docs, metas)]
     return "\n\n---\n\n".join(l for l in lines if l)
+
 
 async def add_memory(
     target_agent: str,
@@ -491,10 +516,10 @@ async def add_memory(
 
     if scope is None:
         scope = _default_scope(target_agent, kind)
-        
+
     if retrieval is None:
         retrieval = "invariant"
-        
+
     username = await asyncio.to_thread(get_username, user_id)
     now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     meta = {
@@ -531,6 +556,7 @@ async def add_memory(
     _debug_memory("STORE", f"id={doc_id}", [document], [meta])
     return doc_id
 
+
 async def delete_memory(memory_id: str) -> bool:
     """
     Supprime un souvenir par son ID.
@@ -538,6 +564,7 @@ async def delete_memory(memory_id: str) -> bool:
     col = await memories_collection()
     await col.delete(ids=[memory_id])
     return True
+
 
 async def update_memory(
     memory_id: str,
@@ -570,7 +597,9 @@ async def update_memory(
     is_vocab = kind == "vocabulary"
 
     if scope is None:
-        scope = existing_meta.get("scope") or _default_scope(target_agent or existing_meta.get("target_agent", ""), kind)
+        scope = existing_meta.get("scope") or _default_scope(
+            target_agent or existing_meta.get("target_agent", ""), kind
+        )
 
     if retrieval is None:
         retrieval = existing_meta.get("retrieval", "invariant")
@@ -623,9 +652,15 @@ async def update_memory(
     return True
 
 
-async def find_similar_contextual_memories(target_agent: str, user_id: int | None, trigger_embedding: list[float], k: int = 3, max_distance: float = MEMORY_RECONCILE_MAX_DISTANCE,) -> list[dict]:
+async def find_similar_contextual_memories(
+    target_agent: str,
+    user_id: int | None,
+    trigger_embedding: list[float],
+    k: int = 3,
+    max_distance: float = MEMORY_RECONCILE_MAX_DISTANCE,
+) -> list[dict]:
     """
-    Cherche, parmi les souvenirs contextuels ACTIFS déjà stockés pour ``target_agent``, ceux dont la requête déclencheuse est proche 
+    Cherche, parmi les souvenirs contextuels ACTIFS déjà stockés pour ``target_agent``, ceux dont la requête déclencheuse est proche
     de ``trigger_embedding`` (distance <= ``max_distance``).
 
     Renvoie des candidats plausibles à soumettre au juge.
@@ -648,16 +683,20 @@ async def find_similar_contextual_memories(target_agent: str, user_id: int | Non
         if dist is None or dist > max_distance:
             continue
         meta = metas[i] if i < len(metas) else {}
-        candidates.append({
-            "id": ids[i] if i < len(ids) else None,
-            "trigger": doc,
-            "rule": (meta or {}).get("correction") or doc,
-            "distance": dist,
-        })
+        candidates.append(
+            {
+                "id": ids[i] if i < len(ids) else None,
+                "trigger": doc,
+                "rule": (meta or {}).get("correction") or doc,
+                "distance": dist,
+            }
+        )
     return candidates
 
 
-async def supersede_memory(old_id: str, new_id: str, new_content: str, username: str | None = None) -> None:
+async def supersede_memory(
+    old_id: str, new_id: str, new_content: str, username: str | None = None
+) -> None:
     """
     Marque un souvenir comme remplacé par un autre
     """
@@ -682,7 +721,7 @@ async def supersede_memory(old_id: str, new_id: str, new_content: str, username:
 async def recover_memory(old_id: str) -> bool:
     """
     Annule une supersession : réactive le souvenir ``old_id`` (``status="active"``,
-    retire les champs ``superseded_by*``), puis supprime le souvenir qui l'avait remplacé 
+    retire les champs ``superseded_by*``), puis supprime le souvenir qui l'avait remplacé
     """
     col = await memories_collection()
     res = await col.get(ids=[old_id], include=["metadatas"])
@@ -696,11 +735,17 @@ async def recover_memory(old_id: str) -> bool:
     if not new_id:
         return False
 
-    meta = {k: v for k, v in meta.items() if k not in ("superseded_by", "superseded_by_username", "superseded_by_content")}
+    meta = {
+        k: v
+        for k, v in meta.items()
+        if k not in ("superseded_by", "superseded_by_username", "superseded_by_content")
+    }
     meta["status"] = "active"
     meta["updated_at"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     await col.update(ids=[old_id], metadatas=[meta])
-    _debug_memory("RECOVER", f"id={old_id} (annule remplacement par {new_id})", ["réactivé"], [meta])
+    _debug_memory(
+        "RECOVER", f"id={old_id} (annule remplacement par {new_id})", ["réactivé"], [meta]
+    )
 
     await col.delete(ids=[new_id])
     return True
@@ -709,48 +754,51 @@ async def recover_memory(old_id: str) -> bool:
 async def get_all_memories() -> dict:
     """
     Récupère tous les souvenirs de la collection ``memories``, sous une forme
-    normalisée pour l'affichage (frontend) 
+    normalisée pour l'affichage (frontend)
     """
     col = await memories_collection()
     res = await col.get(include=["documents", "metadatas"])
     memories = []
-    for i, doc_id in enumerate(res['ids']):
-        meta = res['metadatas'][i] or {}
-        document = res['documents'][i]
-        kind = meta.get('kind')
-        retrieval = meta.get('retrieval')
+    for i, doc_id in enumerate(res["ids"]):
+        meta = res["metadatas"][i] or {}
+        document = res["documents"][i]
+        kind = meta.get("kind")
+        retrieval = meta.get("retrieval")
 
         trigger = rule = base_term = synonyms = None
         if kind == "vocabulary":
-            base_term = meta.get('base_term')
+            base_term = meta.get("base_term")
             synonyms = document
         elif retrieval == "contextual":
             trigger = document
-            rule = meta.get('correction')
+            rule = meta.get("correction")
         else:  # invariant (ou legacy sans retrieval) : le document est la règle
             rule = document
 
-        memories.append({
-            "id": doc_id,
-            "target_agent": meta.get('target_agent'),
-            "kind": kind,
-            "retrieval": retrieval,
-            "scope": meta.get('scope'),
-            "user_id": meta.get('user_id'),
-            "username": meta.get('username'),
-            "date": meta.get('date'),
-            "updated_at": meta.get('updated_at') or meta.get('date'),
-            "status": meta.get('status') or "active",
-            "superseded_by": meta.get('superseded_by'),
-            "superseded_by_username": meta.get('superseded_by_username'),
-            "superseded_by_content": meta.get('superseded_by_content'),
-            "trigger": trigger,
-            "rule": rule,
-            "base_term": base_term,
-            "synonyms": synonyms,
-        })
+        memories.append(
+            {
+                "id": doc_id,
+                "target_agent": meta.get("target_agent"),
+                "kind": kind,
+                "retrieval": retrieval,
+                "scope": meta.get("scope"),
+                "user_id": meta.get("user_id"),
+                "username": meta.get("username"),
+                "date": meta.get("date"),
+                "updated_at": meta.get("updated_at") or meta.get("date"),
+                "status": meta.get("status") or "active",
+                "superseded_by": meta.get("superseded_by"),
+                "superseded_by_username": meta.get("superseded_by_username"),
+                "superseded_by_content": meta.get("superseded_by_content"),
+                "trigger": trigger,
+                "rule": rule,
+                "base_term": base_term,
+                "synonyms": synonyms,
+            }
+        )
 
-    return {'memories': memories}
+    return {"memories": memories}
+
 
 async def get_last_memory(user_id: int | None) -> dict | None:
     """
@@ -762,7 +810,7 @@ async def get_last_memory(user_id: int | None) -> dict | None:
     res = await col.get(where=where, include=["documents", "metadatas"])
 
     if not res.get("ids") or len(res["ids"]) == 0:
-        return ''
+        return ""
 
     ids = res["ids"]
     docs = res["documents"]
@@ -776,8 +824,4 @@ async def get_last_memory(user_id: int | None) -> dict | None:
                 last_date = meta["date"]
                 last_index = i
 
-    return {
-        "id": ids[last_index],
-        "content": docs[last_index],
-        "metadata": metas[last_index]
-    }
+    return {"id": ids[last_index], "content": docs[last_index], "metadata": metas[last_index]}

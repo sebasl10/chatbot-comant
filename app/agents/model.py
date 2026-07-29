@@ -1,7 +1,10 @@
 from functools import lru_cache
+
 from pydantic_ai.models.openai import OpenAIChatModel
 from pydantic_ai.providers.openai import OpenAIProvider
+
 from app.config import settings
+
 
 @lru_cache(maxsize=1)
 def get_agent_model() -> OpenAIChatModel:

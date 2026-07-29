@@ -6,6 +6,7 @@ nouveau souvenir et chaque candidat.
 """
 
 from typing import Literal
+
 from pydantic import BaseModel
 from pydantic_ai import Agent
 
@@ -18,7 +19,9 @@ MemoryRelation = Literal["duplicate", "conflict", "complement", "unrelated"]
 class MemoryVerdict(BaseModel):
     candidate_id: str
     relation: MemoryRelation
-    merged_content: str | None = None # Requis uniquement si relation == "complement" : la règle fusionnée, une phrase unique couvrant le candidat ET le nouveau souvenir.
+    merged_content: str | None = (
+        None  # Requis uniquement si relation == "complement" : la règle fusionnée, une phrase unique couvrant le candidat ET le nouveau souvenir.
+    )
 
 
 memory_judge_agent = Agent(
@@ -29,7 +32,9 @@ memory_judge_agent = Agent(
 )
 
 
-async def judge_candidates(new_trigger: str, new_content: str, candidates: list[dict]) -> list[MemoryVerdict]:
+async def judge_candidates(
+    new_trigger: str, new_content: str, candidates: list[dict]
+) -> list[MemoryVerdict]:
     """
     Renvoie un ``MemoryVerdict`` par candidat, dans le même ordre. Liste vide si ``candidates`` est vide.
     """

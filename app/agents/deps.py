@@ -5,6 +5,7 @@ tools via ``RunContext.deps``. Il porte le contexte utilisateur, l'historique de
 conversation, l'identifiant de la recherche courante (pour l'affinage) et le
 collecteur d'événements à streamer vers le front.
 """
+
 from dataclasses import dataclass, field
 
 from app.services.events import EventSink
@@ -17,7 +18,7 @@ class ChatDeps:
     # Infos passées par le front pour l'affinage
     research_id: int = 0
     last_message_id: int = 0
-    
+
     historique: list[dict] = field(default_factory=list)
     events: EventSink = field(default_factory=EventSink)
 

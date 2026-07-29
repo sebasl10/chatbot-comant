@@ -1,7 +1,9 @@
-from datetime import datetime, timedelta
 import json
+from datetime import datetime, timedelta
+
+from rapidfuzz import fuzz, process
+
 from app.services.database import get_connection
-from rapidfuzz import process, fuzz
 
 SIMILARITY_THRESHOLD = 65
 CACHEABLE_COLUMNS = {
@@ -13,8 +15,9 @@ CACHEABLE_COLUMNS = {
     "product": ("product", "name"),
     "project": ("project", "code"),
     "tag": ("tag", "name"),
-    "user": ("user", "username")
+    "user": ("user", "username"),
 }
+
 
 class EntityCache:
     def __init__(self, ttl_minutes: int = 30):
@@ -31,16 +34,18 @@ class EntityCache:
         conn = get_connection()
         cursor = conn.cursor()
         for entity_type, (table, column) in CACHEABLE_COLUMNS.items():
-            cursor.execute(f"SELECT DISTINCT `{column}` FROM `{table}` WHERE `{column}` IS NOT NULL")
+            cursor.execute(
+                f"SELECT DISTINCT `{column}` FROM `{table}` WHERE `{column}` IS NOT NULL"
+            )
             rows = cursor.fetchall()
             # Cas spécial pour branch_travail (branches séparées par des virgules)
             if entity_type == "branch_travail":
                 values = set()
                 for row in rows:
                     branches_str = row[column]
-                    if branches_str: 
+                    if branches_str:
                         branches_list = [branch.strip() for branch in branches_str.split(",")]
-                        values.update(branches_list) 
+                        values.update(branches_list)
                 self._cache[entity_type] = values
             else:
                 self._cache[entity_type] = []
@@ -55,7 +60,9 @@ class EntityCache:
             self.refresh()
         return self._cache.get(entity_type, set())
 
+
 entity_cache = EntityCache()
+
 
 def link_entities(entities: list[dict]) -> dict:
     """
@@ -84,30 +91,34 @@ def link_entities(entities: list[dict]) -> dict:
             value.lower(),
             [v.lower() for v in valid_values],
             scorer=fuzz.WRatio,
-            score_cutoff=SIMILARITY_THRESHOLD
+            score_cutoff=SIMILARITY_THRESHOLD,
         )
 
         if match:
             best_match_lower, score, _ = match
             best_match = next((v for v in valid_values if v.lower() == best_match_lower), None)
-            results.append({
-                **entity,
-                "status": "suggestion",
-                "resolved": None,
-                "suggestion": best_match,
-                "score": score
-            })
+            results.append(
+                {
+                    **entity,
+                    "status": "suggestion",
+                    "resolved": None,
+                    "suggestion": best_match,
+                    "score": score,
+                }
+            )
         else:
             results.append({**entity, "status": "unknown", "resolved": None})
 
     return results
 
+
 def get_unknown_entities_message(unknowns: list[dict]) -> str:
     """
     Génère un message pour les entités inconnues.
     """
-    names = [f'<strong>{u["value"]}</strong> ({u["type"]})' for u in unknowns]
+    names = [f"<strong>{u['value']}</strong> ({u['type']})" for u in unknowns]
     return f"Je n'ai trouvé aucune correspondance exacte ou similaire pour : {', '.join(names)}. Vérifiez votre requête."
+
 
 def get_suggestion_entities_message(suggestions: list[dict]) -> str:
     """
@@ -129,10 +140,11 @@ def get_suggestion_entities_message(suggestions: list[dict]) -> str:
         type_ = s["type"]
         article, name_fr = type_to_article_and_name.get(type_, ("Le", type_))
         parts.append(
-            f'<p>{article} {name_fr} <strong>{s["value"]}</strong> n\'existe pas. '
-            f'Voulez-vous dire <strong>{s["suggestion"]}</strong>?</p>'
+            f"<p>{article} {name_fr} <strong>{s['value']}</strong> n'existe pas. "
+            f"Voulez-vous dire <strong>{s['suggestion']}</strong>?</p>"
         )
     return "".join(parts)
+
 
 async def handle_vocabulary_suggestions(entities_dict: dict) -> tuple[bool, str, dict | None]:
     """
@@ -142,7 +154,9 @@ async def handle_vocabulary_suggestions(entities_dict: dict) -> tuple[bool, str,
     - un dictionnaire d'erreurs de vocabulaire (si suggestions)
     """
     linked = link_entities(entities_dict["entities"])
-    print(f"\n{'─' * 60}\n[ENTITY LINKING RESULT]\n{json.dumps(linked, indent=2, ensure_ascii=False)}\n{'─' * 60}")
+    print(
+        f"\n{'─' * 60}\n[ENTITY LINKING RESULT]\n{json.dumps(linked, indent=2, ensure_ascii=False)}\n{'─' * 60}"
+    )
     suggestions = [e for e in linked if e["status"] == "suggestion"]
     unknowns = [e for e in linked if e["status"] == "unknown"]
 
