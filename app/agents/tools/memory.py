@@ -1,28 +1,11 @@
-"""Tools mémoire (souvenirs / corrections), backed Chroma.
-
-Stockage dans la collection Chroma ``memories`` (filtrage par métadonnées
-``target_agent``/``kind``/``scope``/``user_id`` + recherche
-sémantique).
-
-- Lecture : ``relevant_memories(ctx, target_agent)`` récupère en top-k
-  sémantique les souvenirs destinés à un agent, à partir du message utilisateur
-  brut (``ctx.deps.message``).
-- Écriture : ``save_memory`` (appelé par l'agent memory, qui reformule les
-  messages elliptiques « oui/non » à partir de l'historique avant de stocker).
-
-target_agent : supervisor, sql_research, semantic_research, conversational, memory.
-kind         : behavior (défaut, pour tous les agents) | vocabulary (synonymes —
-               valide UNIQUEMENT pour target_agent=semantic_research, seul agent
-               doté d'un mécanisme de vocabulaire).
-retrieval    : invariant (toujours injecté) | contextual (indexé par la requête
-               déclencheuse, récupéré par similarité). Voir get_memories_text.
-               L'agent memory (save_memory) n'écrit QUE du contextual ; les
-               invariants ne peuvent venir que de l'endpoint /memory/add.
+"""
+Tools mémoire (souvenirs / corrections), backed Chroma.
 """
 
 from pydantic_ai import RunContext
 from app.agents.deps import ChatDeps
 from app.services import vectorstore as vs
+from app.agents.specialists.memory_judge import judge_candidates
 
 VALID_TARGET_AGENTS = ("supervisor", "sql_research", "semantic_research", "conversational", "memory")
 VALID_KINDS = ("behavior", "vocabulary")
@@ -33,11 +16,8 @@ async def relevant_memories(ctx: RunContext[ChatDeps], target_agent: str, k: int
     Récupère les souvenirs destinés à ``target_agent``, les ``k`` plus proches
     sémantiquement du message utilisateur brut (``ctx.deps.message``). Vide si aucun.
     """
-    # Embedding du message calculé une seule fois par tour, réutilisé par le
-    # superviseur puis le spécialiste délégué (même message, même embedding).
     if ctx.deps.memory_query_embedding is None and ctx.deps.message:
         ctx.deps.memory_query_embedding = await vs.embed_memory_query(ctx.deps.message)
-    # Le détail (contenu + métadonnées) est loggué dans vs.get_memories_text.
     return await vs.get_memories_text(
         target_agent,
         ctx.deps.user_id,
@@ -47,15 +27,9 @@ async def relevant_memories(ctx: RunContext[ChatDeps], target_agent: str, k: int
     )
 
 
-async def save_memory(
-    ctx: RunContext[ChatDeps],
-    target_agent: str,
-    content: str,
-    kind: str = "behavior",
-    trigger: str | None = None,
-    base_term: str | None = None,
-) -> dict:
-    """Enregistre un nouveau souvenir/correction pour l'utilisateur.
+async def save_memory(ctx: RunContext[ChatDeps], target_agent: str, content: str, kind: str = "behavior", trigger: str | None = None, base_term: str | None = None) -> dict:
+    """
+    Enregistre un nouveau souvenir/correction pour l'utilisateur.
 
     À utiliser quand l'utilisateur corrige le comportement du chatbot ou ajoute
     une règle/synonyme à retenir. Le souvenir est TOUJOURS lié à la situation qui
@@ -63,7 +37,7 @@ async def save_memory(
 
     Args:
         target_agent: agent qui devra respecter ce souvenir.
-            - `supervisor` : le chatbot a mal délégué/routé la demande (mauvais agent choisi).
+            - `supervisor` : le chatbot a mal délégué/routé la demande (mauvais agent choisi ou mauvaise fonctionnaliée identifiée).
               Ex: "Tu as délégué à l'agent memory, mais tu devais déléguer à l'agent semantic_search",
               "Tu as fait une recherche sémantique, mais tu devais faire une recherche par filtres".
             - `sql_research` : erreur dans la génération d'une requête SQL (filtres, colonnes, syntaxe).
@@ -84,7 +58,9 @@ async def save_memory(
         content: la RÈGLE / le comportement attendu, en une phrase claire, autonome
             et réutilisable (français, sans markdown). Reformule les messages
             elliptiques (« oui », « non ») à partir de l'historique.
-            Pour `kind=vocabulary` : les synonymes séparés par des virgules (ex: "lent, slow, rapide").
+            Pour `kind=vocabulary` : les synonymes séparés par des virgules (ex: "lent, slow, rapide"). 
+            *Dans ce cas, ne rajoute JAMAIS de texte additionel. Utilise uniquement les termes qui du message de 
+            l'utilisateur, ne'ajoute pas des termes que tu trouves dans l'historique et n'invente pas d'autres mots*
         kind: `behavior` (défaut — laisse cette valeur pour toute correction normale,
             quel que soit `target_agent` ; dans la quasi-totalité des cas tu n'as PAS
             besoin de fournir ce paramètre) ou `vocabulary` (synonymes — UNIQUEMENT
@@ -103,6 +79,24 @@ async def save_memory(
             `trigger="Cherche les tickets du client PTC"`.
         base_term: UNIQUEMENT pour `kind=vocabulary` — le terme de base auquel les
             synonymes doivent être liés (ex: "performance").
+
+    Returns:
+        Avant confirmation, base-toi TOUJOURS sur `action` (et `message`) plutôt
+        que de supposer qu'un nouveau souvenir a été créé :
+        - `action="created"` : nouveau souvenir enregistré normalement.
+        - `action="duplicate"` : rien enregistré, une règle équivalente existait déjà
+          (`existing_content`). Dis-le à l'utilisateur au lieu de confirmer une création.
+        - `action="merged"` : fusionné avec une règle existante proche (`content` =
+          la règle fusionnée). Confirme avec cette règle fusionnée, pas la tienne seule.
+        - `action="replaced"` : une règle CONTRADICTOIRE existait (`previous_content`) et
+          a été automatiquement remplacée par la nouvelle (`content`). Mentionne le
+          remplacement dans ta confirmation (ex: "j'ai remplacé la règle sur X par Y").
+
+        Pour `kind=vocabulary`, pas de champ `action`, regarde plutôt :
+        - `added` : les termes réellement nouveaux, effectivement ajoutés.
+        - `already_existing` (optionnel) : termes déjà synonymes de CE `base_term`
+          — PAS ré-ajoutés. Dis à l'utilisateur qu'ils l'étaient déjà, et confirme
+          uniquement l'ajout des termes de `added`.
     """
     if target_agent not in VALID_TARGET_AGENTS:
         return {"ok": False, "error": f"target_agent invalide: {target_agent}"}
@@ -111,38 +105,87 @@ async def save_memory(
     if kind == "vocabulary" and target_agent != "semantic_research":
         return {"ok": False, "error": "kind=vocabulary n'est valide que pour target_agent=semantic_research"}
 
-    # Vocabulaire (semantic_research uniquement) : structure dédiée, hors trigger/retrieval
+    # Vocabulaire (semantic_research uniquement)
     if kind == "vocabulary":
         if not base_term:
             return {"ok": False, "error": "base_term requis pour kind=vocabulary"}
         synonyms = [s.strip() for s in content.split(",") if s.strip()]
         print(f"[SAVE MEMORY] vocabulary - base_term: '{base_term}', synonyms: {synonyms}")
-        await vs.add_synonyms(base_term, synonyms, ctx.deps.user_id, ctx.deps.username)
-        ctx.deps.events.correction(target_agent=target_agent, kind=kind, memory=f"{base_term}: {content}")
-        return {"ok": True, "target_agent": target_agent, "kind": kind}
+        existing_synonyms = {s.lower() for s in (await vs.get_vocabulary_for_term(base_term))["synonyms"]}
+        already_existing = [s for s in synonyms if s.lower() in existing_synonyms]
+        new_terms = [s for s in synonyms if s.lower() not in existing_synonyms]
 
-    # Tous les autres souvenirs écrits par l'agent sont contextuels (indexés par
-    # leur déclencheur). Seul l'endpoint /memory/add peut créer des invariants.
+        if new_terms:
+            await vs.add_synonyms(base_term, new_terms, ctx.deps.user_id, ctx.deps.username)
+            ctx.deps.events.correction(target_agent=target_agent, kind=kind, memory=f"{base_term}: {', '.join(new_terms)}")
+
+        result = {"ok": True, "target_agent": target_agent, "kind": kind, "base_term": base_term, "added": new_terms}
+        if already_existing:
+            result["already_existing"] = already_existing
+        return result
+
     if not trigger:
         return {"ok": False, "error": "trigger requis (la requête utilisateur déclencheuse de la correction)"}
 
     print(f"[SAVE MEMORY] target_agent={target_agent} kind={kind} retrieval=contextual "
           f"trigger={trigger!r} content={content!r}")
-    await vs.add_memory(
-        target_agent=target_agent,
-        kind=kind,
-        content=content,
-        user_id=ctx.deps.user_id,
-        retrieval="contextual",
-        trigger=trigger,
-    )
+
+    # Avant de créer un nouveau souvenir, on cherche des candidats proches déjà stockés et on les fait
+    # classer par un juge (duplicate/conflict/complement/unrelated).
+    
+    chosen_candidate, chosen_verdict = None, None
+    try:
+        trigger_embedding = await vs.embed_memory_query(trigger)
+        candidates = await vs.find_similar_contextual_memories(target_agent, ctx.deps.user_id, trigger_embedding)
+        if candidates:
+            verdicts = {v.candidate_id: v for v in await judge_candidates(trigger, content, candidates)}
+            for candidate in candidates:
+                verdict = verdicts.get(candidate["id"])
+                if verdict and verdict.relation != "unrelated":
+                    chosen_candidate, chosen_verdict = candidate, verdict
+                    break
+    except Exception as e:
+        print(f"[MEMORY RECONCILE] échec du juge, écriture normale : {e}")
+
+    if chosen_verdict and chosen_verdict.relation == "duplicate":
+        print(f"[MEMORY RECONCILE] duplicate de {chosen_candidate['id']!r}, rien écrit")
+        return {
+            "ok": True, "target_agent": target_agent, "kind": kind, "action": "duplicate",
+            "message": "Ce souvenir existe déjà, aucune nouvelle règle ajoutée.",
+            "existing_content": chosen_candidate["rule"],
+        }
+
+    if chosen_verdict and chosen_verdict.relation == "complement":
+        merged = chosen_verdict.merged_content or content
+        await vs.update_memory(chosen_candidate["id"], content=merged)
+        print(f"[MEMORY RECONCILE] fusion avec {chosen_candidate['id']!r}: {merged!r}")
+        ctx.deps.events.correction(target_agent=target_agent, kind=kind, memory=merged)
+        return {
+            "ok": True, "target_agent": target_agent, "kind": kind, "action": "merged",
+            "message": "Souvenir fusionné avec une règle existante proche.",
+            "content": merged,
+        }
+
+    if chosen_verdict and chosen_verdict.relation == "conflict":
+        new_id = await vs.add_memory(target_agent=target_agent, kind=kind, content=content, user_id=ctx.deps.user_id, retrieval="contextual", trigger=trigger)
+        await vs.supersede_memory(chosen_candidate["id"], new_id, content, ctx.deps.username)
+        print(f"[MEMORY RECONCILE] conflit : {chosen_candidate['id']!r} remplacé par {new_id!r}")
+        ctx.deps.events.correction(target_agent=target_agent, kind=kind, memory=content)
+        return {
+            "ok": True, "target_agent": target_agent, "kind": kind, "action": "replaced",
+            "message": "Une règle contradictoire existait : elle a été remplacée par la nouvelle.",
+            "previous_content": chosen_candidate["rule"], "content": content,
+        }
+
+    await vs.add_memory(target_agent=target_agent, kind=kind, content=content, user_id=ctx.deps.user_id, retrieval="contextual", trigger=trigger)
     ctx.deps.events.correction(target_agent=target_agent, kind=kind, memory=content)
 
-    return {"ok": True, "target_agent": target_agent, "kind": kind, "retrieval": "contextual"}
+    return {"ok": True, "target_agent": target_agent, "kind": kind, "retrieval": "contextual", "action": "created"}
 
 
 async def delete_memory(ctx: RunContext[ChatDeps]) -> dict:
-    """Supprime le dernier souvenir créé par l'utilisateur.
+    """
+    Supprime le dernier souvenir créé par l'utilisateur.
 
     Condition : l'utilisateur doit demander EXPLICITEMENT de supprimer le
     dernier souvenir (ex: "Oublie ce que je viens de dire", "Supprime mon
@@ -178,18 +221,14 @@ async def delete_memory(ctx: RunContext[ChatDeps]) -> dict:
 
 
 async def update_memory(ctx: RunContext[ChatDeps], new_content: str) -> dict:
-    """Met à jour la RÈGLE du dernier souvenir créé par l'utilisateur.
+    """
+    Met à jour la RÈGLE du dernier souvenir créé par l'utilisateur.
 
     Condition : l'utilisateur doit demander EXPLICITEMENT de modifier le
     dernier souvenir enregistré (ex: "Corrige mon dernier souvenir pour dire
     que...", "Modifie ce que je viens de dire sur les filtres SQL"). Ne
     fonctionne que sur le dernier souvenir créé, toutes conversations
     confondues.
-
-    `new_content` = la nouvelle règle / le nouveau comportement attendu. Le
-    routage vers le bon champ est automatique : pour un souvenir contextuel, la
-    requête déclencheuse (le document) reste inchangée et seule la règle
-    (`metadata.correction`) est mise à jour ; pour un invariant, c'est le document.
 
     Après l'appel, confirme en rappelant l'ANCIEN et le NOUVEAU contenu du
     souvenir.
@@ -209,7 +248,7 @@ async def update_memory(ctx: RunContext[ChatDeps], new_content: str) -> dict:
     print(f"Ancienne règle: {old_rule}")
     print(f"Nouvelle règle: {new_content}")
     try:
-        success = await vs.update_memory(last_memory['id'], new_content, ctx.deps.username)
+        success = await vs.update_memory(last_memory['id'], content=new_content)
         if success:
             ctx.deps.events.action("update_memory", memory_id=last_memory['id'])
             return {"ok": True, "message": "Souvenir mis à jour.", "old_content": old_rule, "new_content": new_content}

@@ -42,29 +42,32 @@ def _fetch_lexical_tiers(base_term: str, synonyms: list[str]) -> dict[int, int]:
     subqueries: list[str] = []
     params: list[str] = []
 
+    type_condition = "t.type IN ('Bug', 'Dev', 'Suggestion', 'Requête', 'Documentation')"
+    comment_type_filter = "c.ticket_id IN (SELECT id FROM ticket WHERE type IN ('Bug', 'Dev', 'Suggestion', 'Requête', 'Documentation'))"
+
     cond, p = _like_clause("t.summary", [base_term])
-    subqueries.append(f"SELECT t.id AS ticket_id, 0 AS tier FROM ticket t WHERE {cond}")
+    subqueries.append(f"SELECT t.id AS ticket_id, 0 AS tier FROM ticket t WHERE {cond} AND {type_condition}")
     params += p
 
     cond, p = _like_clause("t.description", [base_term])
-    subqueries.append(f"SELECT t.id AS ticket_id, 1 AS tier FROM ticket t WHERE {cond}")
+    subqueries.append(f"SELECT t.id AS ticket_id, 1 AS tier FROM ticket t WHERE {cond} AND {type_condition}")
     params += p
 
     cond, p = _like_clause("c.text", [base_term])
-    subqueries.append(f"SELECT c.ticket_id AS ticket_id, 1 AS tier FROM comment c WHERE {cond}")
+    subqueries.append(f"SELECT c.ticket_id AS ticket_id, 1 AS tier FROM comment c WHERE {cond} AND {comment_type_filter}")
     params += p
 
     if synonyms:
         cond, p = _like_clause("t.summary", synonyms)
-        subqueries.append(f"SELECT t.id AS ticket_id, 2 AS tier FROM ticket t WHERE {cond}")
+        subqueries.append(f"SELECT t.id AS ticket_id, 2 AS tier FROM ticket t WHERE {cond} AND {type_condition}")
         params += p
 
         cond, p = _like_clause("t.description", synonyms)
-        subqueries.append(f"SELECT t.id AS ticket_id, 3 AS tier FROM ticket t WHERE {cond}")
+        subqueries.append(f"SELECT t.id AS ticket_id, 3 AS tier FROM ticket t WHERE {cond} AND {type_condition}")
         params += p
 
         cond, p = _like_clause("c.text", synonyms)
-        subqueries.append(f"SELECT c.ticket_id AS ticket_id, 3 AS tier FROM comment c WHERE {cond}")
+        subqueries.append(f"SELECT c.ticket_id AS ticket_id, 3 AS tier FROM comment c WHERE {cond} AND {comment_type_filter}")
         params += p
 
     sql = (

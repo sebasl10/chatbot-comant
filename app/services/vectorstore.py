@@ -3,7 +3,7 @@ Base vectorielle Chroma — tickets, mémoires, résumés de conversation.
 
 Collections :
 - ``tickets``                : embeddings de tickets.
-- ``memories``               : souvenirs/corrections + exemples de routage, filtrables par métadonnées ``{target_agent, kind, scope, user_id}`` (``kind`` = "behavior" par défaut, "vocabulary" uniquement pour semantic_research) et recherchables sémantiquement. Guide aussi le superviseur (``target_agent=supervisor``).
+- ``memories``               : souvenirs/corrections.
 - ``conversation_summaries`` : résumés de conversation.
 """
 
@@ -22,6 +22,8 @@ from bs4 import BeautifulSoup
 TICKETS = "tickets"
 MEMORIES = "memories"
 CONVERSATION_SUMMARIES = "conversation_summaries"
+MEMORY_MAX_DISTANCE = 0.45
+MEMORY_RECONCILE_MAX_DISTANCE = 0.40
 DEFAULT_HNSW_CONFIG = {
     "hnsw": {
         "space": "cosine",
@@ -331,27 +333,48 @@ def _default_scope(target_agent: str, kind: str | None) -> str:
         return "global"
     return _TARGET_AGENT_DEFAULT_SCOPE.get(target_agent, "user")
 
-def _debug_memory(action: str, header: str, docs: list[str], metas: list[dict] | None = None) -> None:
+
+def default_scope(target_agent: str, kind: str | None = None) -> str:
+    """Wrapper public de ``_default_scope``, pour les appelants hors module
+    (ex: la réconciliation à l'écriture) qui doivent connaître le scope d'un
+    souvenir avant même de l'écrire."""
+    return _default_scope(target_agent, kind)
+
+def _debug_memory(
+    action: str,
+    header: str,
+    docs: list[str],
+    metas: list[dict] | None = None,
+    distances: list[float | None] | None = None,
+) -> None:
     """
-    Affiche un bloc de débogage pour toute écriture/lecture de souvenir
+    Affiche un bloc de débogage pour toute écriture/lecture de souvenir.
+    ``distances`` (optionnel, aligné sur ``docs``) : distance cosinus du souvenir
+    à la requête, pour calibrer ``MEMORY_MAX_DISTANCE``. None pour un invariant,
+    récupéré par filtre de métadonnées et donc sans distance.
     """
     print(f"\n{'━' * 64}")
     print(f"[MEMORY {action}] {header}")
     print(f"  → {len(docs)} souvenir(s)")
     for i, doc in enumerate(docs):
         meta = metas[i] if metas and i < len(metas) else None
-        print(f"  {i + 1}. {doc}")
+        # Pas de suffixe hors lecture (STORE/UPDATE n'ont pas de distance).
+        suffix = ""
+        if distances is not None:
+            dist = distances[i] if i < len(distances) else None
+            suffix = f"  (distance={dist:.3f})" if dist is not None else "  (invariant)"
+        print(f"  {i + 1}. {doc}{suffix}")
         if meta is not None:
             print(f"     meta: {meta}")
     print('━' * 64)
 
 
-def _memory_where(target_agent: str, user_id: int | None, retrieval: str | None = None, exclude_kind: str | None = None,) -> dict:
+def _memory_where(target_agent: str, user_id: int | None, retrieval: str | None = None, exclude_kind: str | None = None, active_only: bool = False) -> dict:
     """
     Filtre les souvenirs destinés à ``target_agent`` : ceux de l'utilisateur plus
     ceux de portée globale, éventuellement restreints à un mode de récupération
-    (``retrieval`` = "invariant" | "contextual") et/ou excluant un ``kind`` donné.
-    Construit un ``$and`` plat.
+    (``retrieval`` = "invariant" | "contextual"), excluant un ``kind`` donné,
+    et/ou excluant les souvenirs remplacés (``active_only=True``)
     """
     conds: list[dict] = [{"target_agent": target_agent}]
     if user_id is not None:
@@ -360,6 +383,8 @@ def _memory_where(target_agent: str, user_id: int | None, retrieval: str | None 
         conds.append({"retrieval": retrieval})
     if exclude_kind is not None:
         conds.append({"kind": {"$ne": exclude_kind}})
+    if active_only:
+        conds.append({"status": {"$ne": "superseded"}})
     return conds[0] if len(conds) == 1 else {"$and": conds}
 
 def _memory_payload(doc: str, meta: dict | None) -> str:
@@ -369,68 +394,59 @@ def _memory_payload(doc: str, meta: dict | None) -> str:
 
 async def embed_memory_query(text: str) -> list[float]:
     """Embedding (avec préfixe d'instruction) d'un message pour la recherche de souvenirs."""
-    instruction  = (
-        "Représente une requête utilisateur pour retrouver des requêtes passées "
-        "similaires ayant déclenché une correction."
-    )
+    instruction  = "Given an user's query, retrive similar queries."
     return await asyncio.to_thread(get_embedding, f"Instruct: {instruction}\nQuery: {text}")
 
 
-async def get_memories_text(
-    target_agent: str,
-    user_id: int | None,
-    query: str | None = None,
-    query_embedding: list[float] | None = None,
-    k: int = 5,
-) -> str:
+async def get_memories_text(target_agent: str, user_id: int | None, query: str | None = None, query_embedding: list[float] | None = None, k: int = 5, max_distance: float = MEMORY_MAX_DISTANCE) -> str:
     """
     Renvoie les souvenirs à injecter pour ``target_agent``, en combinant deux voies :
 
     1. **Invariants** (``retrieval="invariant"``) : règles universelles, TOUJOURS
        injectées (filtre métadonnées, sans similarité).
-    2. **Contextuels** (``retrieval="contextual"``) : les ``k`` dont la *requête
-       déclencheuse* (le ``document`` embeddé) est la plus proche du message.
-       Indexation asymétrique : on compare requête ↔ requête, pas requête ↔ règle.
-
-    ``query_embedding`` : embedding déjà calculé du message (via ``embed_memory_query``),
-    pour éviter de ré-embedder le même message d'un agent à l'autre. Sinon il est
-    calculé à partir de ``query``. ``query`` reste utilisé pour le log d'accès.
-
-    Le vocabulaire (``kind="vocabulary"``, aussi marqué ``retrieval="invariant"``
-    pour la cohérence des métadonnées) est explicitement EXCLU des deux voies : il
-    a son propre mécanisme de récupération (``get_vocabulary_for_term`` /
-    ``semantic_ticket_search``), pas les blocs de règles injectés ici.
+    2. **Contextuels** (``retrieval="contextual"``) : parmi les ``k`` dont la
+       *requête déclencheuse* (le ``document`` embeddé) est la plus proche du
+       message, ceux à une distance cosinus <= ``max_distance``.
     """
     col = await memories_collection()
 
-    # 1) Invariants — toujours injectés (hors vocabulaire, cf. ci-dessus)
+    # 1) Invariants — toujours injectés
     inv_res = await col.get(
-        where=_memory_where(target_agent, user_id, retrieval="invariant", exclude_kind="vocabulary"),
+        where=_memory_where(target_agent, user_id, retrieval="invariant", exclude_kind="vocabulary", active_only=True),
         include=["documents", "metadatas"],
     )
     inv_docs = inv_res.get("documents", []) or []
     inv_metas = inv_res.get("metadatas", []) or []
 
-    # 2) Contextuels — top-k par similarité message ↔ requête déclencheuse
+    # 2) Contextuels — top-k par similarité message ↔ requête déclencheuse, puis coupe à max_distance
     ctx_docs: list = []
     ctx_metas: list = []
+    ctx_dists: list[float | None] = []
     if query_embedding is None and query:
         query_embedding = await embed_memory_query(query)
     if query_embedding is not None:
         cres = await col.query(
             query_embeddings=[query_embedding],
             n_results=k,
-            where=_memory_where(target_agent, user_id, retrieval="contextual"),
-            include=["documents", "metadatas"],
+            where=_memory_where(target_agent, user_id, retrieval="contextual", active_only=True),
+            include=["documents", "metadatas", "distances"],
         )
-        ctx_docs = cres["documents"][0] if cres["documents"] else []
-        ctx_metas = cres["metadatas"][0] if cres.get("metadatas") else []
+        raw_docs = cres["documents"][0] if cres["documents"] else []
+        raw_metas = cres["metadatas"][0] if cres.get("metadatas") else []
+        raw_dists = cres["distances"][0] if cres.get("distances") else []
+
+        _debug_memory("ACCESS", f"agent={target_agent} query={query!r} (top-{k} avant seuil)",
+                       raw_docs, raw_metas, raw_dists)
+        for i, doc in enumerate(raw_docs):
+            dist = raw_dists[i] if i < len(raw_dists) else None
+            if dist is not None and dist > max_distance:
+                continue
+            ctx_docs.append(doc)
+            ctx_metas.append(raw_metas[i] if i < len(raw_metas) else {})
+            ctx_dists.append(dist)
 
     docs = inv_docs + ctx_docs
     metas = inv_metas + ctx_metas
-    # Accès : agent + query ; résultats : contenu + métadonnées de chaque souvenir.
-    _debug_memory("ACCESS", f"agent={target_agent} query={query!r}", docs, metas)
-
     lines = [_memory_payload(d, m) for d, m in zip(docs, metas)]
     return "\n\n---\n\n".join(l for l in lines if l)
 
@@ -480,13 +496,16 @@ async def add_memory(
         retrieval = "invariant"
         
     username = await asyncio.to_thread(get_username, user_id)
+    now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     meta = {
         "target_agent": target_agent,
         "kind": kind,
         "scope": scope,
         "user_id": user_id if user_id is not None else -1,
         "username": username or "",
-        "date": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+        "date": now,
+        "updated_at": now,
+        "status": "active",
     }
     if retrieval is not None:
         meta["retrieval"] = retrieval
@@ -564,7 +583,7 @@ async def update_memory(
 
     username = existing_meta.get("username")
     if user_id is not None:
-        username = await asyncio.to_thread(get_username, user_id)
+        username = await asyncio.to_thread(get_username, user_id) or username
 
     meta = {
         "target_agent": target_agent,
@@ -572,8 +591,12 @@ async def update_memory(
         "scope": scope,
         "user_id": user_id if user_id is not None else -1,
         "username": username or "",
-        "date": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+        "date": existing_meta.get("date") or datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+        "updated_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+        "status": existing_meta.get("status", "active"),
     }
+    if "superseded_by" in existing_meta:
+        meta["superseded_by"] = existing_meta["superseded_by"]
     if retrieval is not None:
         meta["retrieval"] = retrieval
 
@@ -599,19 +622,94 @@ async def update_memory(
     _debug_memory("UPDATE", f"id={memory_id}", [document], [meta])
     return True
 
+
+async def find_similar_contextual_memories(target_agent: str, user_id: int | None, trigger_embedding: list[float], k: int = 3, max_distance: float = MEMORY_RECONCILE_MAX_DISTANCE,) -> list[dict]:
+    """
+    Cherche, parmi les souvenirs contextuels ACTIFS déjà stockés pour ``target_agent``, ceux dont la requête déclencheuse est proche 
+    de ``trigger_embedding`` (distance <= ``max_distance``).
+
+    Renvoie des candidats plausibles à soumettre au juge.
+    """
+    col = await memories_collection()
+    cres = await col.query(
+        query_embeddings=[trigger_embedding],
+        n_results=k,
+        where=_memory_where(target_agent, user_id, retrieval="contextual", active_only=True),
+        include=["documents", "metadatas", "distances"],
+    )
+    docs = cres["documents"][0] if cres.get("documents") else []
+    metas = cres["metadatas"][0] if cres.get("metadatas") else []
+    ids = cres["ids"][0] if cres.get("ids") else []
+    dists = cres["distances"][0] if cres.get("distances") else []
+
+    candidates = []
+    for i, doc in enumerate(docs):
+        dist = dists[i] if i < len(dists) else None
+        if dist is None or dist > max_distance:
+            continue
+        meta = metas[i] if i < len(metas) else {}
+        candidates.append({
+            "id": ids[i] if i < len(ids) else None,
+            "trigger": doc,
+            "rule": (meta or {}).get("correction") or doc,
+            "distance": dist,
+        })
+    return candidates
+
+
+async def supersede_memory(old_id: str, new_id: str, new_content: str, username: str | None = None) -> None:
+    """
+    Marque un souvenir comme remplacé par un autre
+    """
+    col = await memories_collection()
+    res = await col.get(ids=[old_id], include=["metadatas"])
+    if not res.get("ids"):
+        return
+    meta = res["metadatas"][0] if res.get("metadatas") else {}
+    if not isinstance(meta, dict):
+        meta = {}
+    meta = {
+        **meta,
+        "status": "superseded",
+        "superseded_by": new_id,
+        "superseded_by_username": username or "",
+        "superseded_by_content": new_content,
+    }
+    await col.update(ids=[old_id], metadatas=[meta])
+    _debug_memory("SUPERSEDE", f"id={old_id} -> {new_id}", [f"remplacé par {new_id}"], [meta])
+
+
+async def recover_memory(old_id: str) -> bool:
+    """
+    Annule une supersession : réactive le souvenir ``old_id`` (``status="active"``,
+    retire les champs ``superseded_by*``), puis supprime le souvenir qui l'avait remplacé 
+    """
+    col = await memories_collection()
+    res = await col.get(ids=[old_id], include=["metadatas"])
+    if not res.get("ids"):
+        return False
+
+    meta = res["metadatas"][0] if res.get("metadatas") else {}
+    if not isinstance(meta, dict):
+        meta = {}
+    new_id = meta.get("superseded_by")
+    if not new_id:
+        return False
+
+    meta = {k: v for k, v in meta.items() if k not in ("superseded_by", "superseded_by_username", "superseded_by_content")}
+    meta["status"] = "active"
+    meta["updated_at"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    await col.update(ids=[old_id], metadatas=[meta])
+    _debug_memory("RECOVER", f"id={old_id} (annule remplacement par {new_id})", ["réactivé"], [meta])
+
+    await col.delete(ids=[new_id])
+    return True
+
+
 async def get_all_memories() -> dict:
     """
     Récupère tous les souvenirs de la collection ``memories``, sous une forme
-    **normalisée** pour l'affichage (frontend) : le ``document`` ambigu est
-    résolu en champs explicites selon la structure du souvenir.
-
-    Chaque souvenir a TOUJOURS les mêmes clés (``null`` si non applicable) :
-    - identité/classification : ``id``, ``target_agent``, ``kind``, ``retrieval``,
-      ``scope``, ``user_id``, ``username``, ``date``.
-    - contenu selon la forme :
-        * contextuel : ``trigger`` (la requête déclencheuse) + ``rule`` (la règle injectée).
-        * invariant  : ``rule`` (le document EST la règle), ``trigger`` = null.
-        * vocabulaire: ``base_term`` + ``synonyms`` (le document), ``rule``/``trigger`` = null.
+    normalisée pour l'affichage (frontend) 
     """
     col = await memories_collection()
     res = await col.get(include=["documents", "metadatas"])
@@ -641,6 +739,11 @@ async def get_all_memories() -> dict:
             "user_id": meta.get('user_id'),
             "username": meta.get('username'),
             "date": meta.get('date'),
+            "updated_at": meta.get('updated_at') or meta.get('date'),
+            "status": meta.get('status') or "active",
+            "superseded_by": meta.get('superseded_by'),
+            "superseded_by_username": meta.get('superseded_by_username'),
+            "superseded_by_content": meta.get('superseded_by_content'),
             "trigger": trigger,
             "rule": rule,
             "base_term": base_term,
@@ -678,44 +781,3 @@ async def get_last_memory(user_id: int | None) -> dict | None:
         "content": docs[last_index],
         "metadata": metas[last_index]
     }
-
-# ── Résumés de conversation ─────────────────────────────────────────────────
-
-async def add_conversation_summary(user_id: int, conversation_id: int, summary: str, embedding: list[float] | None = None) -> str:
-    """
-    Enregistre un résumé de conversation (rappel de contexte inter-sessions).
-    """
-    meta = {
-        "user_id": user_id,
-        "conversation_id": conversation_id,
-        "date": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-    }
-    doc_id = str(uuid.uuid4())
-    kwargs = {"ids": [doc_id], "documents": [summary], "metadatas": [meta]}
-    if embedding is not None:
-        kwargs["embeddings"] = [embedding]
-    col = await summaries_collection()
-    await col.add(**kwargs)
-    return doc_id
-
-async def search_conversation_summaries(user_id: int, query: str, k: int = 3) -> str:
-    """
-    Renvoie les ``k`` résumés de conversation les plus pertinents pour l'utilisateur.
-    Utilise un embedding avec préfixe d'instruction pour améliorer la recherche.
-    """
-    col = await summaries_collection()
-    if await col.count() == 0:
-        return ""
-
-    # Préfixe pour la recherche de résumés de conversation
-    summary_instruction = (
-        "Représente une requête pour retrouver des résumés de conversation pertinents. "
-        "Inclut le contexte conversationnel, les thèmes abordés et les concepts associés."
-    )
-
-    query_embedding = await asyncio.to_thread(get_embedding, f"Instruct: {summary_instruction}\nQuery: {query}")
-    res = await col.query(
-        query_embeddings=[query_embedding], n_results=k, where={"user_id": user_id}, include=["documents"]
-    )
-    docs = res["documents"][0] if res["documents"] else []
-    return "\n\n---\n\n".join(docs)
