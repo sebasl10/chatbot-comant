@@ -1,3 +1,4 @@
+import calendar
 import datetime
 import json
 import re
@@ -9,7 +10,7 @@ from app.config import settings
 def get_connection(db: str = 'comant'):
     try:
         if db == 'external':
-            return pymysql.connect(host=settings.external_db_host, database=settings.external_db_name, user=settings.external_db_user, password=settings.external_db_password, charset="utf8mb4", cursorclass=pymysql.cursors.DictCursor)
+            return pymysql.connect(host=settings.external_db_host, port=settings.external_db_port, database=settings.external_db_name, user=settings.external_db_user, password=settings.external_db_password, charset="utf8mb4", cursorclass=pymysql.cursors.DictCursor)
         else:
             return pymysql.connect(host=settings.db_host, port=settings.db_port, database=settings.db_name, user=settings.db_user, password=settings.db_password, charset="utf8mb4", cursorclass=pymysql.cursors.DictCursor,)
     except pymysql.Error as e:
@@ -50,16 +51,6 @@ def get_db_schema():
                         referenced_table = col_name.replace("_id", "")
                         if referenced_table in tables:
                             col_info["foreign_key"] = f"{referenced_table}.id"
-
-                    # Ajouter les valeurs possibles pour certaines colonnes
-                    """ if table == "log" and col_name == "action":
-                        col_info["allowed_values"] = [
-                            "VIEW-PROJECT", "VIEW-TICKET", "EDIT-TICKET",
-                            "CREATE-TICKET", "DELETE-TICKET", "COMMENT-TICKET"
-                        ]
-                    elif table == "ticket" and col_name == "status":
-                        col_info["allowed_values"] = ["open", "closed", "in_progress", "pending"]
-                    """
 
                     table_info["columns"][col_name] = col_info
 
@@ -283,6 +274,41 @@ def get_username(user_id: int) -> str:
             return None
     except Exception as e:
         print(f"Erreur lors de la récupération du username pour l'ID {user_id}: {e}")
+        return None
+    finally:
+        conn.close()
+
+def get_absences(user: str, year: int = None, month: int = None, min_date: str = None, max_date: str = None) -> list[dict] | None:
+    conn = get_connection('external')
+    try:
+        base_sql = "SELECT * FROM days WHERE uid = %s AND type <> %s"
+        params = [user, 32]
+
+        if min_date is None and max_date is None:
+            if year is not None:
+                if month is not None:
+                    start_date = datetime.datetime(year, month, 1)
+                    _, last_day = calendar.monthrange(year, month)
+                    end_date = datetime.datetime(year, month, last_day)
+                    base_sql += " AND date BETWEEN %s AND %s"
+                    params.extend([start_date.strftime('%Y-%m-%d'), end_date.strftime('%Y-%m-%d')])
+                else:
+                    base_sql += " AND date BETWEEN %s AND %s"
+                    params.extend([f"{year}-01-01", f"{year}-12-31"])
+        else:
+            if min_date is not None:
+                base_sql += " AND date >= %s"
+                params.append(min_date)
+            if max_date is not None:
+                base_sql += " AND date <= %s"
+                params.append(max_date)
+
+        with conn.cursor() as cursor:
+            cursor.execute(base_sql, tuple(params))
+            results = cursor.fetchall()
+            return results if results else None
+    except Exception as e:
+        print(f"Erreur lors de la récupération des absences pour l'ID {user}: {e}")
         return None
     finally:
         conn.close()
