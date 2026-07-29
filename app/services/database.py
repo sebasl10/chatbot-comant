@@ -4,17 +4,12 @@ import pymysql
 import re
 from app.config import settings
 
-def get_connection():
+def get_connection(db: str = 'comant'):
     try:
-        return pymysql.connect(
-            host=settings.db_host,
-            port=settings.db_port,
-            database=settings.db_name,
-            user=settings.db_user,
-            password=settings.db_password,
-            charset="utf8mb4",
-            cursorclass=pymysql.cursors.DictCursor
-        )
+        if db == 'external':
+            return pymysql.connect(host=settings.external_db_host, database=settings.external_db_name, user=settings.external_db_user, password=settings.external_db_password, charset="utf8mb4", cursorclass=pymysql.cursors.DictCursor)
+        else:
+            return pymysql.connect(host=settings.db_host, port=settings.db_port, database=settings.db_name, user=settings.db_user, password=settings.db_password, charset="utf8mb4", cursorclass=pymysql.cursors.DictCursor)
     except pymysql.Error as e:
         raise RuntimeError(f"Erreur de connexion à la base de données : {e}")
 
@@ -248,74 +243,6 @@ def delete_research(research_id: int, user_id: int | None = None) -> None:
         raise e
     finally:
         conn.close()
-
-
-def get_finetuning_triplets() -> list[dict]:
-    conn = get_connection()   
-    cursor = conn.cursor()    
-    cursor.execute("""       
-        SELECT
-            u.content AS input,
-            b.generated_sql AS rejected,
-            b.correct_sql AS chosen,
-            c.user_id AS user_id
-        FROM message u
-        JOIN conversation c
-            ON u.conversation_id = c.id
-        JOIN LATERAL (
-            SELECT generated_sql, sql_status, feedback, correct_sql
-            FROM message
-            WHERE conversation_id = u.conversation_id
-            AND sender_role = 'bot'
-            AND created_at > u.created_at
-            ORDER BY created_at ASC
-            LIMIT 1
-        ) b ON true
-        WHERE u.sender_role = 'user'
-        AND u.intention = 'recherche'
-        AND b.generated_sql IS NOT NULL
-        AND b.correct_sql IS NOT NULL
-        AND b.feedback = 'dislike';
-    """)    
-    rows = cursor.fetchall()   
-    cursor.close()    
-    conn.close()   
-    return rows
-
-def get_finetuning_couples() -> list[dict]:
-    conn = get_connection()   
-    cursor = conn.cursor()    
-    cursor.execute("""       
-        SELECT
-            u.content AS input,
-            CASE
-                WHEN b.feedback = 'like' THEN b.generated_sql
-                WHEN b.feedback = 'dislike' THEN b.correct_sql
-            END AS label,
-            c.user_id AS user_id
-        FROM message u
-        JOIN conversation c ON u.conversation_id = c.id
-        JOIN LATERAL (
-            SELECT generated_sql, correct_sql, feedback, sql_status
-            FROM message
-            WHERE conversation_id = u.conversation_id
-            AND sender_role = 'bot'
-            AND created_at > u.created_at
-            ORDER BY created_at ASC
-            LIMIT 1
-        ) b ON true
-        WHERE u.sender_role = 'user'
-        AND u.intention = 'recherche'
-        AND (
-            (b.feedback = 'like' AND b.generated_sql IS NOT NULL)
-            OR
-            (b.feedback = 'dislike' AND b.correct_sql IS NOT NULL)
-        );
-    """)    
-    rows = cursor.fetchall()   
-    cursor.close()    
-    conn.close()   
-    return rows
 
 def get_username(user_id: int) -> str:
     conn = get_connection()
