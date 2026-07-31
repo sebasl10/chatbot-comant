@@ -320,7 +320,7 @@ _TARGET_AGENT_DEFAULT_SCOPE = {
     "supervisor": "global",  # corrections/exemples de délégation : comportement système
     "sql_research": "global",  # règles de construction SQL : comportement système
     "semantic_research": "user",  # correction de comportement, propre à l'utilisateur
-    "statistics": "global",         # règles de calcul des indicateurs : comportement système
+    "statistics": "global",  # règles de calcul des indicateurs : comportement système
     "conversational": "user",  # préférence de ton/comportement, propre à l'utilisateur
     "memory": "global",  # méta-correction sur la classification : comportement système
 }

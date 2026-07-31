@@ -67,9 +67,7 @@ def merge_statistic_results(deps: ChatDeps) -> tuple[list[str], list[dict]]:
         merged_rows.append(merged_row)
 
     for external_row in external_index.values():
-        merged_row = {
-            col: external_row.get(col) if col in join_keys else 0 for col in main_columns
-        }
+        merged_row = {col: external_row.get(col) if col in join_keys else 0 for col in main_columns}
         for col in external_values:
             merged_row[col] = external_row.get(col) or 0
         merged_rows.append(merged_row)
@@ -109,17 +107,26 @@ async def set_statistic_presentation(
     print("[TOOL CALL] set_statistic_presentation")
 
     if not ctx.deps.last_stats_sql:
-        return {"ok": False, "error": "Aucune requête stats validée : appelle d'abord run_stats_sql."}
+        return {
+            "ok": False,
+            "error": "Aucune requête stats validée : appelle d'abord run_stats_sql.",
+        }
 
     # Les colonnes à décrire sont celles du résultat FUSIONNÉ (principal + externe).
     sql_columns, rows = merge_statistic_results(ctx.deps)
     join_keys = [c for c in ctx.deps.external_columns if c in ctx.deps.last_stats_columns]
 
     if graph_type not in GRAPH_TYPES:
-        return {"ok": False, "error": f"graph_type invalide : {graph_type!r}. Valeurs autorisées : {list(GRAPH_TYPES)}."}
+        return {
+            "ok": False,
+            "error": f"graph_type invalide : {graph_type!r}. Valeurs autorisées : {list(GRAPH_TYPES)}.",
+        }
 
     if not description or not description.strip():
-        return {"ok": False, "error": "description vide : reformule la demande de l'utilisateur en une phrase."}
+        return {
+            "ok": False,
+            "error": "description vide : reformule la demande de l'utilisateur en une phrase.",
+        }
 
     errors: list[str] = []
     keys = [c.get("key") for c in columns]
@@ -154,14 +161,18 @@ async def set_statistic_presentation(
             )
 
     if not label_cols:
-        errors.append("Il faut au moins une colonne de rôle `label` (la catégorie décrite par la statistique).")
+        errors.append(
+            "Il faut au moins une colonne de rôle `label` (la catégorie décrite par la statistique)."
+        )
     if not value_cols:
         errors.append("Il faut au moins une colonne de rôle `value` (l'indicateur chiffré).")
 
     # Une colonne `value` doit réellement contenir des nombres, sinon le graphe casse.
     for col in value_cols:
         if any(not _is_numeric(row.get(col["key"])) for row in rows):
-            errors.append(f"Colonne {col['key']!r} : role `value` mais elle contient des valeurs non numériques.")
+            errors.append(
+                f"Colonne {col['key']!r} : role `value` mais elle contient des valeurs non numériques."
+            )
 
     if graph_type != "table":
         if len(label_cols) > 1:
@@ -177,8 +188,15 @@ async def set_statistic_presentation(
                     "Un camembert n'affiche qu'une seule série : utilise graph_type='table' "
                     f"pour {len(value_cols)} colonnes de valeurs."
                 )
-            if any(v < 0 for c in value_cols for v in [row.get(c["key"]) for row in rows] if v is not None):
-                errors.append("Valeurs négatives : un camembert ne représente que des parts positives d'un total.")
+            if any(
+                v < 0
+                for c in value_cols
+                for v in [row.get(c["key"]) for row in rows]
+                if v is not None
+            ):
+                errors.append(
+                    "Valeurs négatives : un camembert ne représente que des parts positives d'un total."
+                )
 
         # Une durée n'a pas d'échelle lisible : un axe Y gradué en `h min s` est inexploitable.
         if graph_type == "bar" and all(c["format"] == "seconds" for c in value_cols):
@@ -228,7 +246,12 @@ async def persist_statistic(deps: ChatDeps) -> int:
     # Filet de sécurité : une table sans métadonnées reste affichable par le front.
     graph_type = deps.graph_type or "table"
     labels = deps.labels or [
-        {"key": key, "label": key, "role": "label" if i == 0 else "value", "format": "text" if i == 0 else "number"}
+        {
+            "key": key,
+            "label": key,
+            "role": "label" if i == 0 else "value",
+            "format": "text" if i == 0 else "number",
+        }
         for i, key in enumerate(merged_columns)
     ]
 

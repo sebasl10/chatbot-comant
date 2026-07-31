@@ -12,14 +12,16 @@ from app.agents.prompts.agent_supervisor import AGENT_SUPERVISOR_PROMPT
 from app.agents.specialists.conversational import conversational_agent
 from app.agents.specialists.memory import memory_agent
 from app.agents.specialists.semantic_research import semantic_research_agent
-from app.agents.specialists.statistics import statistics_agent
 from app.agents.specialists.sql_research import sql_research_agent
+from app.agents.specialists.statistics import statistics_agent
 from app.agents.tools.memory import relevant_memories
 from app.agents.tools.research import persist_affinage, persist_new_research
 from app.agents.tools.statistic import persist_statistic
 from app.agents.util.history_utils import _history_context
 from app.agents.util.output_guard import guard_against_tool_call_leak
-from app.services.database import delete_research as db_delete_research, get_sql, rename_research as db_rename_research, is_admin
+from app.services.database import delete_research as db_delete_research
+from app.services.database import get_sql, is_admin
+from app.services.database import rename_research as db_rename_research
 
 
 async def delegate_conversation(ctx: RunContext[ChatDeps], user_message: str) -> str:
@@ -86,6 +88,7 @@ async def delegate_semantic_search(ctx: RunContext[ChatDeps], request: str) -> s
         await persist_new_research(ctx.deps, True, intention="recherche")
     return result.output
 
+
 async def delegate_statistics(ctx: RunContext[ChatDeps], request: str) -> str:
     """
     Délègue le calcul d'une STATISTIQUE (indicateur agrégé) à l'agent statistiques.
@@ -94,12 +97,12 @@ async def delegate_statistics(ctx: RunContext[ChatDeps], request: str) -> str:
     """
     print("[DELEGATE] Statistics agent")
     print(f"Message: {request}")
-    
+
     # Vérifier si l'utilisateur est Admin
     is_user_admin = is_admin(ctx.deps.user_id)
-    if not(is_user_admin):
+    if not (is_user_admin):
         return "Vous n'êtes pas autorisé·e à générer des statistiques. Cette fonctionnalité est réservée aux administrateurs."
-    
+
     ctx.deps.events.early_intention("statistic")
     ctx.deps.last_stats_sql = None
     ctx.deps.last_result = None
@@ -111,11 +114,12 @@ async def delegate_statistics(ctx: RunContext[ChatDeps], request: str) -> str:
     ctx.deps.description = None
     ctx.deps.labels = None
     result = await statistics_agent.run(request, deps=ctx.deps, usage=ctx.usage)
-    
+
     if ctx.deps.last_stats_sql:
-            await persist_statistic(ctx.deps)
-    
+        await persist_statistic(ctx.deps)
+
     return result.output
+
 
 async def delegate_correction(ctx: RunContext[ChatDeps], message: str) -> str:
     """
@@ -136,7 +140,7 @@ supervisor_agent = Agent(
         delegate_conversation,
         delegate_new_research,
         delegate_refine_search,
-        delegate_semantic_search, 
+        delegate_semantic_search,
         delegate_statistics,
         delegate_correction,
     ],

@@ -12,7 +12,7 @@ VALID_TARGET_AGENTS = (
     "supervisor",
     "sql_research",
     "semantic_research",
-    "statistics", 
+    "statistics",
     "conversational",
     "memory",
 )

@@ -84,10 +84,7 @@ async def run_stats_sql(ctx: RunContext[ChatDeps], sql: str) -> dict:
     ctx.deps.external_result = None
     ctx.deps.external_columns = []
 
-    return {
-        "ok": True,
-        "count": len(rows)
-    }
+    return {"ok": True, "count": len(rows)}
 
 
 async def run_external_sql(ctx: RunContext[ChatDeps], sql: str) -> dict:
@@ -115,7 +112,7 @@ async def run_external_sql(ctx: RunContext[ChatDeps], sql: str) -> dict:
         return {
             "ok": False,
             "error": "Aucune requête principale validée : appelle d'abord `run_stats_sql`, "
-                     "car la requête externe doit reprendre ses colonnes de regroupement.",
+            "car la requête externe doit reprendre ses colonnes de regroupement.",
         }
 
     try:
@@ -132,16 +129,16 @@ async def run_external_sql(ctx: RunContext[ChatDeps], sql: str) -> dict:
         return {
             "ok": False,
             "error": f"Aucune colonne commune avec la requête principale : la fusion est "
-                     f"impossible. Colonnes principales : {main_columns}, colonnes externes : "
-                     f"{columns}. Reprends l'alias de la colonne de regroupement "
-                     f"(ex: `d.uid AS {main_columns[0] if main_columns else 'username'}`).",
+            f"impossible. Colonnes principales : {main_columns}, colonnes externes : "
+            f"{columns}. Reprends l'alias de la colonne de regroupement "
+            f"(ex: `d.uid AS {main_columns[0] if main_columns else 'username'}`).",
         }
     if not new_columns:
         return {
             "ok": False,
             "error": f"La requête externe n'apporte aucune colonne nouvelle : {columns}. "
-                     f"Elle doit calculer l'indicateur absent de la requête principale "
-                     f"(ex: `AS secondes_absence`).",
+            f"Elle doit calculer l'indicateur absent de la requête principale "
+            f"(ex: `AS secondes_absence`).",
         }
 
     ctx.deps.external_sql = sql

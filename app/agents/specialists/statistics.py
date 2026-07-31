@@ -1,26 +1,22 @@
 """
 StatisticsAgent — indicateurs agrégés (temps, répartitions, estimations).
 """
+
 import asyncio
 
 from pydantic_ai import Agent, RunContext
 
 from app.agents.deps import ChatDeps
 from app.agents.model import get_agent_model
+from app.agents.prompts.agent_statistics import build_statistics_prompt
 from app.agents.tools.db import run_external_sql, run_stats_sql
 from app.agents.tools.entity import validate_entities
 from app.agents.tools.memory import relevant_memories
 from app.agents.tools.statistic import set_statistic_presentation
-from app.services.database import get_db_schema
-from app.agents.prompts.agent_statistics import build_statistics_prompt
 from app.agents.util.output_guard import guard_against_tool_call_leak
+from app.services.database import get_db_schema
 
-
-statistics_agent = Agent(
-    get_agent_model(),
-    deps_type=ChatDeps,
-    retries=2
-)
+statistics_agent = Agent(get_agent_model(), deps_type=ChatDeps, retries=2)
 statistics_agent.tool(validate_entities)
 statistics_agent.tool(run_stats_sql)
 statistics_agent.tool(run_external_sql)

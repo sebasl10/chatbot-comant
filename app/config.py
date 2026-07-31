@@ -16,7 +16,7 @@ class Settings(BaseSettings):
 
     ollama_openai_base_url: str = "http://localhost:11434/v1"
     chroma_http_url: str = "http://localhost:8001"
-    
+
     external_db_host: str
     external_db_port: int
     external_db_name: str

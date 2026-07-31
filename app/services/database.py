@@ -1,4 +1,3 @@
-import calendar
 import datetime
 import json
 import re
@@ -7,12 +6,29 @@ import pymysql
 
 from app.config import settings
 
-def get_connection(db: str = 'comant'):
+
+def get_connection(db: str = "comant"):
     try:
-        if db == 'external':
-            return pymysql.connect(host=settings.external_db_host, port=settings.external_db_port, database=settings.external_db_name, user=settings.external_db_user, password=settings.external_db_password, charset="utf8mb4", cursorclass=pymysql.cursors.DictCursor)
+        if db == "external":
+            return pymysql.connect(
+                host=settings.external_db_host,
+                port=settings.external_db_port,
+                database=settings.external_db_name,
+                user=settings.external_db_user,
+                password=settings.external_db_password,
+                charset="utf8mb4",
+                cursorclass=pymysql.cursors.DictCursor,
+            )
         else:
-            return pymysql.connect(host=settings.db_host, port=settings.db_port, database=settings.db_name, user=settings.db_user, password=settings.db_password, charset="utf8mb4", cursorclass=pymysql.cursors.DictCursor,)
+            return pymysql.connect(
+                host=settings.db_host,
+                port=settings.db_port,
+                database=settings.db_name,
+                user=settings.db_user,
+                password=settings.db_password,
+                charset="utf8mb4",
+                cursorclass=pymysql.cursors.DictCursor,
+            )
     except pymysql.Error as e:
         raise RuntimeError(f"Erreur de connexion à la base de données : {e}")
 
@@ -87,7 +103,7 @@ def get_db_schema():
     return json.dumps(schema, indent=2, ensure_ascii=False)
 
 
-def execute_select(sql: str, db: str = 'comant') -> list[dict]:
+def execute_select(sql: str, db: str = "comant") -> list[dict]:
     re.sub(r"[^\x20-\x7E]", "", sql)
     sql_clean = sql.strip().upper()
 
@@ -263,6 +279,7 @@ def delete_research(research_id: int, user_id: int | None = None) -> None:
     finally:
         conn.close()
 
+
 def get_username(user_id: int) -> str:
     conn = get_connection()
     try:
@@ -277,7 +294,8 @@ def get_username(user_id: int) -> str:
         return None
     finally:
         conn.close()
-        
+
+
 def is_admin(user_id: int) -> bool:
     conn = get_connection()
     try:
@@ -297,8 +315,17 @@ def is_admin(user_id: int) -> bool:
         return None
     finally:
         conn.close()
-       
-def create_statistic(user_id: int, sql: str, graph_type: str, description: str, labels: str | None, external_sql: str | None = None, last_result : str | None = None) -> int:
+
+
+def create_statistic(
+    user_id: int,
+    sql: str,
+    graph_type: str,
+    description: str,
+    labels: str | None,
+    external_sql: str | None = None,
+    last_result: str | None = None,
+) -> int:
     now = datetime.datetime.now()
     name = f"Statistique_{now.strftime('%Y-%m-%d_%H-%M-%S')}"
 
@@ -309,7 +336,20 @@ def create_statistic(user_id: int, sql: str, graph_type: str, description: str, 
                 INSERT INTO statistics (creator_id, name, created_at, sql_request, external_sql_request, last_result, graph_type, labels, description)
                 VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
             """
-            cursor.execute(query, (user_id, name, now, sql, external_sql, last_result, graph_type, labels, description))
+            cursor.execute(
+                query,
+                (
+                    user_id,
+                    name,
+                    now,
+                    sql,
+                    external_sql,
+                    last_result,
+                    graph_type,
+                    labels,
+                    description,
+                ),
+            )
             conn.commit()
             statistic_id = cursor.lastrowid
             return statistic_id
