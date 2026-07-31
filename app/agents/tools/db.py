@@ -72,11 +72,20 @@ async def run_stats_sql(ctx: RunContext[ChatDeps], sql: str) -> dict:
     except Exception as e:
         return {"ok": False, "error": str(e)}
 
+    columns = list(rows[0].keys()) if rows else []
+
     ctx.deps.last_stats_sql = sql
+    ctx.deps.last_result = rows
+    ctx.deps.last_stats_columns = columns
+    # Toute nouvelle requête invalide la présentation décrite pour la précédente :
+    # l'agent doit rappeler `set_statistic_presentation`.
+    ctx.deps.graph_type = None
+    ctx.deps.labels = None
+
     return {
         "ok": True,
         "count": len(rows),
-        "columns": list(rows[0].keys()) if rows else [],
+        "columns": columns,
         # Échantillon (valeurs converties en texte : dates / Decimal ne sont pas
         # sérialisables telles quelles vers le modèle).
         "sample": [{k: str(v) for k, v in row.items()} for row in rows[:_MAX_SAMPLE]],

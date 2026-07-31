@@ -278,7 +278,7 @@ def get_username(user_id: int) -> str:
     finally:
         conn.close()
         
-def create_statistic(user_id: int, sql: str, graph_type: str, description: str, labels: json, external_sql: str | None = None, last_result : str | None = None) -> int:
+def create_statistic(user_id: int, sql: str, graph_type: str, description: str, labels: str | None, external_sql: str | None = None, last_result : str | None = None) -> int:
     now = datetime.datetime.now()
     name = f"Statistique_{now.strftime('%Y-%m-%d_%H-%M-%S')}"
 

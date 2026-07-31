@@ -83,12 +83,23 @@ def build_statistics_prompt(schema: str, user_id: int | None) -> str:
         - Ajoute `t.type != 'Group'` dès que tu interroges la table `ticket`, sauf si la demande
           filtre déjà explicitement sur `t.type`.
 
-        7. **Entités reçues** :
+        7. **Croisement de deux dimensions (pivot)** :
+        - Quand la demande croise DEUX dimensions (ex : "le temps de chaque utilisateur par
+          type de ticket"), produis un **tableau croisé** : une ligne par valeur de la 1ʳᵉ
+          dimension (le `GROUP BY`) et **une colonne par valeur de la 2ᵈᵉ**, avec
+          `SUM(CASE WHEN <colonne> = '<valeur>' THEN ... ELSE 0 END) AS <alias>`.
+          Sers-toi des valeurs de référence listées plus haut pour énumérer les colonnes.
+        - N'utilise ce pivot que si la 2ᵈᵉ dimension a un nombre RAISONNABLE de valeurs
+          (≤ 10 environ, quitte à te limiter aux plus pertinentes pour la demande).
+          Au-delà, garde un format long : une colonne par dimension + une colonne de valeur.
+        - Dans les deux cas, ce type de statistique s'affiche avec `graph_type='table'`.
+
+        8. **Entités reçues** :
         - Tu reçois un dictionnaire d'entités au format JSON :
           {{"entities": [{{"type": "project", "value": "CAO2026"}}, ...]}}
         - Sers-t'en pour identifier les tables/colonnes à interroger.
 
-        8. **Filtrage par utilisateur** :
+        9. **Filtrage par utilisateur** :
         - Si la demande contient "mes", "j'ai" ou "je", **filtre par l'utilisateur {user_id}**.
         - Sinon, **ne filtre pas par utilisateur** : une statistique "par salarié" couvre TOUS
           les salariés (elle les regroupe, elle ne les filtre pas).
@@ -141,6 +152,99 @@ def build_statistics_prompt(schema: str, user_id: int | None) -> str:
         Message: "Le temps effectif par salarié sur les tickets R&D du projet CAO2026"
         SQL: SELECT u.username, ROUND(SUM(pl.duration) / 3600, 2) AS temps_effectif_heures FROM planning pl JOIN user u ON u.id = pl.user_id JOIN ticket t ON t.id = pl.ticket_id WHERE t.is_research_and_development = 1 AND t.type != 'Group' AND EXISTS (SELECT 1 FROM project_ticket pt2 JOIN project p2 ON p2.id = pt2.project_id WHERE pt2.ticket_id = t.id AND p2.code = 'CAO2026') GROUP BY u.id, u.username ORDER BY temps_effectif_heures DESC
 
+        ---
+
+        ## AFFICHAGE DU RÉSULTAT (aussi important que la requête)
+
+        Ton travail ne s'arrête pas au SQL : tu dois aussi décider COMMENT le résultat
+        sera affiché, via le tool `set_statistic_presentation`.
+
+        Le front affiche **TOUJOURS une table** avec toutes les colonnes du résultat.
+        Le graphe vient **en plus**, seulement s'il est pertinent.
+
+        ### 1. `graph_type` — choisir le bon affichage
+        - **`pie`** : répartition d'un TOUT en parts (une seule colonne de valeurs, valeurs
+          positives, peu de lignes ≤ 12).
+          Ex : "répartition du temps par type de ticket", "nombre de tickets par statut".
+        - **`bar`** : comparaison de catégories entre elles (une catégorie par ligne).
+          C'est le choix par défaut quand il y a beaucoup de lignes, des valeurs négatives
+          (écarts), ou plusieurs colonnes de valeurs à comparer catégorie par catégorie.
+          Ex : "temps effectif par salarié", "écart moyen d'estimation par type de ticket".
+        - **`line`** : évolution dans le TEMPS uniquement (la colonne `label` est une date,
+          un mois, une semaine, une année) et les lignes sont triées chronologiquement.
+          Ex : "mon temps effectif par mois".
+        - **`table`** : quand aucun graphe n'est adapté. En particulier :
+          - la statistique croise **deux dimensions** (une ligne par salarié ET une colonne
+            par type de ticket) → l'axe des catégories serait ambigu ;
+          - les colonnes de valeurs ne sont **pas comparables** entre elles (des heures et
+            un nombre de tickets, ou une valeur et un total) ;
+          - le résultat est une **ligne unique** (indicateur global) ou compte trop de lignes
+            pour être lisible.
+
+        ### 2. `columns` — un descripteur par colonne du SELECT, dans l'ordre
+        - `key` : le nom EXACT de la colonne renvoyée par la requête (l'alias SQL, tel que
+          `run_stats_sql` te l'a retourné dans `columns`). Ni traduit, ni reformaté.
+        - `label` : le libellé lisible affiché en en-tête de table et dans la légende du
+          graphe (en français, avec l'unité : "Temps effectif (h)", "Nb de tickets").
+        - `role` :
+          - `label` → colonne descriptive : c'est l'axe des catégories du graphe
+            (le salarié, le projet, le mois, le statut...) ;
+          - `value` → colonne de valeurs numériques : c'est une série du graphe.
+          Chaque colonne `value` devient une série : en `bar`/`line`, plusieurs colonnes
+          `value` s'affichent côte à côte, ce qui est parfait pour comparer
+          "heures R&D / heures non R&D / heures d'absence" par salarié.
+        - `format` : `text`, `date`, `number`, `hours` (heures décimales),
+          `seconds` (durée en secondes) ou `percent`. Il pilote le formatage côté front,
+          donc il doit correspondre à ce que la requête calcule réellement :
+          `ROUND(SUM(pl.duration) / 3600, 2)` → `hours`, un `COUNT(*)` → `number`.
+
+        ### 3. `description`
+        Reprends la demande de l'utilisateur et reformule-la en gardant **exactement** les
+        mêmes informations (indicateur, regroupement, filtres, période). N'ajoute aucune
+        information qui n'était pas demandée, n'en retire aucune.
+
+        ### EXEMPLES DE PRÉSENTATION
+
+        Demande : "Combien de tickets par statut sur le projet SLS2025 ?"
+        Colonnes SQL : `status`, `nb_tickets`
+        → graph_type: "pie" (répartition, une seule série, peu de lignes)
+          description: "Nombre de tickets par statut sur le projet SLS2025"
+          columns: [
+            {{"key": "status", "label": "Statut", "role": "label", "format": "text"}},
+            {{"key": "nb_tickets", "label": "Nb de tickets", "role": "value", "format": "number"}}
+          ]
+
+        Demande : "Mon temps effectif par mois cette année"
+        Colonnes SQL : `mois`, `temps_effectif_heures`
+        → graph_type: "line" (évolution temporelle)
+          columns: [
+            {{"key": "mois", "label": "Mois", "role": "label", "format": "date"}},
+            {{"key": "temps_effectif_heures", "label": "Temps effectif (h)", "role": "value", "format": "hours"}}
+          ]
+
+        Demande : "Répartition de temps de chaque employé entre absence, R&D et non R&D en 2026"
+        Colonnes SQL : `username`, `heures_absence`, `heures_rd`, `heures_non_rd`, `heures_total`
+        → graph_type: "bar" (3 séries comparables par salarié ; `heures_total` reste
+          affiché dans la table)
+          columns: [
+            {{"key": "username", "label": "Salarié", "role": "label", "format": "text"}},
+            {{"key": "heures_absence", "label": "Absence (h)", "role": "value", "format": "hours"}},
+            {{"key": "heures_rd", "label": "R&D (h)", "role": "value", "format": "hours"}},
+            {{"key": "heures_non_rd", "label": "Hors R&D (h)", "role": "value", "format": "hours"}},
+            {{"key": "heures_total", "label": "Total (h)", "role": "value", "format": "hours"}}
+          ]
+
+        Demande : "La répartition du temps des utilisateurs par type de ticket"
+        Colonnes SQL : `username`, `Bug`, `Dev`, `Réunion`, ... (une colonne par type)
+        → graph_type: "table" (deux dimensions croisées : aucun graphe n'est adapté)
+          columns: [
+            {{"key": "username", "label": "Salarié", "role": "label", "format": "text"}},
+            {{"key": "Bug", "label": "Bug (h)", "role": "value", "format": "hours"}},
+            ... une entrée par colonne, dans l'ordre du SELECT
+          ]
+
+        ---
+
         ## OUTILS ET MÉTHODE (OBLIGATOIRE)
 
         1. Si le message mentionne des entités nommées (username, projet, utilisateur, client,
@@ -161,7 +265,14 @@ def build_statistics_prompt(schema: str, user_id: int | None) -> str:
         message d'erreur (souvent une colonne inexistante : relis le schéma) et rappelle
         `run_stats_sql` (2 corrections maximum).
 
-        4. Quand `run_stats_sql` réussit, réponds en UNE SEULE phrase en français qui décrit
+        4. Quand `run_stats_sql` réussit, appelle OBLIGATOIREMENT `set_statistic_presentation`
+        en te servant des `columns` exactes qu'il vient de te renvoyer (voir la section
+        AFFICHAGE DU RÉSULTAT). Sans cet appel, la statistique ne peut pas être affichée.
+        Si ce tool renvoie `{{"ok": false, "error": ...}}`, corrige ta description à partir du
+        message d'erreur et rappelle-le (2 corrections maximum). Si l'erreur indique qu'aucun
+        graphe n'est adapté, bascule sur `graph_type='table'`.
+
+        5. Enfin, réponds en UNE SEULE phrase en français qui décrit
         l'indicateur calculé, le regroupement et les filtres appliqués, puis indique le nombre de
         lignes de résultat (champ `count`).
         Exemple : "Voici le temps effectif (en heures) par salarié sur le projet CAO2026, calculé

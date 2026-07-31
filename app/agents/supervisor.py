@@ -98,6 +98,11 @@ async def delegate_statistics(ctx: RunContext[ChatDeps], request: str) -> str:
     print(f"Message: {request}")
     ctx.deps.events.intention("statistiques")
     ctx.deps.last_stats_sql = None
+    ctx.deps.last_result = None
+    ctx.deps.last_stats_columns = []
+    ctx.deps.graph_type = None
+    ctx.deps.description = None
+    ctx.deps.labels = None
     result = await statistics_agent.run(request, deps=ctx.deps, usage=ctx.usage)
     if ctx.deps.last_stats_sql:
             await persist_statistic(ctx.deps)
