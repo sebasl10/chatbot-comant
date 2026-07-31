@@ -318,38 +318,3 @@ def create_statistic(user_id: int, sql: str, graph_type: str, description: str, 
         raise e
     finally:
         conn.close()
-
-def get_absences(user: str, year: int = None, month: int = None, min_date: str = None, max_date: str = None) -> list[dict] | None:
-    conn = get_connection('external')
-    try:
-        base_sql = "SELECT * FROM days WHERE uid = %s AND type <> %s"
-        params = [user, 32]
-
-        if min_date is None and max_date is None:
-            if year is not None:
-                if month is not None:
-                    start_date = datetime.datetime(year, month, 1)
-                    _, last_day = calendar.monthrange(year, month)
-                    end_date = datetime.datetime(year, month, last_day)
-                    base_sql += " AND date BETWEEN %s AND %s"
-                    params.extend([start_date.strftime('%Y-%m-%d'), end_date.strftime('%Y-%m-%d')])
-                else:
-                    base_sql += " AND date BETWEEN %s AND %s"
-                    params.extend([f"{year}-01-01", f"{year}-12-31"])
-        else:
-            if min_date is not None:
-                base_sql += " AND date >= %s"
-                params.append(min_date)
-            if max_date is not None:
-                base_sql += " AND date <= %s"
-                params.append(max_date)
-
-        with conn.cursor() as cursor:
-            cursor.execute(base_sql, tuple(params))
-            results = cursor.fetchall()
-            return results if results else None
-    except Exception as e:
-        print(f"Erreur lors de la récupération des absences pour l'ID {user}: {e}")
-        return None
-    finally:
-        conn.close()

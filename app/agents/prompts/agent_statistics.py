@@ -259,8 +259,8 @@ def build_statistics_prompt(schema: str, user_id: int | None) -> str:
         - `key` : le nom EXACT de la colonne renvoyée par la requête (l'alias SQL, tel que
           `run_stats_sql` te l'a retourné dans `columns`). Ni traduit, ni reformaté.
         - `label` : le libellé lisible affiché en en-tête de table et dans la légende du
-          graphe, en français ("Salarié", "Temps effectif", "Nb de tickets"). N'y mets pas
-          l'unité d'une durée : le front l'affiche déjà en `h min s`.
+          graphe, en français ("Salarié", "Temps effectif", "Nb de tickets"). N'ajoute JAMAIS
+          l'unité de mesure.
         - `role` :
           - `label` → colonne descriptive : c'est l'axe des catégories du graphe
             (le salarié, le projet, le mois, le statut...) ;
