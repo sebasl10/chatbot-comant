@@ -19,9 +19,7 @@ from app.agents.tools.research import persist_affinage, persist_new_research
 from app.agents.tools.statistic import persist_statistic
 from app.agents.util.history_utils import _history_context
 from app.agents.util.output_guard import guard_against_tool_call_leak
-from app.services.database import delete_research as db_delete_research
-from app.services.database import get_sql
-from app.services.database import rename_research as db_rename_research
+from app.services.database import delete_research as db_delete_research, get_sql, rename_research as db_rename_research, is_admin
 
 
 async def delegate_conversation(ctx: RunContext[ChatDeps], user_message: str) -> str:
@@ -96,7 +94,13 @@ async def delegate_statistics(ctx: RunContext[ChatDeps], request: str) -> str:
     """
     print("[DELEGATE] Statistics agent")
     print(f"Message: {request}")
-    ctx.deps.events.intention("statistiques")
+    
+    # Vérifier si l'utilisateur est Admin
+    is_user_admin = is_admin(ctx.deps.user_id)
+    if not(is_user_admin):
+        return "Vous n'êtes pas autorisé·e à générer des statistiques. Cette fonctionnalité est réservée aux administrateurs."
+    
+    ctx.deps.events.early_intention("statistic")
     ctx.deps.last_stats_sql = None
     ctx.deps.last_result = None
     ctx.deps.last_stats_columns = []
@@ -140,8 +144,6 @@ guard_against_tool_call_leak(supervisor_agent)
 
 @supervisor_agent.system_prompt
 async def _system(ctx: RunContext[ChatDeps]) -> str:
-    # Exemples et corrections de routage pertinents pour ce message
-    # (target_agent=supervisor), récupérés à partir du message utilisateur brut.
     memories = await relevant_memories(ctx, "supervisor")
     memory_block = (
         f"\n\n## GUIDE DE ROUTAGE (exemples et corrections à respecter)\n{memories}"

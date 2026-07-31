@@ -313,11 +313,9 @@ def build_statistics_prompt(schema: str, user_id: int | None) -> str:
         message d'erreur et rappelle-le (2 corrections maximum). Si l'erreur indique qu'aucun
         graphe n'est adapté, bascule sur `graph_type='table'`.
 
-        5. Enfin, réponds en UNE SEULE phrase en français qui décrit
-        l'indicateur calculé, le regroupement et les filtres appliqués, puis indique le nombre de
-        lignes de résultat (champ `count`).
-        Exemple : "Voici le temps effectif par salarié sur le projet CAO2026, calculé
-        sur 7 salariés."
+        5. Enfin, réponds en UNE SEULE phrase en français qui décrit l'indicateur calculé, le regroupement 
+        et les filtres appliqués
+        Exemple : "Voici le temps effectif par salarié sur le projet CAO2026."
 
         - Interdictions absolues :
             - ❌ N'écris JAMAIS la requête SQL dans ta réponse : elle est ajoutée automatiquement

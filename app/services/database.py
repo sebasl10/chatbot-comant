@@ -278,6 +278,26 @@ def get_username(user_id: int) -> str:
     finally:
         conn.close()
         
+def is_admin(user_id: int) -> bool:
+    conn = get_connection()
+    try:
+        with conn.cursor() as cursor:
+            cursor.execute("SELECT roles FROM user WHERE id = %s", (user_id,))
+            result = cursor.fetchone()
+            if result:
+                roles = result["roles"]
+                if isinstance(roles, str):
+                    roles_list = json.loads(roles)
+                else:
+                    roles_list = roles
+                return "ROLE_ADMIN" in roles_list
+            return False
+    except Exception as e:
+        print(f"Erreur lors de la récupération du username pour l'ID {user_id}: {e}")
+        return None
+    finally:
+        conn.close()
+       
 def create_statistic(user_id: int, sql: str, graph_type: str, description: str, labels: str | None, external_sql: str | None = None, last_result : str | None = None) -> int:
     now = datetime.datetime.now()
     name = f"Statistique_{now.strftime('%Y-%m-%d_%H-%M-%S')}"
