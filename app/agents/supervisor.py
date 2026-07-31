@@ -16,6 +16,7 @@ from app.agents.specialists.statistics import statistics_agent
 from app.agents.specialists.sql_research import sql_research_agent
 from app.agents.tools.memory import relevant_memories
 from app.agents.tools.research import persist_affinage, persist_new_research
+from app.agents.tools.statistic import persist_statistic
 from app.agents.util.history_utils import _history_context
 from app.agents.util.output_guard import guard_against_tool_call_leak
 from app.services.database import delete_research as db_delete_research
@@ -98,6 +99,8 @@ async def delegate_statistics(ctx: RunContext[ChatDeps], request: str) -> str:
     ctx.deps.events.intention("statistiques")
     ctx.deps.last_stats_sql = None
     result = await statistics_agent.run(request, deps=ctx.deps, usage=ctx.usage)
+    if ctx.deps.last_stats_sql:
+            await persist_statistic(ctx.deps)
     
     if ctx.deps.last_stats_sql:
         return f"{result.output}<br/><br/>{ctx.deps.last_stats_sql}"

@@ -277,6 +277,27 @@ def get_username(user_id: int) -> str:
         return None
     finally:
         conn.close()
+        
+def create_statistic(user_id: int, sql: str, graph_type: str, description: str, labels: json, external_sql: str | None = None, last_result : str | None = None) -> int:
+    now = datetime.datetime.now()
+    name = f"Statistique_{now.strftime('%Y-%m-%d_%H-%M-%S')}"
+
+    conn = get_connection()
+    try:
+        with conn.cursor() as cursor:
+            query = """
+                INSERT INTO statistics (creator_id, name, created_at, sql_request, external_sql_request, last_result, graph_type, labels, description)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+            """
+            cursor.execute(query, (user_id, name, now, sql, external_sql, last_result, graph_type, labels, description))
+            conn.commit()
+            statistic_id = cursor.lastrowid
+            return statistic_id
+    except Exception as e:
+        conn.rollback()
+        raise e
+    finally:
+        conn.close()
 
 def get_absences(user: str, year: int = None, month: int = None, min_date: str = None, max_date: str = None) -> list[dict] | None:
     conn = get_connection('external')
