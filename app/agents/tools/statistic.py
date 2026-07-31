@@ -4,7 +4,7 @@ Présentation et persistance des statistiques.
 L'agent statistiques ne produit pas seulement une requête SQL : il décrit aussi
 COMMENT afficher le résultat (type de graphe, libellés, rôle et format de chaque
 colonne). Cette description est validée contre le résultat réel de la requête,
-puis persistée pour le front.
+puis persistée.
 """
 
 import asyncio
@@ -19,11 +19,7 @@ from app.services.database import create_statistic
 
 GRAPH_TYPES = ("pie", "bar", "line", "table")
 ROLES = ("label", "value")
-# Les durées sont toujours renvoyées en secondes par le SQL : le front les formate en `h min s`.
 FORMATS = ("text", "date", "number", "seconds", "percent")
-
-# Au-delà, un camembert devient illisible (et le front n'a que 15 couleurs).
-_MAX_PIE_SLICES = 12
 
 
 def _is_numeric(value) -> bool:
@@ -116,10 +112,6 @@ async def set_statistic_presentation(
                     "Un camembert n'affiche qu'une seule série : utilise graph_type='bar' "
                     f"(ou 'table') pour {len(value_cols)} colonnes de valeurs."
                 )
-            if len(rows) > _MAX_PIE_SLICES:
-                errors.append(
-                    f"{len(rows)} lignes : trop pour un camembert (max {_MAX_PIE_SLICES}). Utilise graph_type='bar'."
-                )
             if any(v < 0 for c in value_cols for v in [row.get(c["key"]) for row in rows] if v is not None):
                 errors.append("Valeurs négatives : un camembert ne représente que des parts positives d'un total.")
 
@@ -172,5 +164,5 @@ async def persist_statistic(deps: ChatDeps) -> int:
         deps.external_sql,
         _json_dump(deps.last_result),
     )
-    deps.events.research(research_id=statistic_id)
+    deps.events.statistic(statistic_id)
     return statistic_id

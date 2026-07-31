@@ -37,15 +37,11 @@ class ChatDeps:
     last_stats_sql: str | None = None
     external_sql: str | None = None
 
-    # Résultat brut de la dernière requête stats et noms EXACTS de ses colonnes
-    # (alias du SELECT), renseignés par le tool `run_stats_sql`.
+    # Résultat brut de la dernière requête stats 
     last_result: list[dict] | None = None
     last_stats_columns: list[str] = field(default_factory=list)
 
-    # Présentation choisie par l'agent (tool `set_statistic_presentation`).
-    # `graph_type` : pie | bar | line | table
-    # `labels` : descripteurs de colonnes, un par colonne du résultat SQL
-    #            [{"key", "label", "role": "label"|"value", "format"}, ...]
+    # Présentation de la statistique choisie par l'agent
     graph_type: str | None = None
     description: str | None = None
     labels: list[dict] | None = None
