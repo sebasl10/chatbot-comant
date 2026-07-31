@@ -4,6 +4,7 @@ Dépendances injectées dans tous les agents et tools (Pydantic AI ``deps_type``
 Un unique ``ChatDeps`` circule du superviseur vers les spécialistes puis vers les
 tools via ``RunContext.deps``. Il porte le contexte utilisateur.
 """
+import json
 
 from dataclasses import dataclass, field
 from app.services.events import EventSink
@@ -26,11 +27,16 @@ class ChatDeps:
     last_sql: str | None = None
     last_count: int = 0
 
-    # Dernière requête d'agrégation exécutée avec succès par le tool run_stats_sql.
-    last_stats_sql: str | None = None
-
     # Mode courant de l'agent SQL : "recherche" (nouvelle recherche) ou "affinage" (modification d'une recherche existante).
     mode: str = "recherche"
     
     # Requête SQL précédente à affiner (renseignée en mode affinage).
     previous_sql: str | None = None
+    
+    # Dépendances pour la persistance de statistiques.
+    last_stats_sql: str | None = None
+    graph_type: str | None = 'pie'
+    description: str | None = None
+    labels: dict | None = None
+    external_sql: str | None = None 
+    last_result : dict | None = None

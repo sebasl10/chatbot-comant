@@ -13,6 +13,6 @@ async def persist_statistic(deps: ChatDeps) -> int:
     """
     if not deps.last_stats_sql:
         raise ValueError("Aucune requête SQL (stats) à persister (deps.last_stats_sql vide).")
-    statistic_id = await asyncio.to_thread(create_statistic, deps.user_id, deps.last_stats_sql)
+    statistic_id = await asyncio.to_thread(create_statistic, deps.user_id, deps.last_stats_sql, deps.graph_type, deps.description, deps.labels, deps.external_sql, deps.last_result)
     deps.events.research(research_id=statistic_id)
     return statistic_id
