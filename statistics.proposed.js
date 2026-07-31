@@ -22,6 +22,24 @@ const CHART_COLORS = [
     '#FF33AA', '#33FF99', '#FF66CC', '#66FFFF', '#FF9966'
 ];
 
+/**
+ * Un camembert peut avoir beaucoup de parts (un par salarié, par projet...).
+ * Au-delà de la palette fixe, on génère des teintes distinctes par angle d'or
+ * plutôt que de recycler les mêmes 15 couleurs (deux parts identiques seraient
+ * indiscernables dans la légende).
+ */
+function buildColors(count) {
+    if (count <= CHART_COLORS.length) {
+        return CHART_COLORS.slice(0, count);
+    }
+    return Array.from({ length: count }, (_, i) => {
+        if (i < CHART_COLORS.length) return CHART_COLORS[i];
+        const hue = Math.round((i * 137.508) % 360);
+        const lightness = i % 2 === 0 ? 65 : 50;
+        return `hsl(${hue}, 70%, ${lightness}%)`;
+    });
+}
+
 let currentStatisticData = {
     name: '',
     description: '',
@@ -97,6 +115,19 @@ function formatValue(value, format) {
         default:
             return String(value);
     }
+}
+
+/**
+ * Formatage des graduations de l'axe Y : une durée y est écrite de façon compacte
+ * ("194 h"), le `h min s` complet restant réservé à la table et aux tooltips.
+ */
+function formatAxisValue(value, format) {
+    if (format !== 'seconds') return formatValue(value, format);
+
+    const seconds = Number(value);
+    if (seconds === 0) return '0';
+    if (Math.abs(seconds) < 3600) return `${Math.round(seconds / 60)} min`;
+    return `${Number((seconds / 3600).toFixed(1)).toLocaleString('fr-FR')} h`;
 }
 
 /* ------------------------------------------------------------------ */
@@ -292,8 +323,8 @@ function initStatisticsChart(rows, columns, type = 'pie') {
     const datasets = series.map((col, index) => {
         // Camembert : une couleur par part. Bar/line : une couleur par série.
         const colors = type === 'pie'
-            ? rows.map((_, i) => CHART_COLORS[i % CHART_COLORS.length])
-            : CHART_COLORS[index % CHART_COLORS.length];
+            ? buildColors(rows.length)
+            : buildColors(series.length)[index];
 
         return {
             label: col.label,
@@ -340,7 +371,7 @@ function initStatisticsChart(rows, columns, type = 'pie') {
         config.options.scales = {
             y: {
                 beginAtZero: true,
-                ticks: { callback: (value) => formatValue(value, axisFormat) }
+                ticks: { callback: (value) => formatAxisValue(value, axisFormat) }
             },
             x: { grid: { display: false } }
         };
