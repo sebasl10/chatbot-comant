@@ -87,14 +87,14 @@ def get_db_schema():
     return json.dumps(schema, indent=2, ensure_ascii=False)
 
 
-def execute_select(sql: str) -> list[dict]:
+def execute_select(sql: str, db: str = 'comant') -> list[dict]:
     re.sub(r"[^\x20-\x7E]", "", sql)
     sql_clean = sql.strip().upper()
 
     if not sql_clean.startswith("SELECT"):
         raise ValueError("Seules les requêtes SELECT sont autorisées")
 
-    conn = get_connection()
+    conn = get_connection(db)
     try:
         with conn.cursor() as cursor:
             cursor.execute(sql)

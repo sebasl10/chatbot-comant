@@ -128,7 +128,51 @@ def build_statistics_prompt(schema: str, user_id: int | None) -> str:
           cherche dans les 3 types de branche
         - L'historique de modifications des attributs d'un ticket (status, assigné, description...)
           est stocké dans la table `log` (action UPDATE)
-        - Périodes : "en 2026" → `YEAR(<colonne_date>) = 2026`, "ce mois-ci" → `<colonne_date> >= DATE_FORMAT(NOW(), '%Y-%m-01')`. 
+        - Périodes : "en 2026" → `YEAR(<colonne_date>) = 2026`, "ce mois-ci" → `<colonne_date> >= DATE_FORMAT(NOW(), '%Y-%m-01')`.
+
+        ---
+
+        ## ABSENCES — base de données EXTERNE (règles particulières)
+
+        Les absences ne sont **PAS** dans la base COMANT : elles sont stockées dans une base
+        **externe**, sur un autre serveur. Une jointure entre les deux est donc IMPOSSIBLE.
+        Tu écris deux requêtes séparées, exécutées par deux tools différents, et le
+        back-end les fusionne.
+
+        ### Table `days` (base externe) — seules colonnes à utiliser
+        - `uid`  : le **username** (trigramme) de l'utilisateur — c'est la clé de jointure
+                   avec la table `user` de la base COMANT ;
+        - `date` : le jour concerné ;
+        - `type` : la nature du jour.
+
+        ### Règles de calcul
+        - Ajoute **TOUJOURS** la condition `d.type <> 32`.
+        - Durée d'une absence, en secondes :
+          - `d.type IN (3, 4)` → **demi-journée** = 4 h = **14400** secondes ;
+          - tout autre `type` → **journée complète** = 8 h = **28800** secondes.
+        - D'où l'agrégat à utiliser :
+          `SUM(CASE WHEN d.type IN (3, 4) THEN 14400 ELSE 28800 END) AS secondes_absence`
+
+        ### Règles absolues
+        - La requête **principale** (`run_stats_sql`) ne connaît QUE la base COMANT :
+          n'y écris **JAMAIS** la table `days`.
+        - La requête **externe** (`run_external_sql`) ne connaît QUE la table `days` :
+          n'y écris **JAMAIS** `planning`, `ticket`, `user` ou tout autre table COMANT.
+        - La requête externe doit **reprendre la colonne de regroupement de la requête
+          principale avec le MÊME alias** — c'est sur elle que les deux résultats sont
+          fusionnés : `SELECT d.uid AS username, ...` si la requête principale renvoie
+          `u.username`.
+        - Elle doit appliquer **les mêmes filtres de période** que la requête principale
+          (sur `d.date`), sinon les deux moitiés du résultat ne sont pas comparables.
+        - Elle ne peut apporter que des colonnes **nouvelles** (`secondes_absence`), jamais
+          recalculer une colonne déjà renvoyée par la requête principale.
+        - La fusion n'est possible que si la statistique est **regroupée par utilisateur**
+          (`uid` est la seule clé disponible côté absences). Si la demande croise les
+          absences avec un regroupement par projet, par type de ticket ou par période, dis
+          à l'utilisateur que ce n'est pas possible plutôt que d'inventer une jointure.
+
+        Message: "Le temps d'absence par salarié en 2026"
+        SQL externe: SELECT d.uid AS username, SUM(CASE WHEN d.type IN (3, 4) THEN 14400 ELSE 28800 END) AS secondes_absence FROM days d WHERE d.type <> 32 AND YEAR(d.date) = 2026 GROUP BY d.uid
 
         ---
 
@@ -141,7 +185,9 @@ def build_statistics_prompt(schema: str, user_id: int | None) -> str:
         SQL: SELECT p.code, SUM(pl.duration) AS temps_effectif_secondes FROM planning pl JOIN ticket t ON t.id = pl.ticket_id JOIN project_ticket pt ON pt.ticket_id = t.id JOIN project p ON p.id = pt.project_id WHERE YEAR(pl.date) = 2026 AND t.type != 'Group' GROUP BY p.id, p.code ORDER BY temps_effectif_secondes DESC
 
         Message: "Donne-moi la répartition de temps de chaque employé entre absence, R&D et non R&D en 2026"
-        SQL: SELECT u.username, SUM(CASE WHEN ... THEN pl.duration ELSE 0 END) AS secondes_absence, SUM(CASE WHEN NOT ... AND t.is_research_and_development = 1 THEN pl.duration ELSE 0 END) AS secondes_rd, SUM(CASE WHEN NOT ... AND (t.is_research_and_development = 0 OR t.is_research_and_development IS NULL) THEN pl.duration ELSE 0 END) AS secondes_non_rd, SUM(pl.duration) AS secondes_total FROM planning pl JOIN user u ON u.id = pl.user_id JOIN ticket t ON t.id = pl.ticket_id WHERE YEAR(pl.date) = 2026 AND t.type != 'Group' GROUP BY u.id, u.username ORDER BY secondes_total DESC
+        (deux requêtes : les absences viennent de la base externe, jamais de `planning`)
+        SQL: SELECT u.username, SUM(CASE WHEN t.is_research_and_development = 1 THEN pl.duration ELSE 0 END) AS secondes_rd, SUM(CASE WHEN t.is_research_and_development = 0 OR t.is_research_and_development IS NULL THEN pl.duration ELSE 0 END) AS secondes_non_rd FROM planning pl JOIN user u ON u.id = pl.user_id JOIN ticket t ON t.id = pl.ticket_id WHERE YEAR(pl.date) = 2026 AND t.type != 'Group' GROUP BY u.id, u.username ORDER BY u.username
+        SQL externe: SELECT d.uid AS username, SUM(CASE WHEN d.type IN (3, 4) THEN 14400 ELSE 28800 END) AS secondes_absence FROM days d WHERE d.type <> 32 AND YEAR(d.date) = 2026 GROUP BY d.uid
 
         Message: "Je veux savoir le nombre de tickets où le temps a été surestimé, sous-estimé ou correctement estimé par utilisateur"
         SQL: SELECT u.username, SUM(CASE WHEN e.temps_effectif_secondes > e.temps_estime_secondes THEN 1 ELSE 0 END) AS nb_tickets_sous_estimes, SUM(CASE WHEN e.temps_effectif_secondes < e.temps_estime_secondes THEN 1 ELSE 0 END) AS nb_tickets_surestimes, SUM(CASE WHEN e.temps_effectif_secondes = e.temps_estime_secondes THEN 1 ELSE 0 END) AS nb_tickets_correctement_estimes, COUNT(*) AS nb_tickets_estimes FROM (SELECT t.id, t.assignee_id, t.time_estimate * 3600 AS temps_estime_secondes, SUM(pl.duration) AS temps_effectif_secondes FROM ticket t JOIN planning pl ON pl.ticket_id = t.id WHERE t.type != 'Group' AND t.time_estimate IS NOT NULL AND t.time_estimate > 0 GROUP BY t.id, t.assignee_id, t.time_estimate) e JOIN user u ON u.id = e.assignee_id GROUP BY u.id, u.username ORDER BY nb_tickets_estimes DESC
@@ -264,16 +310,18 @@ def build_statistics_prompt(schema: str, user_id: int | None) -> str:
           ]
 
         Demande : "Répartition de temps de chaque employé entre absence, R&D et non R&D en 2026"
-        Colonnes SQL : `username`, `secondes_absence`, `secondes_rd`, `secondes_non_rd`, `secondes_total`
+        Colonnes du résultat : `username`, `secondes_rd`, `secondes_non_rd` (requête
+        principale) **puis** `secondes_absence` (colonne ajoutée par la requête externe)
         → graph_type: "table" (PLUSIEURS colonnes de durées : le camembert n'accepte
           qu'une série et un axe Y en `h min s` serait illisible)
           columns: [
             {{"key": "username", "label": "Salarié", "role": "label", "format": "text"}},
-            {{"key": "secondes_absence", "label": "Absence", "role": "value", "format": "seconds"}},
             {{"key": "secondes_rd", "label": "R&D", "role": "value", "format": "seconds"}},
             {{"key": "secondes_non_rd", "label": "Hors R&D", "role": "value", "format": "seconds"}},
-            {{"key": "secondes_total", "label": "Total", "role": "value", "format": "seconds"}}
+            {{"key": "secondes_absence", "label": "Absence", "role": "value", "format": "seconds"}}
           ]
+          ⚠️ L'ordre est imposé : d'abord TOUTES les colonnes de la requête principale,
+          ensuite celles qu'ajoute la requête externe.
 
         Demande : "La répartition du temps des utilisateurs par type de ticket"
         Colonnes SQL : `username`, `secondes_bug`, `secondes_dev`, `secondes_reunion`, ... (une colonne par type)
@@ -306,14 +354,21 @@ def build_statistics_prompt(schema: str, user_id: int | None) -> str:
         message d'erreur (souvent une colonne inexistante : relis le schéma) et rappelle
         `run_stats_sql` (2 corrections maximum).
 
-        4. Quand `run_stats_sql` réussit, appelle OBLIGATOIREMENT `set_statistic_presentation`
-        en te servant des `columns` exactes qu'il vient de te renvoyer (voir la section
-        AFFICHAGE DU RÉSULTAT). Sans cet appel, la statistique ne peut pas être affichée.
+        4. UNIQUEMENT si la statistique demandée porte sur les ABSENCES : construis la
+        requête sur la base externe (voir la section ABSENCES) et appelle `run_external_sql`.
+        Ce tool applique la même boucle d'auto-correction que `run_stats_sql`.
+        Si la demande ne parle pas d'absences, saute complètement cette étape.
+
+        5. Appelle ensuite OBLIGATOIREMENT `set_statistic_presentation` en décrivant
+        TOUTES les colonnes du résultat, en reprenant les alias EXACTS de tes `SELECT`
+        (ceux de la requête principale d'abord, puis ceux ajoutés par la requête externe).
+        Voir la section AFFICHAGE DU RÉSULTAT. Sans cet appel, la statistique ne peut pas
+        être affichée.
         Si ce tool renvoie `{{"ok": false, "error": ...}}`, corrige ta description à partir du
         message d'erreur et rappelle-le (2 corrections maximum). Si l'erreur indique qu'aucun
         graphe n'est adapté, bascule sur `graph_type='table'`.
 
-        5. Enfin, réponds en UNE SEULE phrase en français qui décrit l'indicateur calculé, le regroupement 
+        6. Enfin, réponds en UNE SEULE phrase en français qui décrit l'indicateur calculé, le regroupement
         et les filtres appliqués
         Exemple : "Voici le temps effectif par salarié sur le projet CAO2026."
 

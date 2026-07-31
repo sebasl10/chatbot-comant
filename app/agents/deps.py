@@ -37,9 +37,13 @@ class ChatDeps:
     last_stats_sql: str | None = None
     external_sql: str | None = None
 
-    # Résultat brut de la dernière requête stats 
+    # Résultat brut de la dernière requête stats
     last_result: list[dict] | None = None
     last_stats_columns: list[str] = field(default_factory=list)
+
+    # Résultat de la requête sur la base EXTERNE (absences)
+    external_result: list[dict] | None = None
+    external_columns: list[str] = field(default_factory=list)
 
     # Présentation de la statistique choisie par l'agent
     graph_type: str | None = None

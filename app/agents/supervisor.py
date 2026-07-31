@@ -104,6 +104,9 @@ async def delegate_statistics(ctx: RunContext[ChatDeps], request: str) -> str:
     ctx.deps.last_stats_sql = None
     ctx.deps.last_result = None
     ctx.deps.last_stats_columns = []
+    ctx.deps.external_sql = None
+    ctx.deps.external_result = None
+    ctx.deps.external_columns = []
     ctx.deps.graph_type = None
     ctx.deps.description = None
     ctx.deps.labels = None
