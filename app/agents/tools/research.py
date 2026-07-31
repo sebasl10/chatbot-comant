@@ -1,13 +1,5 @@
 """
 Persistance des recherches
-
-Ces helpers ne sont PAS exposés au LLM : la création/mise à jour d'une recherche
-doit se produire exactement une fois, pilotée par la couche de délégation après
-qu'un agent spécialiste a produit une requête SQL valide (mémorisée dans
-``deps.last_sql`` par le tool ``run_sql``).
-
-Ils émettent l'événement ``research`` (research_id + sql) que le front consomme
-pour rediriger vers l'onglet Recherche et afficher les résultats.
 """
 
 import asyncio

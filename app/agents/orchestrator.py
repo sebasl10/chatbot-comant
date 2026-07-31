@@ -45,9 +45,6 @@ async def _emit_events(deps: ChatDeps) -> str:
 
 
 async def run_chat_stream(message: str, deps: ChatDeps) -> AsyncIterator[str]:
-    # Message brut du tour : requête de récupération des souvenirs par les agents
-    # (relevant_memories). Les exemples/corrections de routage du superviseur sont
-    # injectés dans son system prompt via relevant_memories(target_agent="supervisor").
     deps.message = message
     prompt = _history_context(deps.historique) + f"Message de l'utilisateur : {message}"
 
@@ -59,11 +56,8 @@ async def run_chat_stream(message: str, deps: ChatDeps) -> AsyncIterator[str]:
     deps.events.set_early_callback(early_callback)
 
     try:
-        # Lancer le supervisor dans une tâche asynchrone pour permettre
-        # de traiter les early events pendant son exécution
         supervisor_task = asyncio.create_task(supervisor_agent.run(prompt, deps=deps))
 
-        # Traiter les early events au fur et à mesure qu'ils arrivent
         while not supervisor_task.done():
             try:
                 event = await asyncio.wait_for(early_events_queue.get(), timeout=0.01)
@@ -73,7 +67,6 @@ async def run_chat_stream(message: str, deps: ChatDeps) -> AsyncIterator[str]:
 
         result = await supervisor_task
 
-        # Envoyer les événements normaux accumulés (intention, research, etc.)
         yield await _emit_events(deps)
         yield STREAM_START
 

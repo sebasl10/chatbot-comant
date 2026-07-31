@@ -1,12 +1,5 @@
 """
 SemanticResearchAgent — recherche par thème/sujet (sémantique).
-
-Deux capabilities chargées à la demande (load_capability) selon l'intention détectée
-par le prompt de base, pour éviter de mélanger vocabulaire et recherche de tickets
-dans le même contexte :
-
-    - "vocabulary"    : get_vocabulary_for_term / remove_term_from_vocabulary.
-    - "ticket_search" : semantic_ticket_search(sujet) → sql_query déjà construite → run_sql.
 """
 
 from pydantic_ai import Agent, RunContext
@@ -57,8 +50,6 @@ guard_against_tool_call_leak(semantic_research_agent)
 
 @semantic_research_agent.system_prompt
 async def _system(ctx: RunContext[ChatDeps]) -> str:
-    # Souvenirs sémantiques de l'utilisateur (exclusions, autres corrections),
-    # pertinents pour ce message. Le vocabulaire passe par les tools, pas ici.
     memories = await relevant_memories(ctx, "semantic_research")
     memory_block = f"\n\n## RÈGLES MÉMORISÉES (à respecter)\n{memories}" if memories else ""
     return BASE_SEMANTIC_RESEARCH_PROMPT + memory_block

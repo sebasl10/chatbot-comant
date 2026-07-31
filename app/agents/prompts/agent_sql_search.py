@@ -78,7 +78,7 @@ def build_recherche_prompt(schema: str, user_id: int | None) -> str:
 
         ## Règles métier et de la base de données
         - Les trigrammes correspondent à l'username d'un utilisateur (ex: sls, dba, mwu)
-        - Le temps estimé d'un ticket (champ time_estimate de ma table ticket) est stocké en nombre d'heures
+        - Le temps estimé d'un ticket (champ time_estimate de la table ticket) est stocké en nombre d'heures
         - Le temps effectif d'un ticket est stocké en secondes dans le champ duration de la table planning. Il faut savoir qu'il peut y avoir plusieurs lignes pour un même ticket_id, il faut donc faire la somme du champ duration de chaque ligne.
         - Quand tu dois filtrer par un projet, utilise toujours la colonne code, jamais la colonne name
         - Si le type de branche n'est pas specifié (branch dev/branche développement, branche de travail, branche release), tu dois chercher dans les 3 types de branche

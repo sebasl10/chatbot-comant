@@ -1,8 +1,5 @@
 """
 Superviseur — reçoit le message et délègue à un agent spécialiste.
-
-Le superviseur choisit UN outil de délégation (ou répond via l'agent conversationnel), relaie la réponse du
-spécialiste, et reste léger.
 """
 
 import asyncio
@@ -16,12 +13,14 @@ from app.agents.specialists.conversational import conversational_agent
 from app.agents.specialists.memory import memory_agent
 from app.agents.specialists.semantic_research import semantic_research_agent
 from app.agents.specialists.sql_research import sql_research_agent
+from app.agents.specialists.statistics import statistics_agent
 from app.agents.tools.memory import relevant_memories
 from app.agents.tools.research import persist_affinage, persist_new_research
+from app.agents.tools.statistic import persist_statistic
 from app.agents.util.history_utils import _history_context
 from app.agents.util.output_guard import guard_against_tool_call_leak
 from app.services.database import delete_research as db_delete_research
-from app.services.database import get_sql
+from app.services.database import get_sql, is_admin
 from app.services.database import rename_research as db_rename_research
 
 
@@ -90,6 +89,38 @@ async def delegate_semantic_search(ctx: RunContext[ChatDeps], request: str) -> s
     return result.output
 
 
+async def delegate_statistics(ctx: RunContext[ChatDeps], request: str) -> str:
+    """
+    Délègue le calcul d'une STATISTIQUE (indicateur agrégé) à l'agent statistiques.
+    Args:
+        request: Message exact envoyé par l'utilisateur, sans modification, sans reformulation, sans ajout de texte
+    """
+    print("[DELEGATE] Statistics agent")
+    print(f"Message: {request}")
+
+    # Vérifier si l'utilisateur est Admin
+    is_user_admin = is_admin(ctx.deps.user_id)
+    if not (is_user_admin):
+        return "Vous n'êtes pas autorisé·e à générer des statistiques. Cette fonctionnalité est réservée aux administrateurs."
+
+    ctx.deps.events.early_intention("statistic")
+    ctx.deps.last_stats_sql = None
+    ctx.deps.last_result = None
+    ctx.deps.last_stats_columns = []
+    ctx.deps.external_sql = None
+    ctx.deps.external_result = None
+    ctx.deps.external_columns = []
+    ctx.deps.graph_type = None
+    ctx.deps.description = None
+    ctx.deps.labels = None
+    result = await statistics_agent.run(request, deps=ctx.deps, usage=ctx.usage)
+
+    if ctx.deps.last_stats_sql:
+        await persist_statistic(ctx.deps)
+
+    return result.output
+
+
 async def delegate_correction(ctx: RunContext[ChatDeps], message: str) -> str:
     """
     Délègue l'enregistrement d'une correction/souvenir à l'agent mémoire.
@@ -110,6 +141,7 @@ supervisor_agent = Agent(
         delegate_new_research,
         delegate_refine_search,
         delegate_semantic_search,
+        delegate_statistics,
         delegate_correction,
     ],
     retries=2,
@@ -119,8 +151,6 @@ guard_against_tool_call_leak(supervisor_agent)
 
 @supervisor_agent.system_prompt
 async def _system(ctx: RunContext[ChatDeps]) -> str:
-    # Exemples et corrections de routage pertinents pour ce message
-    # (target_agent=supervisor), récupérés à partir du message utilisateur brut.
     memories = await relevant_memories(ctx, "supervisor")
     memory_block = (
         f"\n\n## GUIDE DE ROUTAGE (exemples et corrections à respecter)\n{memories}"
