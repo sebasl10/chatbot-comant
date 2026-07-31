@@ -63,7 +63,7 @@ def build_statistics_prompt(schema: str, user_id: int | None) -> str:
         - **N'utilise JAMAIS `DISTINCT`** avec une agrégation (utilise `COUNT(DISTINCT ...)` si
           besoin de dédoublonner un comptage).
         - Donne un **alias explicite en français** à chaque colonne calculée
-          (ex: `AS temps_effectif_heures`, `AS nb_tickets_sous_estimes`).
+          (ex: `AS temps_effectif_secondes`, `AS nb_tickets_sous_estimes`).
         - Trie le résultat de façon utile (`ORDER BY` sur l'indicateur principal, en général `DESC`).
 
         4. **Anti double-comptage (piège n°1 des statistiques)** :
@@ -108,11 +108,17 @@ def build_statistics_prompt(schema: str, user_id: int | None) -> str:
 
         ## Règles métier et de la base de données
         - Les trigrammes correspondent à l'username d'un utilisateur (ex: sls, dba, mwu)
+        - **Toute durée est renvoyée en SECONDES**, jamais en heures : le front se charge
+          lui-même de la formater en `h min s`. Ne divise donc **JAMAIS** par 3600, et
+          suffixe l'alias par `_secondes` (ex: `AS temps_effectif_secondes`).
+        - **Temps effectif** : champ `duration` de la table `planning`, déjà exprimé en
+          **secondes**. Il peut y avoir plusieurs lignes de `planning` pour un même
+          `ticket_id` : il faut donc TOUJOURS sommer (`SUM(pl.duration)`) et renvoyer
+          cette somme telle quelle.
         - **Temps estimé** : champ `time_estimate` de la table `ticket`, exprimé en **heures**.
-        - **Temps effectif** : champ `duration` de la table `planning`, exprimé en **secondes**.
-          Il peut y avoir plusieurs lignes de `planning` pour un même `ticket_id` : il faut donc
-          TOUJOURS sommer (`SUM(duration)`), et diviser par 3600 pour obtenir des heures.
-        - Arrondis toujours les heures à 2 décimales : `ROUND(SUM(pl.duration) / 3600, 2)`.
+          C'est la SEULE valeur de temps qui n'est pas en secondes : convertis-la
+          systématiquement avec `t.time_estimate * 3600`, aussi bien pour l'afficher que
+          pour la comparer à un temps effectif.
         - **Salarié concerné** :
           - pour le TEMPS PASSÉ (table `planning`) → l'utilisateur qui a saisi le temps (`planning.user_id`) ;
           - pour les statistiques sur les TICKETS (estimations, comptages) → l'assigné (`ticket.assignee_id`),
@@ -129,28 +135,28 @@ def build_statistics_prompt(schema: str, user_id: int | None) -> str:
         ## EXEMPLES
 
         Message: "Donne-moi le temps effectif par salarié pour le projet CAO2026"
-        SQL: SELECT u.username, ROUND(SUM(pl.duration) / 3600, 2) AS temps_effectif_heures FROM planning pl JOIN user u ON u.id = pl.user_id JOIN ticket t ON t.id = pl.ticket_id JOIN project_ticket pt ON pt.ticket_id = t.id JOIN project p ON p.id = pt.project_id WHERE p.code = 'CAO2026' AND t.type != 'Group' GROUP BY u.id, u.username ORDER BY temps_effectif_heures DESC
+        SQL: SELECT u.username, SUM(pl.duration) AS temps_effectif_secondes FROM planning pl JOIN user u ON u.id = pl.user_id JOIN ticket t ON t.id = pl.ticket_id JOIN project_ticket pt ON pt.ticket_id = t.id JOIN project p ON p.id = pt.project_id WHERE p.code = 'CAO2026' AND t.type != 'Group' GROUP BY u.id, u.username ORDER BY temps_effectif_secondes DESC
 
         Message: "Le temps effectif total par projet en 2026"
-        SQL: SELECT p.code, ROUND(SUM(pl.duration) / 3600, 2) AS temps_effectif_heures FROM planning pl JOIN ticket t ON t.id = pl.ticket_id JOIN project_ticket pt ON pt.ticket_id = t.id JOIN project p ON p.id = pt.project_id WHERE YEAR(pl.date) = 2026 AND t.type != 'Group' GROUP BY p.id, p.code ORDER BY temps_effectif_heures DESC
+        SQL: SELECT p.code, SUM(pl.duration) AS temps_effectif_secondes FROM planning pl JOIN ticket t ON t.id = pl.ticket_id JOIN project_ticket pt ON pt.ticket_id = t.id JOIN project p ON p.id = pt.project_id WHERE YEAR(pl.date) = 2026 AND t.type != 'Group' GROUP BY p.id, p.code ORDER BY temps_effectif_secondes DESC
 
         Message: "Donne-moi la répartition de temps de chaque employé entre absence, R&D et non R&D en 2026"
-        SQL: SELECT u.username, ROUND(SUM(CASE WHEN ... THEN pl.duration ELSE 0 END) / 3600, 2) AS heures_absence, ROUND(SUM(CASE WHEN NOT ... AND t.is_research_and_development = 1 THEN pl.duration ELSE 0 END) / 3600, 2) AS heures_rd, ROUND(SUM(CASE WHEN NOT ... AND (t.is_research_and_development = 0 OR t.is_research_and_development IS NULL) THEN pl.duration ELSE 0 END) / 3600, 2) AS heures_non_rd, ROUND(SUM(pl.duration) / 3600, 2) AS heures_total FROM planning pl JOIN user u ON u.id = pl.user_id JOIN ticket t ON t.id = pl.ticket_id WHERE YEAR(pl.date) = 2026 AND t.type != 'Group' GROUP BY u.id, u.username ORDER BY heures_total DESC
+        SQL: SELECT u.username, SUM(CASE WHEN ... THEN pl.duration ELSE 0 END) AS secondes_absence, SUM(CASE WHEN NOT ... AND t.is_research_and_development = 1 THEN pl.duration ELSE 0 END) AS secondes_rd, SUM(CASE WHEN NOT ... AND (t.is_research_and_development = 0 OR t.is_research_and_development IS NULL) THEN pl.duration ELSE 0 END) AS secondes_non_rd, SUM(pl.duration) AS secondes_total FROM planning pl JOIN user u ON u.id = pl.user_id JOIN ticket t ON t.id = pl.ticket_id WHERE YEAR(pl.date) = 2026 AND t.type != 'Group' GROUP BY u.id, u.username ORDER BY secondes_total DESC
 
         Message: "Je veux savoir le nombre de tickets où le temps a été surestimé, sous-estimé ou correctement estimé par utilisateur"
-        SQL: SELECT u.username, SUM(CASE WHEN e.temps_effectif_heures > e.time_estimate THEN 1 ELSE 0 END) AS nb_tickets_sous_estimes, SUM(CASE WHEN e.temps_effectif_heures < e.time_estimate THEN 1 ELSE 0 END) AS nb_tickets_surestimes, SUM(CASE WHEN e.temps_effectif_heures BETWEEN e.time_estimate AND e.time_estimate THEN 1 ELSE 0 END) AS nb_tickets_correctement_estimes, COUNT(*) AS nb_tickets_estimes FROM (SELECT t.id, t.assignee_id, t.time_estimate, SUM(pl.duration) / 3600 AS temps_effectif_heures FROM ticket t JOIN planning pl ON pl.ticket_id = t.id WHERE t.type != 'Group' AND t.time_estimate IS NOT NULL AND t.time_estimate > 0 GROUP BY t.id, t.assignee_id, t.time_estimate) e JOIN user u ON u.id = e.assignee_id GROUP BY u.id, u.username ORDER BY nb_tickets_estimes DESC
+        SQL: SELECT u.username, SUM(CASE WHEN e.temps_effectif_secondes > e.temps_estime_secondes THEN 1 ELSE 0 END) AS nb_tickets_sous_estimes, SUM(CASE WHEN e.temps_effectif_secondes < e.temps_estime_secondes THEN 1 ELSE 0 END) AS nb_tickets_surestimes, SUM(CASE WHEN e.temps_effectif_secondes = e.temps_estime_secondes THEN 1 ELSE 0 END) AS nb_tickets_correctement_estimes, COUNT(*) AS nb_tickets_estimes FROM (SELECT t.id, t.assignee_id, t.time_estimate * 3600 AS temps_estime_secondes, SUM(pl.duration) AS temps_effectif_secondes FROM ticket t JOIN planning pl ON pl.ticket_id = t.id WHERE t.type != 'Group' AND t.time_estimate IS NOT NULL AND t.time_estimate > 0 GROUP BY t.id, t.assignee_id, t.time_estimate) e JOIN user u ON u.id = e.assignee_id GROUP BY u.id, u.username ORDER BY nb_tickets_estimes DESC
 
         Message: "L'écart moyen entre temps estimé et temps effectif par type de ticket"
-        SQL: SELECT e.type, ROUND(AVG(e.temps_effectif_heures - e.time_estimate), 2) AS ecart_moyen_heures, COUNT(*) AS nb_tickets FROM (SELECT t.id, t.type, t.time_estimate, SUM(pl.duration) / 3600 AS temps_effectif_heures FROM ticket t JOIN planning pl ON pl.ticket_id = t.id WHERE t.type != 'Group' AND t.time_estimate IS NOT NULL AND t.time_estimate > 0 GROUP BY t.id, t.type, t.time_estimate) e GROUP BY e.type ORDER BY nb_tickets DESC
+        SQL: SELECT e.type, ROUND(AVG(e.temps_effectif_secondes - e.temps_estime_secondes)) AS ecart_moyen_secondes, COUNT(*) AS nb_tickets FROM (SELECT t.id, t.type, t.time_estimate * 3600 AS temps_estime_secondes, SUM(pl.duration) AS temps_effectif_secondes FROM ticket t JOIN planning pl ON pl.ticket_id = t.id WHERE t.type != 'Group' AND t.time_estimate IS NOT NULL AND t.time_estimate > 0 GROUP BY t.id, t.type, t.time_estimate) e GROUP BY e.type ORDER BY nb_tickets DESC
 
         Message: "Combien de tickets par statut sur le projet SLS2025 ?"
         SQL: SELECT t.status, COUNT(DISTINCT t.id) AS nb_tickets FROM ticket t JOIN project_ticket pt ON pt.ticket_id = t.id JOIN project p ON p.id = pt.project_id WHERE p.code = 'SLS2025' AND t.type != 'Group' GROUP BY t.status ORDER BY nb_tickets DESC
 
         Message: "Mon temps effectif par mois cette année"
-        SQL: SELECT DATE_FORMAT(pl.date, '%Y-%m') AS mois, ROUND(SUM(pl.duration) / 3600, 2) AS temps_effectif_heures FROM planning pl WHERE pl.user_id = {user_id} AND YEAR(pl.date) = YEAR(NOW()) GROUP BY mois ORDER BY mois
+        SQL: SELECT DATE_FORMAT(pl.date, '%Y-%m') AS mois, SUM(pl.duration) AS temps_effectif_secondes FROM planning pl WHERE pl.user_id = {user_id} AND YEAR(pl.date) = YEAR(NOW()) GROUP BY mois ORDER BY mois
 
         Message: "Le temps effectif par salarié sur les tickets R&D du projet CAO2026"
-        SQL: SELECT u.username, ROUND(SUM(pl.duration) / 3600, 2) AS temps_effectif_heures FROM planning pl JOIN user u ON u.id = pl.user_id JOIN ticket t ON t.id = pl.ticket_id WHERE t.is_research_and_development = 1 AND t.type != 'Group' AND EXISTS (SELECT 1 FROM project_ticket pt2 JOIN project p2 ON p2.id = pt2.project_id WHERE pt2.ticket_id = t.id AND p2.code = 'CAO2026') GROUP BY u.id, u.username ORDER BY temps_effectif_heures DESC
+        SQL: SELECT u.username, SUM(pl.duration) AS temps_effectif_secondes FROM planning pl JOIN user u ON u.id = pl.user_id JOIN ticket t ON t.id = pl.ticket_id WHERE t.is_research_and_development = 1 AND t.type != 'Group' AND EXISTS (SELECT 1 FROM project_ticket pt2 JOIN project p2 ON p2.id = pt2.project_id WHERE pt2.ticket_id = t.id AND p2.code = 'CAO2026') GROUP BY u.id, u.username ORDER BY temps_effectif_secondes DESC
 
         ---
 
@@ -176,7 +182,7 @@ def build_statistics_prompt(schema: str, user_id: int | None) -> str:
         - **`table`** : quand aucun graphe n'est adapté. En particulier :
           - la statistique croise **deux dimensions** (une ligne par salarié ET une colonne
             par type de ticket) → l'axe des catégories serait ambigu ;
-          - les colonnes de valeurs ne sont **pas comparables** entre elles (des heures et
+          - les colonnes de valeurs ne sont **pas comparables** entre elles (une durée et
             un nombre de tickets, ou une valeur et un total) ;
           - le résultat est une **ligne unique** (indicateur global) ou compte trop de lignes
             pour être lisible.
@@ -192,11 +198,12 @@ def build_statistics_prompt(schema: str, user_id: int | None) -> str:
           - `value` → colonne de valeurs numériques : c'est une série du graphe.
           Chaque colonne `value` devient une série : en `bar`/`line`, plusieurs colonnes
           `value` s'affichent côte à côte, ce qui est parfait pour comparer
-          "heures R&D / heures non R&D / heures d'absence" par salarié.
-        - `format` : `text`, `date`, `number`, `hours` (heures décimales),
-          `seconds` (durée en secondes) ou `percent`. Il pilote le formatage côté front,
-          donc il doit correspondre à ce que la requête calcule réellement :
-          `ROUND(SUM(pl.duration) / 3600, 2)` → `hours`, un `COUNT(*)` → `number`.
+          "temps R&D / temps hors R&D / temps d'absence" par salarié.
+        - `format` : `text`, `date`, `number`, `seconds` (durée en secondes) ou `percent`.
+          Il pilote le formatage côté front, donc il doit correspondre à ce que la requête
+          calcule réellement : toute DURÉE → `seconds` (le front l'affiche en `h min s`),
+          un `COUNT(*)` → `number`. N'utilise jamais `seconds` pour un comptage : il
+          serait affiché comme une durée.
 
         ### 3. `description`
         Reprends la demande de l'utilisateur et reformule-la en gardant **exactement** les
@@ -215,31 +222,31 @@ def build_statistics_prompt(schema: str, user_id: int | None) -> str:
           ]
 
         Demande : "Mon temps effectif par mois cette année"
-        Colonnes SQL : `mois`, `temps_effectif_heures`
+        Colonnes SQL : `mois`, `temps_effectif_secondes`
         → graph_type: "line" (évolution temporelle)
           columns: [
             {{"key": "mois", "label": "Mois", "role": "label", "format": "date"}},
-            {{"key": "temps_effectif_heures", "label": "Temps effectif (h)", "role": "value", "format": "hours"}}
+            {{"key": "temps_effectif_secondes", "label": "Temps effectif", "role": "value", "format": "seconds"}}
           ]
 
         Demande : "Répartition de temps de chaque employé entre absence, R&D et non R&D en 2026"
-        Colonnes SQL : `username`, `heures_absence`, `heures_rd`, `heures_non_rd`, `heures_total`
-        → graph_type: "bar" (3 séries comparables par salarié ; `heures_total` reste
+        Colonnes SQL : `username`, `secondes_absence`, `secondes_rd`, `secondes_non_rd`, `secondes_total`
+        → graph_type: "bar" (3 séries comparables par salarié ; `secondes_total` reste
           affiché dans la table)
           columns: [
             {{"key": "username", "label": "Salarié", "role": "label", "format": "text"}},
-            {{"key": "heures_absence", "label": "Absence (h)", "role": "value", "format": "hours"}},
-            {{"key": "heures_rd", "label": "R&D (h)", "role": "value", "format": "hours"}},
-            {{"key": "heures_non_rd", "label": "Hors R&D (h)", "role": "value", "format": "hours"}},
-            {{"key": "heures_total", "label": "Total (h)", "role": "value", "format": "hours"}}
+            {{"key": "secondes_absence", "label": "Absence", "role": "value", "format": "seconds"}},
+            {{"key": "secondes_rd", "label": "R&D", "role": "value", "format": "seconds"}},
+            {{"key": "secondes_non_rd", "label": "Hors R&D", "role": "value", "format": "seconds"}},
+            {{"key": "secondes_total", "label": "Total", "role": "value", "format": "seconds"}}
           ]
 
         Demande : "La répartition du temps des utilisateurs par type de ticket"
-        Colonnes SQL : `username`, `Bug`, `Dev`, `Réunion`, ... (une colonne par type)
+        Colonnes SQL : `username`, `secondes_bug`, `secondes_dev`, `secondes_reunion`, ... (une colonne par type)
         → graph_type: "table" (deux dimensions croisées : aucun graphe n'est adapté)
           columns: [
             {{"key": "username", "label": "Salarié", "role": "label", "format": "text"}},
-            {{"key": "Bug", "label": "Bug (h)", "role": "value", "format": "hours"}},
+            {{"key": "secondes_bug", "label": "Bug", "role": "value", "format": "seconds"}},
             ... une entrée par colonne, dans l'ordre du SELECT
           ]
 
@@ -275,7 +282,7 @@ def build_statistics_prompt(schema: str, user_id: int | None) -> str:
         5. Enfin, réponds en UNE SEULE phrase en français qui décrit
         l'indicateur calculé, le regroupement et les filtres appliqués, puis indique le nombre de
         lignes de résultat (champ `count`).
-        Exemple : "Voici le temps effectif (en heures) par salarié sur le projet CAO2026, calculé
+        Exemple : "Voici le temps effectif par salarié sur le projet CAO2026, calculé
         sur 7 salariés."
 
         - Interdictions absolues :

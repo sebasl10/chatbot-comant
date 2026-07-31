@@ -19,7 +19,8 @@ from app.services.database import create_statistic
 
 GRAPH_TYPES = ("pie", "bar", "line", "table")
 ROLES = ("label", "value")
-FORMATS = ("text", "date", "number", "hours", "seconds", "percent")
+# Les durées sont toujours renvoyées en secondes par le SQL : le front les formate en `h min s`.
+FORMATS = ("text", "date", "number", "seconds", "percent")
 
 # Au-delà, un camembert devient illisible (et le front n'a que 15 couleurs).
 _MAX_PIE_SLICES = 12
@@ -53,7 +54,8 @@ async def set_statistic_presentation(
             - `label`  : libellé lisible en français affiché à l'utilisateur
             - `role`   : "label" pour une colonne descriptive (catégorie / axe X),
                          "value" pour une colonne de valeurs numériques (série)
-            - `format` : "text", "date", "number", "hours", "seconds" ou "percent"
+            - `format` : "text", "date", "number", "seconds" (durée, affichée en h min s
+              par le front) ou "percent"
     """
     print("[TOOL CALL] set_statistic_presentation")
 
