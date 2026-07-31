@@ -169,36 +169,60 @@ def build_statistics_prompt(schema: str, user_id: int | None) -> str:
         Le graphe vient **en plus**, seulement s'il est pertinent.
 
         ### 1. `graph_type` — choisir le bon affichage
-        - **`pie`** : répartition d'un TOUT en parts (une seule colonne de valeurs, valeurs
-          positives, peu de lignes ≤ 12).
-          Ex : "répartition du temps par type de ticket", "nombre de tickets par statut".
-        - **`bar`** : comparaison de catégories entre elles (une catégorie par ligne).
-          C'est le choix par défaut quand il y a beaucoup de lignes, des valeurs négatives
-          (écarts), ou plusieurs colonnes de valeurs à comparer catégorie par catégorie.
-          Ex : "temps effectif par salarié", "écart moyen d'estimation par type de ticket".
-        - **`line`** : évolution dans le TEMPS uniquement (la colonne `label` est une date,
-          un mois, une semaine, une année) et les lignes sont triées chronologiquement.
-          Ex : "mon temps effectif par mois".
-        - **`table`** : quand aucun graphe n'est adapté. En particulier :
-          - la statistique croise **deux dimensions** (une ligne par salarié ET une colonne
-            par type de ticket) → l'axe des catégories serait ambigu ;
-          - les colonnes de valeurs ne sont **pas comparables** entre elles (une durée et
-            un nombre de tickets, ou une valeur et un total) ;
-          - le résultat est une **ligne unique** (indicateur global) ou compte trop de lignes
-            pour être lisible.
+
+        Le critère principal est la NATURE de la valeur calculée : une durée se lit comme
+        une part d'un total, une quantité se lit sur une échelle.
+        Applique ces règles **dans l'ordre** : la première qui correspond l'emporte.
+
+        1. **`line`** — la colonne `label` est temporelle (date, mois, semaine, année) et
+           les lignes sont triées chronologiquement. C'est le seul cas où une évolution
+           prime sur une répartition, y compris pour des durées.
+           Ex : "mon temps effectif par mois".
+
+        2. **`pie`** — la statistique renvoie **UNE SEULE** colonne de valeurs et cette
+           colonne est une **DURÉE** (`format: "seconds"`), avec des valeurs positives.
+           Une durée cumulée n'a pas d'échelle lisible : un axe gradué en
+           "194h 25m 40s, 44h 33m 20s" ne veut rien dire, alors qu'un camembert montre
+           immédiatement le poids de chaque part.
+           **Le nombre de lignes n'a AUCUNE importance** : la légende du camembert permet
+           de filtrer les parts une par une. Ne bascule donc JAMAIS sur `bar` sous
+           prétexte qu'il y a beaucoup de salariés, de projets ou de types.
+           Ex : "le temps effectif par salarié" (même avec 40 salariés), "la répartition
+           du temps par type de ticket", "le temps passé par projet en 2026".
+
+        3. **`bar`** — la statistique renvoie des valeurs **NUMÉRIQUES**
+           (`format: "number"` ou `"percent"`) : comptages, moyennes, pourcentages.
+           Là, l'échelle de l'axe Y a du sens (10, 20, 30...) et la comparaison entre
+           catégories est lisible. Plusieurs colonnes de valeurs sont possibles : elles
+           s'affichent côte à côte.
+           Ex : "le nombre de tickets par statut", "le nombre de tickets sous-estimés,
+           surestimés et correctement estimés par salarié".
+
+        4. **`table`** — dans tous les autres cas, notamment :
+           - **PLUSIEURS colonnes de durées** : le camembert n'accepte qu'une seule série,
+             et un axe Y en `h min s` serait illisible ;
+           - la statistique croise **deux dimensions** (une ligne par salarié ET une colonne
+             par type de ticket) → l'axe des catégories serait ambigu ;
+           - les colonnes de valeurs ne sont **pas comparables** entre elles (une durée et
+             un nombre de tickets, ou une valeur et son total) ;
+           - des valeurs **négatives** (un écart d'estimation) : une part de camembert ne
+             peut pas être négative ;
+           - le résultat est une **ligne unique** (indicateur global).
 
         ### 2. `columns` — un descripteur par colonne du SELECT, dans l'ordre
         - `key` : le nom EXACT de la colonne renvoyée par la requête (l'alias SQL, tel que
           `run_stats_sql` te l'a retourné dans `columns`). Ni traduit, ni reformaté.
         - `label` : le libellé lisible affiché en en-tête de table et dans la légende du
-          graphe (en français, avec l'unité : "Temps effectif (h)", "Nb de tickets").
+          graphe, en français ("Salarié", "Temps effectif", "Nb de tickets"). N'y mets pas
+          l'unité d'une durée : le front l'affiche déjà en `h min s`.
         - `role` :
           - `label` → colonne descriptive : c'est l'axe des catégories du graphe
             (le salarié, le projet, le mois, le statut...) ;
           - `value` → colonne de valeurs numériques : c'est une série du graphe.
           Chaque colonne `value` devient une série : en `bar`/`line`, plusieurs colonnes
           `value` s'affichent côte à côte, ce qui est parfait pour comparer
-          "temps R&D / temps hors R&D / temps d'absence" par salarié.
+          "nb sous-estimés / nb surestimés / nb correctement estimés" par salarié.
+          Un `pie` n'affiche qu'UNE série.
         - `format` : `text`, `date`, `number`, `seconds` (durée en secondes) ou `percent`.
           Il pilote le formatage côté front, donc il doit correspondre à ce que la requête
           calcule réellement : toute DURÉE → `seconds` (le front l'affiche en `h min s`),
@@ -212,9 +236,19 @@ def build_statistics_prompt(schema: str, user_id: int | None) -> str:
 
         ### EXEMPLES DE PRÉSENTATION
 
+        Demande : "Donne-moi le temps effectif par salarié pour le projet CAO2026"
+        Colonnes SQL : `username`, `temps_effectif_secondes`
+        → graph_type: "pie" (une seule série, et c'est une DURÉE — quel que soit le
+          nombre de salariés)
+          description: "Temps effectif par salarié sur le projet CAO2026"
+          columns: [
+            {{"key": "username", "label": "Salarié", "role": "label", "format": "text"}},
+            {{"key": "temps_effectif_secondes", "label": "Temps effectif", "role": "value", "format": "seconds"}}
+          ]
+
         Demande : "Combien de tickets par statut sur le projet SLS2025 ?"
         Colonnes SQL : `status`, `nb_tickets`
-        → graph_type: "pie" (répartition, une seule série, peu de lignes)
+        → graph_type: "bar" (des comptages : l'échelle de l'axe Y a du sens)
           description: "Nombre de tickets par statut sur le projet SLS2025"
           columns: [
             {{"key": "status", "label": "Statut", "role": "label", "format": "text"}},
@@ -231,8 +265,8 @@ def build_statistics_prompt(schema: str, user_id: int | None) -> str:
 
         Demande : "Répartition de temps de chaque employé entre absence, R&D et non R&D en 2026"
         Colonnes SQL : `username`, `secondes_absence`, `secondes_rd`, `secondes_non_rd`, `secondes_total`
-        → graph_type: "bar" (3 séries comparables par salarié ; `secondes_total` reste
-          affiché dans la table)
+        → graph_type: "table" (PLUSIEURS colonnes de durées : le camembert n'accepte
+          qu'une série et un axe Y en `h min s` serait illisible)
           columns: [
             {{"key": "username", "label": "Salarié", "role": "label", "format": "text"}},
             {{"key": "secondes_absence", "label": "Absence", "role": "value", "format": "seconds"}},

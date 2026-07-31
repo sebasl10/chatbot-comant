@@ -42,6 +42,8 @@ async def set_statistic_presentation(
     Args:
         graph_type: Type d'affichage : "pie", "bar", "line" ou "table" (si aucun graphe
             n'est adapté). Le front affiche TOUJOURS une table ; le graphe vient en plus.
+            Une DURÉE seule → "pie" (quel que soit le nombre de lignes) ; des valeurs
+            numériques (comptages, moyennes) → "bar" ; une évolution temporelle → "line".
         description: Une phrase en français qui reformule la demande de l'utilisateur en
             gardant exactement les mêmes informations (indicateur, regroupement, filtres,
             période).
@@ -107,13 +109,23 @@ async def set_statistic_presentation(
                 f"graph_type='table'."
             )
         if graph_type == "pie":
+            # Le nombre de parts n'est PAS limité : la légende du camembert permet de filtrer.
             if len(value_cols) > 1:
                 errors.append(
-                    "Un camembert n'affiche qu'une seule série : utilise graph_type='bar' "
-                    f"(ou 'table') pour {len(value_cols)} colonnes de valeurs."
+                    "Un camembert n'affiche qu'une seule série : utilise graph_type='table' "
+                    f"pour {len(value_cols)} colonnes de valeurs."
                 )
             if any(v < 0 for c in value_cols for v in [row.get(c["key"]) for row in rows] if v is not None):
                 errors.append("Valeurs négatives : un camembert ne représente que des parts positives d'un total.")
+
+        # Une durée n'a pas d'échelle lisible : un axe Y gradué en `h min s` est inexploitable.
+        if graph_type == "bar" and all(c["format"] == "seconds" for c in value_cols):
+            errors.append(
+                "Toutes les colonnes de valeurs sont des durées : n'utilise pas graph_type='bar' "
+                "(un axe Y en 'h min s' est illisible). Prends 'pie' s'il n'y a qu'une colonne de "
+                "durée et que les valeurs sont positives — quel que soit le nombre de lignes — "
+                "sinon 'table'."
+            )
 
     if errors:
         return {"ok": False, "error": " ".join(errors)}
