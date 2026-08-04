@@ -15,7 +15,12 @@ from decimal import Decimal
 from pydantic_ai import RunContext
 
 from app.agents.deps import ChatDeps
-from app.services.database import create_statistic
+from app.services.database import (
+    create_statistic,
+    execute_select,
+    get_statistic,
+    update_statistic,
+)
 
 GRAPH_TYPES = ("pie", "bar", "line", "table")
 ROLES = ("label", "value")
@@ -80,10 +85,13 @@ async def set_statistic_presentation(
     graph_type: str,
     description: str,
     columns: list[dict],
+    user_requested_graph_type: bool = False,
 ) -> dict:
     """
     Décrit comment le front doit AFFICHER le résultat de la dernière requête stats.
-    À appeler OBLIGATOIREMENT après un `run_stats_sql` réussi.
+    À appeler OBLIGATOIREMENT après un `run_stats_sql` réussi, et à chaque affinage de la
+    présentation (type de graphe ou libellés) même sans nouvelle requête : cet appel
+    REMPLACE entièrement la présentation précédente.
 
     En cas de description invalide, renvoie ``{"ok": False, "error": ...}`` SANS lever
     d'exception : corrige et rappelle ce tool.
@@ -103,6 +111,10 @@ async def set_statistic_presentation(
                          "value" pour une colonne de valeurs numériques (série)
             - `format` : "text", "date", "number", "seconds" (durée, affichée en h min s
               par le front) ou "percent"
+        user_requested_graph_type: `True` UNIQUEMENT si l'utilisateur a explicitement demandé
+            ce type d'affichage (ex: "mets ça en barres"). Son choix lève alors les règles de
+            LISIBILITÉ (une durée en barres), mais jamais les règles d'IMPOSSIBILITÉ
+            (camembert à plusieurs séries ou à valeurs négatives), qui restent refusées.
     """
     print("[TOOL CALL] set_statistic_presentation")
 
@@ -199,7 +211,12 @@ async def set_statistic_presentation(
                 )
 
         # Une durée n'a pas d'échelle lisible : un axe Y gradué en `h min s` est inexploitable.
-        if graph_type == "bar" and all(c["format"] == "seconds" for c in value_cols):
+        # Simple règle de lisibilité : un choix explicite de l'utilisateur la remplace.
+        if (
+            graph_type == "bar"
+            and not user_requested_graph_type
+            and all(c["format"] == "seconds" for c in value_cols)
+        ):
             errors.append(
                 "Toutes les colonnes de valeurs sont des durées : n'utilise pas graph_type='bar' "
                 "(un axe Y en 'h min s' est illisible). Prends 'pie' s'il n'y a qu'une colonne de "
@@ -231,21 +248,40 @@ def _json_dump(value) -> str | None:
     return json.dumps(value, default=default, ensure_ascii=False)
 
 
-async def persist_statistic(deps: ChatDeps) -> int:
-    """
-    Crée une nouvelle ligne `statistics` avec la dernière requête SQL (statistiques) exécutée
-    et la présentation décrite par l'agent.
-    """
-    if not deps.last_stats_sql:
-        raise ValueError("Aucune requête SQL (stats) à persister (deps.last_stats_sql vide).")
+def _json_load(value) -> list[dict] | None:
+    """Relit une colonne JSON MySQL (le driver peut la renvoyer déjà décodée)."""
+    if not value:
+        return None
+    if isinstance(value, (list, dict)):
+        return value
+    try:
+        return json.loads(value)
+    except (TypeError, ValueError):
+        return None
 
-    # `last_result` est le résultat FUSIONNÉ : il doit décrire les mêmes colonnes que
-    # `labels`, sinon le front recevrait un instantané incohérent avec ses métadonnées.
+
+def _presentation(deps: ChatDeps) -> tuple[str, list[dict], list[dict]]:
+    """
+    Présentation à persister : le résultat FUSIONNÉ et les métadonnées qui le décrivent.
+
+    Le résultat fusionné doit décrire les mêmes colonnes que `labels`, sinon le front
+    recevrait un instantané incohérent avec ses métadonnées. Si l'agent n'a pas décrit
+    la présentation, on retombe sur une table brute : elle reste affichable.
+    """
     merged_columns, merged_rows = merge_statistic_results(deps)
+    graph_type, labels = deps.graph_type, deps.labels
 
-    # Filet de sécurité : une table sans métadonnées reste affichable par le front.
-    graph_type = deps.graph_type or "table"
-    labels = deps.labels or [
+    if labels is None:
+        # Affinage : `run_stats_sql` efface la présentation. Si l'agent a modifié la requête
+        # sans la redécrire, on garde celle d'origine tant que les colonnes sont les mêmes.
+        previous = deps.previous_statistic or {}
+        previous_labels = previous.get("labels")
+        if previous_labels and [c.get("key") for c in previous_labels] == merged_columns:
+            labels = previous_labels
+            graph_type = graph_type or previous.get("graph_type")
+
+    graph_type = graph_type or "table"
+    labels = labels or [
         {
             "key": key,
             "label": key,
@@ -254,6 +290,18 @@ async def persist_statistic(deps: ChatDeps) -> int:
         }
         for i, key in enumerate(merged_columns)
     ]
+    return graph_type, labels, merged_rows
+
+
+async def persist_statistic(deps: ChatDeps) -> int:
+    """
+    Crée une nouvelle ligne `statistics` avec la dernière requête SQL (statistiques) exécutée
+    et la présentation décrite par l'agent.
+    """
+    if not deps.last_stats_sql:
+        raise ValueError("Aucune requête SQL (stats) à persister (deps.last_stats_sql vide).")
+
+    graph_type, labels, merged_rows = _presentation(deps)
 
     statistic_id = await asyncio.to_thread(
         create_statistic,
@@ -267,3 +315,94 @@ async def persist_statistic(deps: ChatDeps) -> int:
     )
     deps.events.statistic(statistic_id)
     return statistic_id
+
+
+async def persist_statistic_affinage(deps: ChatDeps, statistic_id: int) -> int:
+    """
+    Met à jour la statistique existante (affinage) : requêtes, présentation et instantané
+    du résultat. Contrairement à une nouvelle statistique, aucune ligne n'est créée : le
+    front continue de suivre le même `statistic_id`.
+    """
+    if not deps.last_stats_sql:
+        raise ValueError("Aucune requête SQL (stats) à persister (deps.last_stats_sql vide).")
+
+    graph_type, labels, merged_rows = _presentation(deps)
+
+    await asyncio.to_thread(
+        update_statistic,
+        statistic_id,
+        deps.last_stats_sql,
+        graph_type,
+        deps.description,
+        _json_dump(labels),
+        deps.external_sql,
+        _json_dump(merged_rows),
+    )
+    deps.events.statistic(statistic_id, intention="affinage_statistic")
+    return statistic_id
+
+
+def statistic_changed(deps: ChatDeps) -> bool:
+    """
+    L'agent a-t-il réellement modifié la statistique chargée ?
+
+    Un tour d'affinage qui se termine par une demande de clarification (entité inconnue,
+    graphe refusé) laisse la statistique intacte : ni mise à jour, ni rechargement du front.
+    """
+    previous = deps.previous_statistic
+    if not previous:
+        return True
+
+    graph_type, labels, _ = _presentation(deps)
+    return (
+        deps.last_stats_sql != previous.get("sql")
+        or deps.external_sql != previous.get("external_sql")
+        or graph_type != previous.get("graph_type")
+        or (deps.description or None) != (previous.get("description") or None)
+        or labels != previous.get("labels")
+    )
+
+
+async def _run(sql: str, db: str) -> tuple[list[dict], list[str]]:
+    """Ré-exécute une requête persistée ; un échec ne doit pas casser l'affinage."""
+    try:
+        rows = await asyncio.to_thread(execute_select, sql, db)
+    except Exception as e:
+        print(f"[AFFINAGE STAT] Requête ({db}) injouable, résultat ignoré : {e}")
+        return [], []
+    return rows, list(rows[0].keys()) if rows else []
+
+
+async def load_statistic(deps: ChatDeps, statistic_id: int) -> dict | None:
+    """
+    Charge dans les deps la statistique à affiner : ses deux requêtes et la présentation
+    déjà choisie, puis ré-exécute les requêtes.
+
+    La ré-exécution est nécessaire : `set_statistic_presentation` valide les libellés
+    contre les colonnes et les valeurs RÉELLES du résultat. On repart des données à jour
+    plutôt que de l'instantané `last_result` persisté.
+
+    Renvoie la statistique chargée (à injecter dans le prompt d'affinage), ou ``None``
+    si elle est introuvable ou vide — auquel cas il n'y a rien à affiner.
+    """
+    row = await asyncio.to_thread(get_statistic, statistic_id)
+    if not row or not row.get("sql_request"):
+        return None
+
+    deps.last_stats_sql = row["sql_request"]
+    deps.external_sql = row.get("external_sql_request") or None
+    deps.graph_type = row.get("graph_type")
+    deps.description = row.get("description")
+    deps.labels = _json_load(row.get("labels"))
+
+    deps.last_result, deps.last_stats_columns = await _run(deps.last_stats_sql, "comant")
+    if deps.external_sql:
+        deps.external_result, deps.external_columns = await _run(deps.external_sql, "external")
+
+    return {
+        "sql": deps.last_stats_sql,
+        "external_sql": deps.external_sql,
+        "graph_type": deps.graph_type,
+        "description": deps.description,
+        "labels": deps.labels,
+    }
