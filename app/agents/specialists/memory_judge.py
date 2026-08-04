@@ -10,7 +10,7 @@ from typing import Literal
 from pydantic import BaseModel
 from pydantic_ai import Agent
 
-from app.agents.model import get_agent_model
+from app.agents.model import DETERMINISTIC_SETTINGS, get_agent_model
 from app.agents.prompts.agent_memory_judge import AGENT_MEMORY_JUDGE_PROMPT
 
 MemoryRelation = Literal["duplicate", "conflict", "complement", "unrelated"]
@@ -29,6 +29,7 @@ memory_judge_agent = Agent(
     output_type=list[MemoryVerdict],
     system_prompt=AGENT_MEMORY_JUDGE_PROMPT,
     retries=2,
+    model_settings=DETERMINISTIC_SETTINGS,
 )
 
 

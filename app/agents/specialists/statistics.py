@@ -7,7 +7,7 @@ import asyncio
 from pydantic_ai import Agent, RunContext
 
 from app.agents.deps import ChatDeps
-from app.agents.model import get_agent_model
+from app.agents.model import DETERMINISTIC_SETTINGS, get_agent_model
 from app.agents.prompts.agent_statistics import (
     build_statistics_affinage_prompt,
     build_statistics_prompt,
@@ -19,7 +19,12 @@ from app.agents.tools.statistic import set_statistic_presentation
 from app.agents.util.output_guard import guard_against_tool_call_leak
 from app.services.database import get_db_schema
 
-statistics_agent = Agent(get_agent_model(), deps_type=ChatDeps, retries=2)
+statistics_agent = Agent(
+    get_agent_model(),
+    deps_type=ChatDeps,
+    retries=2,
+    model_settings=DETERMINISTIC_SETTINGS,
+)
 statistics_agent.tool(validate_entities)
 statistics_agent.tool(run_stats_sql)
 statistics_agent.tool(run_external_sql)

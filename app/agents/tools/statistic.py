@@ -106,7 +106,7 @@ async def set_statistic_presentation(
             période).
         columns: Un descripteur par colonne du résultat SQL, dans l'ordre d'affichage :
             - `key`    : nom EXACT de la colonne renvoyée par la requête (l'alias SQL)
-            - `label`  : libellé lisible en français affiché à l'utilisateur
+            - `label`  : libellé lisible en français affiché à l'utilisateur. Ne jamais ajouter l'unité de mesure.
             - `role`   : "label" pour une colonne descriptive (catégorie / axe X),
                          "value" pour une colonne de valeurs numériques (série)
             - `format` : "text", "date", "number", "seconds" (durée, affichée en h min s

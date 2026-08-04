@@ -7,7 +7,7 @@ import asyncio
 from pydantic_ai import Agent, RunContext
 
 from app.agents.deps import ChatDeps
-from app.agents.model import get_agent_model
+from app.agents.model import CONVERSATIONAL_SETTINGS, get_agent_model
 from app.agents.prompts.agent_conversational import AGENT_CONVERSATIONAL_PROMPT
 from app.agents.tools.memory import relevant_memories
 from app.agents.util.history_utils import _history_context
@@ -17,6 +17,7 @@ conversational_agent = Agent(
     get_agent_model(),
     deps_type=ChatDeps,
     retries=2,
+    model_settings=CONVERSATIONAL_SETTINGS,
 )
 guard_against_tool_call_leak(conversational_agent)
 
