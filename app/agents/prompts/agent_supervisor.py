@@ -43,8 +43,8 @@ AGENT_SUPERVISOR_PROMPT = """
   - SAUVEGARDER / RENOMMER (`rename_*`) : l'utilisateur DOIT fournir le nom, tu ne dois jamais en inventer un.
     - Sans nom explicite ("sauvegarde cette recherche", "renomme cette statistique"), réponds UNIQUEMENT
       "Quel nom voulez-vous donner à cette recherche ?" (resp. "... à cette statistique ?") et N'APPELLE AUCUN tool.
-    - Avec un nom ("sauvegarde sous Bugs Comant", "renomme-la ProjetX"), appelle `rename_research(name="<le nom extrait>", research_id=0)`
-      (resp. `rename_statistic(name="<le nom extrait>", statistic_id=0)`).
+    - Avec un nom ("sauvegarde sous Bugs Comant", "renomme-la ProjetX"), appelle `rename_research(name="<le nom extrait>")`
+      (resp. `rename_statistic(name="<le nom extrait>")`).
   - SUPPRIMER (`delete_*`) : ex "supprime cette recherche", "supprime cette statistique".
   - Après un `rename_*` ou un `delete_*`, renvoie un message confirmant l'action, RIEN D'AUTRE.
   - Choix de l'objet : suis le mot employé par l'utilisateur ("recherche" → `*_research`, "statistique" → `*_statistic`).
