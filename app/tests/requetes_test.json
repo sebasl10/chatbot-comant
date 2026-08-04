@@ -86,5 +86,21 @@
   {
     "user": "les tickets du projet 3dk_2026-SP2 qui ont un tag SPR",
     "correct_sql": "SELECT DISTINCT t.id, t.code, t.summary FROM ticket t JOIN project_ticket pt ON pt.ticket_id = t.id JOIN project p ON p.id = pt.project_id JOIN ticket_tag tt ON tt.ticket_id = t.id JOIN tag tg ON tg.id = tt.tag_id WHERE p.code = '3dk_2026-SP2' AND tg.name = 'SPR' AND t.type != 'Group'"
+  },
+  {
+    "user": "donne-moi les tickets où j'ai été mentionné ce matin",
+    "correct_sql": "SELECT DISTINCT t.id, t.code, t.summary FROM ticket t WHERE t.type != 'Group' AND EXISTS (SELECT 1 FROM notification n JOIN comment c ON n.ressource_id = CONCAT('comment#', c.id) WHERE n.category = 'Mention' AND n.user_id = 5 AND c.ticket_id = t.id AND n.datetime >= CURDATE() AND n.datetime < CURDATE() + INTERVAL 12 HOUR)"
+  },
+  {
+    "user": "les tickets où j'ai été mentionné",
+    "correct_sql": "SELECT DISTINCT t.id, t.code, t.summary FROM ticket t WHERE t.type != 'Group' AND EXISTS (SELECT 1 FROM notification n JOIN comment c ON n.ressource_id = CONCAT('comment#', c.id) WHERE n.category = 'Mention' AND n.user_id = 5 AND c.ticket_id = t.id)"
+  },
+  {
+    "user": "les tickets du projet Comant2026 où j'ai été mentionné",
+    "correct_sql": "SELECT DISTINCT t.id, t.code, t.summary FROM ticket t JOIN project_ticket pt ON pt.ticket_id = t.id JOIN project p ON p.id = pt.project_id WHERE p.code = 'Comant2026' AND t.type != 'Group' AND EXISTS (SELECT 1 FROM notification n JOIN comment c ON n.ressource_id = CONCAT('comment#', c.id) WHERE n.category = 'Mention' AND n.user_id = 5 AND c.ticket_id = t.id)"
+  },
+  {
+    "user": "les tickets où mwu a été mentionné la semaine dernière",
+    "correct_sql": "SELECT DISTINCT t.id, t.code, t.summary FROM ticket t WHERE t.type != 'Group' AND EXISTS (SELECT 1 FROM notification n JOIN comment c ON n.ressource_id = CONCAT('comment#', c.id) JOIN user u ON u.id = n.user_id WHERE n.category = 'Mention' AND u.username = 'mwu' AND c.ticket_id = t.id AND n.datetime >= DATE_SUB(CURDATE(), INTERVAL 7 DAY))"
   }
 ]
