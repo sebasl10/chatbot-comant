@@ -1,3 +1,75 @@
+"""
+Prompts de l'agent SQL (recherche + affinage).
+"""
+
+REFERENCE_VALUES = """## Valeurs de référence
+
+### Table `log` - colonne `action`
+LOGIN, CREATE, UPDATE, DELETE, VIEW-TICKET (quand un utilisateur consulte un ticket), VIEW-PROJECT (quand un utilisateur consulte un projt), CLOSE-NOTIFICATION, RESEARCH
+
+### TABLE `notification` - colonne `category`
+Tickets, Mention, Projets
+
+### TABLE `ticket` - colonne `type`
+Bug, Dev, Estimation de ticket, Analyse des tickets externe, Suggestion, Documentation, Requête, Réunion, Confirmation de bug, Aide, Analyse de suggestion, Test, Déplacement, Direction technique, Dev Ops, Support niveau 1, Admin System Asia, Admin System GmbH, Admin System Vente, Admin System, Admin System USA, Action
+
+### TABLE `ticket` - colonne `status`
+Fermé, Nouveau, Estimé, Analyse demandé, En cours, Ouvert, Planifié, En pause
+
+### TABLE `ticket` - colonne `close_status`
+Fonctionne pour moi, Pas de correction souhaitée, Invalide, Fixé, Livré, Terminé, Intégré, Vérifié
+
+### TABLE `ticket` - colonne `validation_status`
+En attente d'une compilation (Faire attention à échapper le guillemet simple), Prêt à être vérifié, Vérifié
+
+### TABLE `ticket` - colonne `priority`
+1 (Basse), 2 (Moyenne), 3 (Haute), 4 (Urgent)
+
+### TABLE `ticket` - colonne `origin_type`
+Interne, Externe
+
+### TABLE `project` - colonne `type`
+Interne, Release, Produit, Release continue, Nouveauté, Amélioration, Recherche et Innovation, Package, Développements, Test & Debugs, Livraison, System, Documentation
+
+### TABLE `project` - colonne `status`
+Fermé, En cours, Nouveau, Planifié, Ouvert, Rien à faire
+
+### TABLE `project` - colonne `priority`
+1 (Basse), 2 (Moyenne), 3 (Haute), 4 (Urgent)"""
+
+
+def _business_rules(user_id: int | None) -> str:
+    return f"""## Règles métier et de la base de données
+- Les trigrammes correspondent à l'username d'un utilisateur (ex: sls, dba, mwu)
+- Le temps estimé d'un ticket (champ time_estimate de la table ticket) est stocké en nombre d'heures
+- Le temps effectif d'un ticket est stocké en secondes dans le champ duration de la table planning. Il faut savoir qu'il peut y avoir plusieurs lignes pour un même ticket_id, il faut donc faire la somme du champ duration de chaque ligne.
+- Quand tu dois filtrer par un projet, utilise toujours la colonne code, jamais la colonne name
+- Si le type de branche n'est pas specifié (branch dev/branche développement, branche de travail, branche release), tu dois chercher dans les 3 types de branche
+- L'historique de modifications des attributs d'un ticket (status, assigné, description, etc) est stockée dans la table Log (action UPDATE)
+
+### MENTIONS (« où j'ai été mentionné », « où mwu a été mentionné »)
+- Les mentions sont stockées dans la table `notification` avec `category = 'Mention'`.
+  `notification.user_id` est la personne MENTIONNÉE, `notification.datetime` la date de la mention.
+- `notification.ressource_id` contient une chaîne de la forme `comment#<id du commentaire>`,
+  et `comment.ticket_id` donne le ticket concerné.
+- FORME CANONIQUE OBLIGATOIRE — ajoute TOUJOURS un bloc `EXISTS` corrélé sur `t.id`, JAMAIS
+  une jointure dans la requête principale (une jointure créerait des doublons et rendrait
+  l'affinage impossible) :
+  AND EXISTS (SELECT 1 FROM notification n JOIN comment c ON n.ressource_id = CONCAT('comment#', c.id) WHERE n.category = 'Mention' AND n.user_id = {user_id} AND c.ticket_id = t.id)
+  N'extrais pas l'id du commentaire : le `CONCAT('comment#', c.id)` fait la correspondance.
+- Pour une mention concernant quelqu'un d'autre, remplace `n.user_id = {user_id}` par une
+  jointure `JOIN user u ON u.id = n.user_id` + `u.username = '<trigramme>'` À L'INTÉRIEUR du bloc EXISTS.
+- Les filtres de DATE d'une mention (« ce matin », « hier », « cette semaine ») portent sur
+  `n.datetime` À L'INTÉRIEUR du bloc EXISTS, JAMAIS sur `t.create_time`.
+  « ce matin » = `n.datetime >= CURDATE() AND n.datetime < CURDATE() + INTERVAL 12 HOUR`.
+- « j'ai été mentionné » se traduit UNIQUEMENT par `n.user_id = {user_id}` : n'ajoute AUCUN
+  filtre sur `t.creator_id` ni `t.assignee_id` (exception à la règle de filtrage par utilisateur).
+- Repli : pour les rares mentions dont le `ressource_id` ne commence pas par `comment#`, le
+  code du ticket est extractible du HTML de `notification.content` avec
+  `SUBSTRING_INDEX(SUBSTRING_INDEX(n.content, '</a>', 1), '>', -1) = t.code`. N'utilise cette
+  variante QUE si la forme canonique est impossible."""
+
+
 def build_recherche_prompt(schema: str, user_id: int | None) -> str:
     user_context = f"L'utilisateur connecté a l'ID : {user_id}" if user_id else ""
 
@@ -7,37 +79,7 @@ def build_recherche_prompt(schema: str, user_id: int | None) -> str:
         Voici le schéma de la base de données :
         {schema}
 
-        ## Valeurs de référence
-
-        ### Table `log` - colonne `action`
-        LOGIN, CREATE, UPDATE, DELETE, VIEW-TICKET (quand un utilisateur consulte un ticket), VIEW-PROJECT (quand un utilisateur consulte un projt), CLOSE-NOTIFICATION, RESEARCH
-
-        ### TABLE `ticket` - colonne `type`
-        Bug, Dev, Estimation de ticket, Analyse des tickets externe, Suggestion, Documentation, Requête, Réunion, Confirmation de bug, Aide, Analyse de suggestion, Test, Déplacement, Direction technique, Dev Ops, Support niveau 1, Admin System Asia, Admin System GmbH, Admin System Vente, Admin System, Admin System USA, Action
-
-        ### TABLE `ticket` - colonne `status`
-        Fermé, Nouveau, Estimé, Analyse demandé, En cours, Ouvert, Planifié, En pause
-
-        ### TABLE `ticket` - colonne `close_status`
-        Fonctionne pour moi, Pas de correction souhaitée, Invalide, Fixé, Livré, Terminé, Intégré, Vérifié
-
-        ### TABLE `ticket` - colonne `validation_status`
-        En attente d'une compilation (Faire attention à échapper le guillemet simple), Prêt à être vérifié, Vérifié
-
-        ### TABLE `ticket` - colonne `priority`
-        1 (Basse), 2 (Moyenne), 3 (Haute), 4 (Urgent)
-
-        ### TABLE `ticket` - colonne `origin_type`
-        Interne, Externe
-
-        ### TABLE `project` - colonne `type`
-        Interne, Release, Produit, Release continue, Nouveauté, Amélioration, Recherche et Innovation, Package, Développements, Test & Debugs, Livraison, System, Documentation
-
-        ### TABLE `project` - colonne `status`
-        Fermé, En cours, Nouveau, Planifié, Ouvert, Rien à faire
-
-        ### TABLE `project` - colonne `priority`
-        1 (Basse), 2 (Moyenne), 3 (Haute), 4 (Urgent)
+        {REFERENCE_VALUES}
 
         ---
         ## Règles **absolues** (à respecter sans exception)
@@ -76,13 +118,7 @@ def build_recherche_prompt(schema: str, user_id: int | None) -> str:
 
         ---
 
-        ## Règles métier et de la base de données
-        - Les trigrammes correspondent à l'username d'un utilisateur (ex: sls, dba, mwu)
-        - Le temps estimé d'un ticket (champ time_estimate de la table ticket) est stocké en nombre d'heures
-        - Le temps effectif d'un ticket est stocké en secondes dans le champ duration de la table planning. Il faut savoir qu'il peut y avoir plusieurs lignes pour un même ticket_id, il faut donc faire la somme du champ duration de chaque ligne.
-        - Quand tu dois filtrer par un projet, utilise toujours la colonne code, jamais la colonne name
-        - Si le type de branche n'est pas specifié (branch dev/branche développement, branche de travail, branche release), tu dois chercher dans les 3 types de branche
-        - L'historique de modifications des attributs d'un ticket (status, assigné, description, etc) est stockée dans la table Log (action UPDATE)
+        {_business_rules(user_id)}
 
         ---
 
@@ -111,6 +147,15 @@ def build_recherche_prompt(schema: str, user_id: int | None) -> str:
 
         Message: "Les tickets que j'ai commentés"
         SQL: SELECT DISTINCT t.id, t.code, t.summary FROM ticket t JOIN comment c ON c.ticket_id = t.id WHERE c.user_id = {user_id} AND t.type != 'Group'
+
+        Message: "Donne-moi les tickets où j'ai été mentionné ce matin"
+        SQL: SELECT DISTINCT t.id, t.code, t.summary FROM ticket t WHERE t.type != 'Group' AND EXISTS (SELECT 1 FROM notification n JOIN comment c ON n.ressource_id = CONCAT('comment#', c.id) WHERE n.category = 'Mention' AND n.user_id = {user_id} AND c.ticket_id = t.id AND n.datetime >= CURDATE() AND n.datetime < CURDATE() + INTERVAL 12 HOUR)
+
+        Message: "Les tickets du projet CAO où j'ai été mentionné"
+        SQL: SELECT DISTINCT t.id, t.code, t.summary FROM ticket t JOIN project_ticket pt ON pt.ticket_id = t.id JOIN project p ON p.id = pt.project_id WHERE p.code = 'CAO' AND t.type != 'Group' AND EXISTS (SELECT 1 FROM notification n JOIN comment c ON n.ressource_id = CONCAT('comment#', c.id) WHERE n.category = 'Mention' AND n.user_id = {user_id} AND c.ticket_id = t.id)
+
+        Message: "Les tickets où mwu a été mentionné la semaine dernière"
+        SQL: SELECT DISTINCT t.id, t.code, t.summary FROM ticket t WHERE t.type != 'Group' AND EXISTS (SELECT 1 FROM notification n JOIN comment c ON n.ressource_id = CONCAT('comment#', c.id) JOIN user u ON u.id = n.user_id WHERE n.category = 'Mention' AND u.username = 'mwu' AND c.ticket_id = t.id AND n.datetime >= DATE_SUB(CURDATE(), INTERVAL 7 DAY))
 
         Message: "Les tickets en cours avec une priorité haute"
         SQL: SELECT DISTINCT t.id, t.code, t.summary FROM ticket t WHERE t.status = 'open' AND t.priority = 1 AND t.type != 'Group' ORDER BY t.create_time DESC
@@ -216,37 +261,7 @@ def build_affinage_prompt(
             **Correction** ("je voulais dire assignés, pas créés")
             → Corrige le champ ou la jointure concernée
 
-            ## Valeurs de référence
-
-            ### Table `log` - colonne `action`
-            LOGIN, CREATE, UPDATE, DELETE, VIEW-TICKET (quand un utilisateur consulte un ticket), VIEW-PROJECT (quand un utilisateur consulte un projt), CLOSE-NOTIFICATION, RESEARCH
-
-            ### TABLE `ticket` - colonne `type`
-            Bug, Dev, Estimation de ticket, Analyse des tickets externe, Suggestion, Documentation, Requête, Réunion, Confirmation de bug, Aide, Analyse de suggestion, Test, Déplacement, Direction technique, Dev Ops, Support niveau 1, Admin System Asia, Admin System GmbH, Admin System Vente, Admin System, Admin System USA, Action
-
-            ### TABLE `ticket` - colonne `status`
-            Fermé, Nouveau, Estimé, Analyse demandé, En cours, Ouvert, Planifié, En pause
-
-            ### TABLE `ticket` - colonne `close_status`
-            Fonctionne pour moi, Pas de correction souhaitée, Invalide, Fixé, Livré, Terminé, Intégré, Vérifié
-
-            ### TABLE `ticket` - colonne `validation_status`
-            En attente d'une compilation (Faire attention à échapper le guillemet simple), Prêt à être vérifié, Vérifié
-
-            ### TABLE `ticket` - colonne `priority`
-            1 (Basse), 2 (Moyenne), 3 (Haute), 4 (Urgent)
-
-            ### TABLE `ticket` - colonne `origin_type`
-            Interne, Externe
-
-            ### TABLE `project` - colonne `type`
-            Interne, Release, Produit, Release continue, Nouveauté, Amélioration, Recherche et Innovation, Package, Développements, Test & Debugs, Livraison, System, Documentation
-
-            ### TABLE `project` - colonne `status`
-            Fermé, En cours, Nouveau, Planifié, Ouvert, Rien à faire
-
-            ### TABLE `project` - colonne `priority`
-            1 (Basse), 2 (Moyenne), 3 (Haute), 4 (Urgent)
+            {REFERENCE_VALUES}
 
             ---
             ## Règles **absolues** (à respecter sans exception)
@@ -282,13 +297,7 @@ def build_affinage_prompt(
 
             ---
 
-            ## Règles métier et de la base de données
-            - Les trigrammes correspondent à l'username d'un utilisateur (ex: sls, dba, mwu)
-            - Le temps estimé d'un ticket (champ time_estimate de ma table ticket) est stocké en nombre d'heures
-            - Le temps effectif d'un ticket est stocké en secondes dans le champ duration de la table planning. Il faut savoir qu'il peut y avoir plusieurs lignes pour un même ticket_id, il faut donc faire la somme du champ duration de chaque ligne.
-            - Quand tu dois filtrer par un projet, utilise toujours la colonne code, jamais la colonne name
-            - Si le type de branche n'est pas specifié (branch dev/branche développement, branche de travail, branche release), tu dois chercher dans les 3 types de branche
-            - L'historique de modifications des attributs d'un ticket (status, assigné, description, etc) est stockée dans la table Log (action UPDATE)
+            {_business_rules(user_id)}
 
             ## EXEMPLES
 
@@ -303,6 +312,19 @@ def build_affinage_prompt(
             Dernière SQL: SELECT t.id, t.code, t.summary FROM ticket t JOIN project_ticket pt ON pt.ticket_id = t.id JOIN project p ON p.id = pt.project_id WHERE p.code = 'CAO'
             Message: "Uniquement ceux créés ce mois-ci"
             → SELECT t.id, t.code, t.summary FROM ticket t JOIN project_ticket pt ON pt.ticket_id = t.id JOIN project p ON p.id = pt.project_id WHERE p.code = 'CAO' AND t.create_time >= DATE_FORMAT(NOW(), '%Y-%m-01')
+
+            Dernière SQL: SELECT DISTINCT t.id, t.code, t.summary FROM ticket t WHERE t.status = 'Ouvert' AND t.type != 'Group'
+            Message: "garde seulement ceux où j'ai été mentionné"
+            → SELECT DISTINCT t.id, t.code, t.summary FROM ticket t WHERE t.status = 'Ouvert' AND t.type != 'Group' AND EXISTS (SELECT 1 FROM notification n JOIN comment c ON n.ressource_id = CONCAT('comment#', c.id) WHERE n.category = 'Mention' AND n.user_id = {user_id} AND c.ticket_id = t.id)
+
+            Dernière SQL: SELECT DISTINCT t.id, t.code, t.summary FROM ticket t WHERE t.type != 'Group' AND EXISTS (SELECT 1 FROM notification n JOIN comment c ON n.ressource_id = CONCAT('comment#', c.id) WHERE n.category = 'Mention' AND n.user_id = {user_id} AND c.ticket_id = t.id AND n.datetime >= CURDATE() AND n.datetime < CURDATE() + INTERVAL 12 HOUR)
+            Message: "plutôt cette semaine"
+            → SELECT DISTINCT t.id, t.code, t.summary FROM ticket t WHERE t.type != 'Group' AND EXISTS (SELECT 1 FROM notification n JOIN comment c ON n.ressource_id = CONCAT('comment#', c.id) WHERE n.category = 'Mention' AND n.user_id = {user_id} AND c.ticket_id = t.id AND n.datetime >= DATE_SUB(CURDATE(), INTERVAL 7 DAY))
+            (la date de la mention se modifie DANS le bloc EXISTS, jamais sur t.create_time)
+
+            Dernière SQL: SELECT DISTINCT t.id, t.code, t.summary FROM ticket t WHERE t.type != 'Group' AND EXISTS (SELECT 1 FROM notification n JOIN comment c ON n.ressource_id = CONCAT('comment#', c.id) WHERE n.category = 'Mention' AND n.user_id = {user_id} AND c.ticket_id = t.id)
+            Message: "enlève le filtre des mentions, garde juste les bugs"
+            → SELECT DISTINCT t.id, t.code, t.summary FROM ticket t WHERE t.type = 'Bug'
             """
 
 
