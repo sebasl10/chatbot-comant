@@ -30,6 +30,10 @@ from app.services.database import get_sql, is_admin
 from app.services.database import rename_research as db_rename_research
 from app.services.database import rename_statistic as db_rename_statistic
 
+NOT_ADMIN_MESSAGE = (
+    "Vous n'êtes pas autorisé·e à générer des statistiques. "
+    "Cette fonctionnalité est réservée aux administrateurs."
+)
 
 async def delegate_conversation(ctx: RunContext[ChatDeps], user_message: str) -> str:
     """
@@ -96,26 +100,6 @@ async def delegate_semantic_search(ctx: RunContext[ChatDeps], request: str) -> s
     return result.output
 
 
-NOT_ADMIN_MESSAGE = (
-    "Vous n'êtes pas autorisé·e à générer des statistiques. "
-    "Cette fonctionnalité est réservée aux administrateurs."
-)
-
-
-def _reset_statistic_deps(deps: ChatDeps) -> None:
-    """Repart d'une ardoise vierge : aucune trace d'une statistique précédente."""
-    deps.last_stats_sql = None
-    deps.last_result = None
-    deps.last_stats_columns = []
-    deps.external_sql = None
-    deps.external_result = None
-    deps.external_columns = []
-    deps.graph_type = None
-    deps.description = None
-    deps.labels = None
-    deps.previous_statistic = None
-
-
 async def delegate_statistics(ctx: RunContext[ChatDeps], request: str) -> str:
     """
     Délègue le calcul d'une NOUVELLE STATISTIQUE (indicateur agrégé) à l'agent statistiques,
@@ -152,7 +136,6 @@ async def delegate_refine_statistic(ctx: RunContext[ChatDeps], request: str) -> 
     print("[DELEGATE] Statistics agent (affinage)")
     print(f"Message: {request}")
 
-    # Vérifier si l'utilisateur est Admin
     is_user_admin = is_admin(ctx.deps.user_id)
     if not (is_user_admin):
         return NOT_ADMIN_MESSAGE
@@ -163,7 +146,6 @@ async def delegate_refine_statistic(ctx: RunContext[ChatDeps], request: str) -> 
     _reset_statistic_deps(ctx.deps)
     statistic = await load_statistic(ctx.deps, statistic_id) if statistic_id else None
 
-    # Sans statistique à affiner, la demande ne peut être traitée que comme une nouvelle.
     if not statistic:
         print("[DELEGATE] Aucune statistique à affiner -> nouvelle statistique")
         return await delegate_statistics(ctx, request)
@@ -319,3 +301,16 @@ def _previous_statistic_id(deps: ChatDeps) -> int:
         if statistic_id:
             return statistic_id
     return 0
+
+def _reset_statistic_deps(deps: ChatDeps) -> None:
+    """Repart d'une ardoise vierge : aucune trace d'une statistique précédente."""
+    deps.last_stats_sql = None
+    deps.last_result = None
+    deps.last_stats_columns = []
+    deps.external_sql = None
+    deps.external_result = None
+    deps.external_columns = []
+    deps.graph_type = None
+    deps.description = None
+    deps.labels = None
+    deps.previous_statistic = None

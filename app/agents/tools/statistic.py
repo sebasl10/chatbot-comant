@@ -319,9 +319,7 @@ async def persist_statistic(deps: ChatDeps) -> int:
 
 async def persist_statistic_affinage(deps: ChatDeps, statistic_id: int) -> int:
     """
-    Met à jour la statistique existante (affinage) : requêtes, présentation et instantané
-    du résultat. Contrairement à une nouvelle statistique, aucune ligne n'est créée : le
-    front continue de suivre le même `statistic_id`.
+    Met à jour la statistique existante (affinage)
     """
     if not deps.last_stats_sql:
         raise ValueError("Aucune requête SQL (stats) à persister (deps.last_stats_sql vide).")
@@ -364,7 +362,9 @@ def statistic_changed(deps: ChatDeps) -> bool:
 
 
 async def _run(sql: str, db: str) -> tuple[list[dict], list[str]]:
-    """Ré-exécute une requête persistée ; un échec ne doit pas casser l'affinage."""
+    """
+    Ré-exécute une requête persistée
+    """
     try:
         rows = await asyncio.to_thread(execute_select, sql, db)
     except Exception as e:
@@ -375,15 +375,7 @@ async def _run(sql: str, db: str) -> tuple[list[dict], list[str]]:
 
 async def load_statistic(deps: ChatDeps, statistic_id: int) -> dict | None:
     """
-    Charge dans les deps la statistique à affiner : ses deux requêtes et la présentation
-    déjà choisie, puis ré-exécute les requêtes.
-
-    La ré-exécution est nécessaire : `set_statistic_presentation` valide les libellés
-    contre les colonnes et les valeurs RÉELLES du résultat. On repart des données à jour
-    plutôt que de l'instantané `last_result` persisté.
-
-    Renvoie la statistique chargée (à injecter dans le prompt d'affinage), ou ``None``
-    si elle est introuvable ou vide — auquel cas il n'y a rien à affiner.
+    Charge dans les deps la statistique à affiner 
     """
     row = await asyncio.to_thread(get_statistic, statistic_id)
     if not row or not row.get("sql_request"):
