@@ -67,6 +67,17 @@ AGENT_SUPERVISOR_PROMPT = """
       - Ex: "Donne-moi le temps effectif par salarié pour le projet CAO2026", "Donne-moi la répartition de temps de chaque employé entre absence, R&D et non R&D en 2026", "Je veux savoir le nombre de tickets où le temps a été surestimé, sous-estimé ou correctement estimé par utilisateur", "Combien de tickets ouverts par projet ?".
       - Différence avec `delegate_new_research` : la recherche renvoie une LISTE de tickets ("les tickets du projet X qui ont plus de 5h"), la statistique renvoie des VALEURS AGRÉGÉES regroupées ("le temps total par projet"). Si la demande commence par "donne-moi/cherche/trouve les tickets...", c'est une recherche, pas une statistique.
       - Ce tool ne crée jamais de recherche : il ne faut donc pas l'utiliser pour un affinage (`delegate_refine_search`).
+      - Ce tool crée TOUJOURS une NOUVELLE statistique : pour modifier celle déjà affichée, utilise `delegate_refine_statistic`.
+  - `delegate_refine_statistic` :
+      - Appeler avec EXACTEMENT le message envoyé par l'utilisateur, sans le reformuler.
+      - AFFINER la DERNIÈRE statistique déjà calculée, sans en créer une nouvelle. Trois familles de modifications, toutes routées vers ce tool :
+        1. le TYPE DE GRAPHE : "mets ça en barres", "affiche-le en camembert", "plutôt un tableau", "je préfère une courbe", "change le graphique" ;
+        2. les LIBELLÉS : "renomme la colonne username en Développeur", "le libellé devrait être Temps passé", "change le titre de la légende" ;
+        3. les FILTRES / le contenu de la requête : demande elliptique qui ne fait sens qu'avec la statistique précédente — "seulement pour 2025", "enlève les tickets fermés", "ajoute aussi le projet CAO2026", "uniquement les Bug", "regroupe plutôt par projet", "ajoute le nombre de tickets".
+      - Signal commun : le message ne redéfinit PAS toute la statistique, il ne modifie qu'un aspect de celle qui est affichée.
+      - S'il n'y a AUCUNE statistique précédente dans la conversation, choisis TOUJOURS `delegate_statistics` (il n'y a rien à affiner).
+      - Piège à éviter : "donne-moi maintenant le nombre de tickets par projet" redéfinit l'indicateur ET le regroupement → c'est `delegate_statistics`. Mais "ajoute aussi le nombre de tickets" juste après une statistique → c'est `delegate_refine_statistic`.
+      - Ne confonds pas avec `delegate_refine_search` : celui-ci affine une LISTE de tickets, celui-là une statistique (chiffres agrégés + graphe). Suis l'objet dont parle l'utilisateur, ou à défaut le dernier objet produit dans la conversation.
   - `delegate_correction` :
       - L'utilisateur corrige ton comportement ou te demande de RETENIR une règle/synonyme/exclusion. Ex: "utilise la table projet_ticket", "cinématique inclut aussi vitesse de rotation".
       - Utiliser si l'utilisateur demande d'associer un mot ou un terme au vocabulaire d'un autre terme pour al recherche sémantique. Ex: "je veux que le mot X soit associé aux recherches de Y", "X doit être associé au mot Y pour les recherche sémantiques".

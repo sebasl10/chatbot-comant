@@ -16,7 +16,12 @@ from app.agents.specialists.sql_research import sql_research_agent
 from app.agents.specialists.statistics import statistics_agent
 from app.agents.tools.memory import relevant_memories
 from app.agents.tools.research import persist_affinage, persist_new_research
-from app.agents.tools.statistic import persist_statistic
+from app.agents.tools.statistic import (
+    load_statistic,
+    persist_statistic,
+    persist_statistic_affinage,
+    statistic_changed,
+)
 from app.agents.util.history_utils import _history_context
 from app.agents.util.output_guard import guard_against_tool_call_leak
 from app.services.database import delete_research as db_delete_research
@@ -25,6 +30,10 @@ from app.services.database import get_sql, is_admin
 from app.services.database import rename_research as db_rename_research
 from app.services.database import rename_statistic as db_rename_statistic
 
+NOT_ADMIN_MESSAGE = (
+    "Vous n'êtes pas autorisé·e à générer des statistiques. "
+    "Cette fonctionnalité est réservée aux administrateurs."
+)
 
 async def delegate_conversation(ctx: RunContext[ChatDeps], user_message: str) -> str:
     """
@@ -93,7 +102,8 @@ async def delegate_semantic_search(ctx: RunContext[ChatDeps], request: str) -> s
 
 async def delegate_statistics(ctx: RunContext[ChatDeps], request: str) -> str:
     """
-    Délègue le calcul d'une STATISTIQUE (indicateur agrégé) à l'agent statistiques.
+    Délègue le calcul d'une NOUVELLE STATISTIQUE (indicateur agrégé) à l'agent statistiques,
+    puis persiste la statistique créée.
     Args:
         request: Message exact envoyé par l'utilisateur, sans modification, sans reformulation, sans ajout de texte
     """
@@ -103,22 +113,52 @@ async def delegate_statistics(ctx: RunContext[ChatDeps], request: str) -> str:
     # Vérifier si l'utilisateur est Admin
     is_user_admin = is_admin(ctx.deps.user_id)
     if not (is_user_admin):
-        return "Vous n'êtes pas autorisé·e à générer des statistiques. Cette fonctionnalité est réservée aux administrateurs."
+        return NOT_ADMIN_MESSAGE
 
     ctx.deps.events.early_intention("statistic")
-    ctx.deps.last_stats_sql = None
-    ctx.deps.last_result = None
-    ctx.deps.last_stats_columns = []
-    ctx.deps.external_sql = None
-    ctx.deps.external_result = None
-    ctx.deps.external_columns = []
-    ctx.deps.graph_type = None
-    ctx.deps.description = None
-    ctx.deps.labels = None
+    ctx.deps.mode = "recherche"
+    _reset_statistic_deps(ctx.deps)
     result = await statistics_agent.run(request, deps=ctx.deps, usage=ctx.usage)
 
     if ctx.deps.last_stats_sql:
         await persist_statistic(ctx.deps)
+
+    return result.output
+
+
+async def delegate_refine_statistic(ctx: RunContext[ChatDeps], request: str) -> str:
+    """
+    Délègue l'AFFINAGE de la dernière statistique à l'agent statistiques (type de graphe,
+    libellés, filtres de la requête), puis met à jour la statistique existante.
+    Args:
+        request: Message exact envoyé par l'utilisateur, sans modification, sans reformulation, sans ajout de texte
+    """
+    print("[DELEGATE] Statistics agent (affinage)")
+    print(f"Message: {request}")
+
+    is_user_admin = is_admin(ctx.deps.user_id)
+    if not (is_user_admin):
+        return NOT_ADMIN_MESSAGE
+
+    statistic_id = _previous_statistic_id(ctx.deps)
+    print(f"Statistic ID: {statistic_id}")
+
+    _reset_statistic_deps(ctx.deps)
+    statistic = await load_statistic(ctx.deps, statistic_id) if statistic_id else None
+
+    if not statistic:
+        print("[DELEGATE] Aucune statistique à affiner -> nouvelle statistique")
+        return await delegate_statistics(ctx, request)
+
+    ctx.deps.events.early_intention("affinage_statistic")
+    ctx.deps.mode = "affinage"
+    ctx.deps.statistic_id = statistic_id
+    ctx.deps.previous_statistic = statistic
+    prompt = f"Demande d'affinage de la statistique : {request}"
+    result = await statistics_agent.run(prompt, deps=ctx.deps, usage=ctx.usage)
+
+    if ctx.deps.last_stats_sql and statistic_changed(ctx.deps):
+        await persist_statistic_affinage(ctx.deps, statistic_id)
 
     return result.output
 
@@ -144,6 +184,7 @@ supervisor_agent = Agent(
         delegate_refine_search,
         delegate_semantic_search,
         delegate_statistics,
+        delegate_refine_statistic,
         delegate_correction,
     ],
     retries=2,
@@ -243,3 +284,33 @@ def _previous_sql(deps: ChatDeps) -> str:
         if msg.get("sql") or msg.get("generated_sql"):
             return msg.get("sql") or msg.get("generated_sql")
     return ""
+
+
+def _previous_statistic_id(deps: ChatDeps) -> int:
+    """
+    Retrouve la statistique à affiner : d'abord celle envoyée par le front, sinon la
+    dernière rencontrée dans l'historique. Renvoie 0 s'il n'y en a aucune.
+    """
+    if deps.statistic_id:
+        return deps.statistic_id
+    for msg in reversed(deps.historique):
+        try:
+            statistic_id = int(msg.get("statistic_id") or 0)
+        except (TypeError, ValueError):
+            continue
+        if statistic_id:
+            return statistic_id
+    return 0
+
+def _reset_statistic_deps(deps: ChatDeps) -> None:
+    """Repart d'une ardoise vierge : aucune trace d'une statistique précédente."""
+    deps.last_stats_sql = None
+    deps.last_result = None
+    deps.last_stats_columns = []
+    deps.external_sql = None
+    deps.external_result = None
+    deps.external_columns = []
+    deps.graph_type = None
+    deps.description = None
+    deps.labels = None
+    deps.previous_statistic = None

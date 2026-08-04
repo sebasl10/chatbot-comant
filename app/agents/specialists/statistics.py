@@ -1,5 +1,5 @@
 """
-StatisticsAgent — indicateurs agrégés (temps, répartitions, estimations).
+StatisticsAgent — indicateurs agrégés (temps, répartitions, estimations) + affinage.
 """
 
 import asyncio
@@ -8,7 +8,10 @@ from pydantic_ai import Agent, RunContext
 
 from app.agents.deps import ChatDeps
 from app.agents.model import get_agent_model
-from app.agents.prompts.agent_statistics import build_statistics_prompt
+from app.agents.prompts.agent_statistics import (
+    build_statistics_affinage_prompt,
+    build_statistics_prompt,
+)
 from app.agents.tools.db import run_external_sql, run_stats_sql
 from app.agents.tools.entity import validate_entities
 from app.agents.tools.memory import relevant_memories
@@ -27,7 +30,12 @@ guard_against_tool_call_leak(statistics_agent)
 @statistics_agent.system_prompt
 async def _system(ctx: RunContext[ChatDeps]) -> str:
     schema = await asyncio.to_thread(get_db_schema)
-    base = build_statistics_prompt(schema, ctx.deps.user_id)
+    if ctx.deps.mode == "affinage" and ctx.deps.previous_statistic:
+        base = build_statistics_affinage_prompt(
+            schema, ctx.deps.user_id, ctx.deps.previous_statistic, ctx.deps.historique
+        )
+    else:
+        base = build_statistics_prompt(schema, ctx.deps.user_id)
 
     memories = await relevant_memories(ctx, "statistics")
     memory_block = f"\n\n## RÈGLES MÉMORISÉES (à respecter)\n{memories}" if memories else ""

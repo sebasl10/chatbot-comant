@@ -51,3 +51,7 @@ class ChatDeps:
     graph_type: str | None = None
     description: str | None = None
     labels: list[dict] | None = None
+
+    # Statistique à affiner, telle que persistée (requêtes + présentation).
+    # Renseignée en mode affinage par `load_statistic`.
+    previous_statistic: dict | None = None

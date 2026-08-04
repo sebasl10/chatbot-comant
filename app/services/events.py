@@ -8,6 +8,9 @@ une clé ``event`` qui décrit sa nature.
 Types d'événements :
 - ``intention``  : {"event": "intention", "intention": ...}            (compat)
 - ``research``   : {"event": "research", "research_id": ..., "sql": ...} → redirection onglet Recherche + affichage
+- ``statistic``  : {"event": "statistic", "statistic_id": ..., "intention": "statistic"|"affinage_statistic"}
+                   → ``statistic`` = nouvelle statistique, ``affinage_statistic`` = la
+                   statistique de cet id vient d'être modifiée (le front doit la recharger)
 - ``action``     : {"event": "action", "name": "rename_research"|"delete_research"|"rename_statistic"|"delete_statistic", ...}
 - ``correction`` : {"event": "correction", "type": ..., "memory": ...}   (compat)
 - ``error``      : {"event": "error", "message": ...}
@@ -65,8 +68,8 @@ class EventSink:
             data["intention"] = intention
         self.emit("research", **data)
 
-    def statistic(self, statistic_id: int) -> None:
-        data = {"statistic_id": statistic_id, "intention": "statistic"}
+    def statistic(self, statistic_id: int, intention: str = "statistic") -> None:
+        data = {"statistic_id": statistic_id, "intention": intention}
         self.emit("statistic", **data)
 
     def action(self, name: str, **data) -> None:

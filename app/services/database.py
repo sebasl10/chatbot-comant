@@ -362,6 +362,60 @@ def is_admin(user_id: int) -> bool:
         conn.close()
 
 
+def get_statistic(statistic_id: int) -> dict | None:
+    """
+    Récupère une statistique (ses deux requêtes + sa présentation) pour l'affiner.
+    Renvoie ``None`` si elle n'existe pas.
+    """
+    conn = get_connection()
+    try:
+        with conn.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT id, sql_request, external_sql_request, graph_type, labels, description
+                FROM statistics WHERE id = %s
+                """,
+                (statistic_id,),
+            )
+            return cursor.fetchone()
+    finally:
+        conn.close()
+
+
+def update_statistic(
+    statistic_id: int,
+    sql: str,
+    graph_type: str,
+    description: str | None,
+    labels: str | None,
+    external_sql: str | None = None,
+    last_result: str | None = None,
+) -> None:
+    """
+    Met à jour une statistique existante (affinage) : requêtes, présentation et
+    instantané du résultat.
+    """
+    conn = get_connection()
+    try:
+        with conn.cursor() as cursor:
+            query = """
+                UPDATE statistics
+                SET sql_request = %s, external_sql_request = %s, last_result = %s,
+                    graph_type = %s, labels = %s, description = %s
+                WHERE id = %s
+            """
+            cursor.execute(
+                query,
+                (sql, external_sql, last_result, graph_type, labels, description, statistic_id),
+            )
+            conn.commit()
+    except Exception as e:
+        conn.rollback()
+        raise e
+    finally:
+        conn.close()
+
+
 def create_statistic(
     user_id: int,
     sql: str,
