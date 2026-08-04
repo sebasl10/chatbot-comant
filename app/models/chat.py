@@ -10,6 +10,7 @@ class ChatRequest(BaseModel):
     historique: list[dict] = []
     last_message_id: int
     research_id: int
+    statistic_id: int = 0
 
 
 class NameRequest(BaseModel):

@@ -8,7 +8,7 @@ une clé ``event`` qui décrit sa nature.
 Types d'événements :
 - ``intention``  : {"event": "intention", "intention": ...}            (compat)
 - ``research``   : {"event": "research", "research_id": ..., "sql": ...} → redirection onglet Recherche + affichage
-- ``action``     : {"event": "action", "name": "rename_research"|"delete_research", ...} → remplace les boutons
+- ``action``     : {"event": "action", "name": "rename_research"|"delete_research"|"rename_statistic"|"delete_statistic", ...}
 - ``correction`` : {"event": "correction", "type": ..., "memory": ...}   (compat)
 - ``error``      : {"event": "error", "message": ...}
 
