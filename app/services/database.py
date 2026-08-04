@@ -280,6 +280,51 @@ def delete_research(research_id: int, user_id: int | None = None) -> None:
         conn.close()
 
 
+def rename_statistic(statistic_id: int, name: str, user_id: int | None = None) -> None:
+    """
+    Renomme une statistique (équivaut à « sauvegarder »).
+    """
+    conn = get_connection()
+    try:
+        with conn.cursor() as cursor:
+            if user_id is not None:
+                cursor.execute(
+                    "UPDATE statistics SET name = %s, saved = %s WHERE id = %s AND creator_id = %s",
+                    (name, True, statistic_id, user_id),
+                )
+            else:
+                cursor.execute(
+                    "UPDATE statistics SET name = %s, saved = %s WHERE id = %s",
+                    (name, True, statistic_id),
+                )
+            conn.commit()
+    except Exception as e:
+        conn.rollback()
+        raise e
+    finally:
+        conn.close()
+
+
+def delete_statistic(statistic_id: int, user_id: int | None = None) -> None:
+    """Supprime une statistique. Restreint au créateur si ``user_id`` est fourni."""
+    conn = get_connection()
+    try:
+        with conn.cursor() as cursor:
+            if user_id is not None:
+                cursor.execute(
+                    "DELETE FROM statistics WHERE id = %s AND creator_id = %s",
+                    (statistic_id, user_id),
+                )
+            else:
+                cursor.execute("DELETE FROM statistics WHERE id = %s", (statistic_id,))
+            conn.commit()
+    except Exception as e:
+        conn.rollback()
+        raise e
+    finally:
+        conn.close()
+
+
 def get_username(user_id: int) -> str:
     conn = get_connection()
     try:

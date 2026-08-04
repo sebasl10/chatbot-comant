@@ -20,6 +20,7 @@ from app.agents.tools.statistic import persist_statistic
 from app.agents.util.history_utils import _history_context
 from app.agents.util.output_guard import guard_against_tool_call_leak
 from app.services.database import delete_research as db_delete_research
+from app.services.database import delete_statistic as db_delete_statistic, rename_statistic as db_rename_statistic
 from app.services.database import get_sql, is_admin
 from app.services.database import rename_research as db_rename_research
 
@@ -194,6 +195,42 @@ async def delete_research(ctx: RunContext[ChatDeps], research_id: int = 0) -> st
     await asyncio.to_thread(db_delete_research, rid, ctx.deps.user_id)
     ctx.deps.events.action("delete_research", research_id=rid)
     return "Recherche supprimée."
+
+
+@supervisor_agent.tool
+async def rename_statistic(ctx: RunContext[ChatDeps], name: str, statistic_id: int = 0) -> str:
+    """
+    Renomme / sauvegarde la statistique courante (ou celle d'id `statistic_id`) avec un nom donné par l'utilisateur.
+    Args:
+        name: Nouveau nom de la statistique. Il doit être explicitement fourni par l'utilisateur.
+        statistic_id: ID de la statistique qui doit être sauvegardée ou renommée
+    """
+    print("[TOOL CALL] Rename statistic")
+    sid = statistic_id or ctx.deps.statistic_id
+    print(f"Statistic ID: {sid}")
+    print(f"Name: {name}")
+    if not sid:
+        return "Aucune statistique courante à sauvegarder."
+    await asyncio.to_thread(db_rename_statistic, sid, name, ctx.deps.user_id)
+    ctx.deps.events.action("rename_statistic", statistic_id=sid, new_name=name)
+    return f"Statistique sauvegardée sous le nom « {name} »."
+
+
+@supervisor_agent.tool
+async def delete_statistic(ctx: RunContext[ChatDeps], statistic_id: int = 0) -> str:
+    """
+    Supprime la statistique courante (ou celle d'id `statistic_id`).
+    Args:
+        statistic_id: ID de la statistique qui doit être supprimée
+    """
+    print("[TOOL CALL] Delete statistic")
+    sid = statistic_id or ctx.deps.statistic_id
+    print(f"Statistic ID: {sid}")
+    if not sid:
+        return "Aucune statistique courante à supprimer."
+    await asyncio.to_thread(db_delete_statistic, sid, ctx.deps.user_id)
+    ctx.deps.events.action("delete_statistic", statistic_id=sid)
+    return "Statistique supprimée."
 
 
 def _previous_sql(deps: ChatDeps) -> str:

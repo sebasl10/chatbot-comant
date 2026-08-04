@@ -51,6 +51,7 @@ async def chat_stream(request: ChatRequest):
     deps = ChatDeps(
         user_id=request.user_id,
         research_id=request.research_id,
+        statistic_id=request.statistic_id,
         last_message_id=request.last_message_id,
         historique=request.historique,
         username=username,
