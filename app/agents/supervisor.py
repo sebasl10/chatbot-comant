@@ -35,6 +35,7 @@ NOT_ADMIN_MESSAGE = (
     "Cette fonctionnalité est réservée aux administrateurs."
 )
 
+
 async def delegate_conversation(ctx: RunContext[ChatDeps], user_message: str) -> str:
     """
     Délègue à l'agent conversationnel (salutation, aide, hors-périmètre, discussion).
@@ -301,6 +302,7 @@ def _previous_statistic_id(deps: ChatDeps) -> int:
         if statistic_id:
             return statistic_id
     return 0
+
 
 def _reset_statistic_deps(deps: ChatDeps) -> None:
     """Repart d'une ardoise vierge : aucune trace d'une statistique précédente."""
