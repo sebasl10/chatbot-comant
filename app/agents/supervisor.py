@@ -222,15 +222,14 @@ async def _system(ctx: RunContext[ChatDeps]) -> str:
 
 
 @supervisor_agent.tool
-async def rename_research(ctx: RunContext[ChatDeps], name: str, research_id: int = 0) -> str:
+async def rename_research(ctx: RunContext[ChatDeps], name: str) -> str:
     """
-    Renomme / sauvegarde la recherche courante (ou celle d'id `research_id`) avec un nom donné par l'utilisateur.
+    Renomme / sauvegarde la recherche courante avec un nom donné par l'utilisateur.
     Args:
         name: Nouveau nom de la recherche. Il doit être explicitement fourni par l'utilisateur.
-        research_id: ID de la recherche qui doit être sauvegardée ou renommée
     """
     print("[TOOL CALL] Rename research")
-    rid = research_id or ctx.deps.research_id
+    rid = ctx.deps.research_id
     print(f"Research ID: {rid}")
     print(f"Name: {name}")
     if not rid:
@@ -241,14 +240,14 @@ async def rename_research(ctx: RunContext[ChatDeps], name: str, research_id: int
 
 
 @supervisor_agent.tool
-async def delete_research(ctx: RunContext[ChatDeps], research_id: int = 0) -> str:
+async def delete_research(ctx: RunContext[ChatDeps]) -> str:
     """
-    Supprime la recherche courante (ou celle d'id `research_id`).
+    Supprime la recherche courante.
     Args:
         research_id: ID de la recherche qui doit être supprimée
     """
     print("[TOOL CALL] Delete research")
-    rid = research_id or ctx.deps.research_id
+    rid = ctx.deps.research_id
     print(f"Research ID: {rid}")
     if not rid:
         return "Aucune recherche courante à supprimer."
@@ -258,33 +257,30 @@ async def delete_research(ctx: RunContext[ChatDeps], research_id: int = 0) -> st
 
 
 @supervisor_agent.tool
-async def rename_statistic(ctx: RunContext[ChatDeps], name: str, statistic_id: int = 0) -> str:
+async def rename_statistic(ctx: RunContext[ChatDeps], name: str) -> str:
     """
-    Renomme / sauvegarde la statistique courante (ou celle d'id `statistic_id`) avec un nom donné par l'utilisateur.
+    Renomme / sauvegarde la statistique courante avec un nom donné par l'utilisateur.
     Args:
         name: Nouveau nom de la statistique. Il doit être explicitement fourni par l'utilisateur.
-        statistic_id: ID de la statistique qui doit être sauvegardée ou renommée
     """
     print("[TOOL CALL] Rename statistic")
-    sid = statistic_id or ctx.deps.statistic_id
+    sid = ctx.deps.statistic_id
     print(f"Statistic ID: {sid}")
     print(f"Name: {name}")
     if not sid:
         return "Aucune statistique courante à sauvegarder."
     await asyncio.to_thread(db_rename_statistic, sid, name, ctx.deps.user_id)
-    ctx.deps.events.action("rename_statistic", statistic_id=sid, new_name=name)
+    ctx.deps.events.action("rename_statistic", statistic_id=sid, new_name_statistic=name)
     return f"Statistique sauvegardée sous le nom « {name} »."
 
 
 @supervisor_agent.tool
-async def delete_statistic(ctx: RunContext[ChatDeps], statistic_id: int = 0) -> str:
+async def delete_statistic(ctx: RunContext[ChatDeps]) -> str:
     """
-    Supprime la statistique courante (ou celle d'id `statistic_id`).
-    Args:
-        statistic_id: ID de la statistique qui doit être supprimée
+    Supprime la statistique courante.
     """
     print("[TOOL CALL] Delete statistic")
-    sid = statistic_id or ctx.deps.statistic_id
+    sid = ctx.deps.statistic_id
     print(f"Statistic ID: {sid}")
     if not sid:
         return "Aucune statistique courante à supprimer."
