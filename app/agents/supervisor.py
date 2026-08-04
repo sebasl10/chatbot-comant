@@ -20,9 +20,10 @@ from app.agents.tools.statistic import persist_statistic
 from app.agents.util.history_utils import _history_context
 from app.agents.util.output_guard import guard_against_tool_call_leak
 from app.services.database import delete_research as db_delete_research
-from app.services.database import delete_statistic as db_delete_statistic, rename_statistic as db_rename_statistic
+from app.services.database import delete_statistic as db_delete_statistic
 from app.services.database import get_sql, is_admin
 from app.services.database import rename_research as db_rename_research
+from app.services.database import rename_statistic as db_rename_statistic
 
 
 async def delegate_conversation(ctx: RunContext[ChatDeps], user_message: str) -> str:
