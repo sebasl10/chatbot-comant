@@ -103,11 +103,8 @@ HYBRID_AGENT_TOOLS_PROMPT = """
 
 
 def build_hybrid_prompt(schema: str, user_id: int | None) -> str:
-    """Prompt de recherche SQL complet + workflow hybride.
-
-    Le format de sortie « retourne uniquement la requête SQL brute » du prompt SQL est
-    retiré : il entre en conflit avec l'enchaînement d'outils et pousse le modèle à
-    répondre du SQL en texte au lieu d'appeler `run_sql`.
+    """
+    Prompt de recherche SQL complet + workflow hybride.
     """
     base = build_recherche_prompt(schema, user_id, include_raw_sql_output_format=False)
     return base + HYBRID_AGENT_TOOLS_PROMPT

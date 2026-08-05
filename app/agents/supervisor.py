@@ -115,7 +115,6 @@ async def delegate_hybrid_search(ctx: RunContext[ChatDeps], request: str) -> str
     ctx.deps.mode = "recherche"
     result = await hybrid_research_agent.run(request, deps=ctx.deps, usage=ctx.usage)
     if ctx.deps.last_sql:
-        # Une recherche hybride reste une recherche sémantique du point de vue du front.
         await persist_new_research(ctx.deps, True, intention="recherche")
     return result.output
 

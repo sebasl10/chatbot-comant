@@ -86,10 +86,6 @@ def build_recherche_prompt(
 ) -> str:
     """
     Prompt de recherche SQL : schéma, valeurs de référence, règles métier, exemples.
-
-    ``include_raw_sql_output_format=False`` retire la consigne « retourne uniquement la
-    requête SQL brute » : l'agent hybride enchaîne plusieurs outils et ne doit jamais
-    être incité à répondre du SQL en texte au lieu d'appeler ``run_sql``.
     """
     user_context = f"L'utilisateur connecté a l'ID : {user_id}" if user_id else ""
 

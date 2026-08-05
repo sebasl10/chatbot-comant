@@ -263,10 +263,6 @@ async def semantic_ticket_filter(ctx: RunContext[ChatDeps], query: str) -> dict:
     ctx.deps.semantic_ticket_ids = ticket_ids
     ctx.deps.semantic_terms = result["synonyms"]
 
-    # Volontairement PAS de `count` dans le retour : un nombre de tickets ressemble à un
-    # résultat de recherche et pousse le modèle à répondre à l'utilisateur au lieu
-    # d'enchaîner sur `run_sql`. Ce compte serait de toute façon faux (calculé avant les
-    # filtres exacts). Le seul compte annonçable est celui renvoyé par `run_sql`.
     return {
         "filter_sql": f"t.id IN ({SEMANTIC_IDS_TOKEN})",
         "synonyms": result["synonyms"],

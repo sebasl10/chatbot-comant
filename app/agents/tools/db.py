@@ -14,8 +14,6 @@ from app.agents.deps import ChatDeps
 from app.agents.tools.semantic import SEMANTIC_IDS_TOKEN
 from app.services.database import execute_select, get_db_schema
 
-_MAX_SAMPLE = 5
-
 _MISSING_SEMANTIC_FILTER = (
     "Le filtre sémantique est absent de la requête : ajoute "
     f"`AND t.id IN ({SEMANTIC_IDS_TOKEN})` dans la clause WHERE, en recopiant le jeton "
