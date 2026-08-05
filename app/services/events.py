@@ -68,8 +68,8 @@ class EventSink:
             data["intention"] = intention
         self.emit("research", **data)
 
-    def statistic(self, statistic_id: int, intention: str = "statistic") -> None:
-        data = {"statistic_id": statistic_id, "intention": intention}
+    def statistic(self, statistic_id: int, sql: str, intention: str = "statistic") -> None:
+        data = {"statistic_id": statistic_id, "sql": sql, "intention": intention}
         self.emit("statistic", **data)
 
     def action(self, name: str, **data) -> None:
