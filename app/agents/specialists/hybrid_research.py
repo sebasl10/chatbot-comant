@@ -39,11 +39,13 @@ def _require_executed_search(ctx: RunContext[ChatDeps], output: str) -> str:
     """
     if ctx.deps.semantic_terms and not ctx.deps.last_sql:
         print("[GUARD] Recherche hybride sans run_sql, relance de l'agent")
-        raise ModelRetry(("Tu as calculé le filtre sémantique mais tu n'as pas exécuté la recherche : aucun "
+        raise ModelRetry(
+            "Tu as calculé le filtre sémantique mais tu n'as pas exécuté la recherche : aucun "
             "ticket n'a été cherché et l'utilisateur ne verra aucun résultat. Construis maintenant "
             "la requête SQL complète (jointures et conditions des filtres exacts, plus "
             "`AND t.id IN ({{SEMANTIC_IDS}})` recopié tel quel) et appelle `run_sql`. "
-            "Ne réponds pas en texte tant que `run_sql` n'a pas réussi."))
+            "Ne réponds pas en texte tant que `run_sql` n'a pas réussi."
+        )
     return output
 
 
@@ -52,11 +54,12 @@ async def _system(ctx: RunContext[ChatDeps]) -> str:
     schema = await asyncio.to_thread(get_db_schema)
     base = build_hybrid_prompt(schema, ctx.deps.user_id)
 
-    # L'agent hybride fait les deux métiers : il doit respecter les souvenirs
-    # enregistrés pour l'agent SQL comme pour l'agent sémantique.
+    # L'agent hybride fait les deux métiers : en plus de ses propres souvenirs, il doit
+    # respecter ceux enregistrés pour l'agent SQL comme pour l'agent sémantique.
     memories = [
         m
         for m in (
+            await relevant_memories(ctx, "hybrid_research"),
             await relevant_memories(ctx, "sql_research"),
             await relevant_memories(ctx, "semantic_research"),
         )
