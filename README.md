@@ -265,41 +265,6 @@ La documentation interactive est disponible sur `/docs`.
 
 ---
 
-## Configuration
-
-Toute la configuration passe par un fichier `.env` à la racine :
-
-```env
-# Modèles servis par Ollama
-MODEL_IA="ministral-3:14b"
-MODEL_IA_EMBEDDING="qwen3-embedding:4b"
-OLLAMA_URL="http://localhost:11434/api/generate"
-OLLAMA_URL_EMBEDDING="http://localhost:11434/api/embed"
-ollama_openai_base_url="http://localhost:11434/v1"
-
-# Base vectorielle
-chroma_http_url="http://localhost:8001"
-
-# Base de données Comant
-DB_HOST=localhost
-DB_PORT=3306
-DB_NAME=comant
-DB_USER=...
-DB_PASSWORD=...
-
-# Base externe (absences)
-EXTERNAL_DB_HOST=...
-EXTERNAL_DB_PORT=3306
-EXTERNAL_DB_NAME=...
-EXTERNAL_DB_USER=...
-EXTERNAL_DB_PASSWORD=...
-
-# Origines autorisées
-CORS_ORIGINS=["http://comant-dev", "http://comant"]
-```
-
----
-
 ## Installation et exécution
 
 **Prérequis** : Python 3.11+, un serveur MySQL, Ollama et Chroma.

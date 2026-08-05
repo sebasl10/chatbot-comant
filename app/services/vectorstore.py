@@ -25,7 +25,7 @@ from app.services.database import get_connection, get_username
 TICKETS = "tickets"
 MEMORIES = "memories"
 CONVERSATION_SUMMARIES = "conversation_summaries"
-MEMORY_MAX_DISTANCE = 0.45
+MEMORY_MAX_DISTANCE = 0.42
 MEMORY_RECONCILE_MAX_DISTANCE = 0.40
 SUMMARY_MAX_DISTANCE = 0.55
 DEFAULT_HNSW_CONFIG = {
@@ -833,8 +833,7 @@ async def get_last_memory(user_id: int | None) -> dict | None:
 
 # ── Résumés de conversation ─────────────────────────────────────────────────
 # Un résumé est un artefact DÉRIVÉ des messages stockés en base : il n'est jamais
-# la source de vérité, et peut être régénéré à tout moment. Son id Chroma est
-# l'id de la conversation, ce qui rend l'écriture idempotente.
+# la source de vérité, et peut être régénéré à tout moment.
 
 
 async def get_summarized_message_id(conversation_id: int) -> int:

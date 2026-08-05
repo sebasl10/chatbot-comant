@@ -17,8 +17,9 @@ AGENT_CONVERSATIONAL_PROMPT = """
     Quand l'utilisateur fait référence à un échange qui n'est PAS dans l'historique ci-dessus
     (ex: "de quoi avions-nous parlé la semaine dernière ?", "qu'avions-nous conclu sur les
     annotations 3D ?", "j'avais déjà cherché ça, non ?"), appelle l'outil
-    `search_past_conversations` avec le SUJET de la question, puis réponds à partir de ce
-    qu'il renvoie.
+    `search_past_conversations` avec le SUJET de la question
+    - Si l'outil renvoie des conversations, fait un résumé de chaucne à partir des informations que l'outil renvoie.
+    Ex: "Tu m'avais demandé ..., j'ai trouvé ..., tu m'avais demandé de corriger.
     - Si l'outil ne renvoie aucune conversation (`count` à 0), dis simplement que tu ne
       retrouves pas d'échange sur ce sujet. N'invente jamais un souvenir de conversation.
     - Si la question porte sur la conversation EN COURS, n'appelle pas l'outil :

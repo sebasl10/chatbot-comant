@@ -1,9 +1,7 @@
 """
 ConversationSummaryAgent — résume une conversation terminée.
 
-Appelé hors du flux de chat, par le script de génération des résumés : produire un
-résumé coûte un appel au modèle et n'a aucun intérêt tant que la conversation est
-encore en cours.
+Appelé hors du flux de chat, par le script de génération des résumés.
 
 Le résumé est un artefact DÉRIVÉ des messages stockés en base. Il ne contient donc pas
 ce que MySQL sait déjà restituer (le SQL généré, les intentions, les messages bruts),
