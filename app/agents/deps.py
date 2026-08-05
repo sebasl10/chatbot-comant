@@ -16,6 +16,7 @@ class ChatDeps:
     username: str | None = None
 
     # Infos passées par le front pour l'affinage
+    conversation_id: int = 0
     research_id: int = 0
     statistic_id: int = 0
     last_message_id: int = 0

@@ -188,6 +188,14 @@ Avant toute écriture, un **agent juge** compare le nouveau souvenir à ceux, pr
 
 Le même mécanisme sert à **guider le routage** du superviseur : des exemples de délégation sont stockés comme souvenirs globaux et réinjectés par similarité avec la demande en cours. Ajouter un exemple est souvent plus efficace que rallonger un prompt.
 
+### Résumés de conversation
+
+Une conversation restée sans activité pendant une trentaine de minutes est résumée par un agent dédié, et le résumé est stocké dans Chroma. Le travail se fait **hors du flux de chat**, par un script rejouable : résumer coûte un appel au modèle, et un résumé de conversation en cours serait périmé au message suivant. L'identifiant Chroma étant celui de la conversation, régénérer un résumé le remplace ; l'id du dernier message résumé est conservé en métadonnée pour détecter ce qui est périmé.
+
+Le résumé est un artefact **dérivé** : il ne contient pas ce que MySQL sait déjà restituer (messages, intentions, SQL généré), mais l'objectif réel de l'échange, les sujets abordés, ce que les recherches ont donné, les corrections de l'utilisateur et l'issue.
+
+Il n'est jamais injecté d'office dans les prompts. L'agent conversationnel dispose d'un outil qui va le chercher **uniquement** quand l'utilisateur fait référence à un échange antérieur (« qu'avions-nous conclu sur les annotations 3D ? »), filtré sur son propre `user_id`. C'est la différence avec les souvenirs : ceux-ci sont des règles à appliquer automatiquement, les résumés sont des faits consultés à la demande.
+
 ---
 
 ## Les bases de données
@@ -221,7 +229,7 @@ Trois collections, en distance cosinus :
 |---|---|
 | `tickets` | Titre, description et commentaires de chaque ticket, HTML nettoyé |
 | `memories` | Souvenirs, corrections, vocabulaire, exemples de routage |
-| `conversation_summaries` | Résumés de conversation |
+| `conversation_summaries` | Un résumé par conversation terminée |
 
 Les tickets sont indexés en masse par un script, puis mis à jour à l'unité via un endpoint que l'application Comant appelle à chaque création ou modification de ticket.
 
@@ -328,6 +336,7 @@ python -m app.scripts.init_supervisor_actions --init
 | Script | Rôle |
 |---|---|
 | `embedding_generation_chroma` | Indexe tous les tickets dans Chroma |
+| `generate_conversation_summaries` | Résume les conversations au repos (à planifier) |
 | `init_supervisor_actions` | Charge, liste ou supprime les exemples de routage |
 | `add_supervisor_example` | Ajoute un exemple de routage à l'unité |
 | `inspect_chroma` | Inspecte le contenu des collections |

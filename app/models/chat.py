@@ -11,6 +11,10 @@ class ChatRequest(BaseModel):
     last_message_id: int
     research_id: int
     statistic_id: int = 0
+    # Facultatif : sert à écarter la conversation en cours de la recherche dans les
+    # conversations passées. Sans lui, tout fonctionne, à ceci près qu'une conversation
+    # reprise après une longue pause peut se retrouver dans ses propres résultats.
+    conversation_id: int = 0
 
 
 class NameRequest(BaseModel):

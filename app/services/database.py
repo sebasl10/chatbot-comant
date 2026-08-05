@@ -362,6 +362,77 @@ def is_admin(user_id: int) -> bool:
         conn.close()
 
 
+def get_conversations_to_summarize(idle_minutes: int = 30, limit: int = 50) -> list[dict]:
+    """
+    Conversations « au repos » : celles dont le dernier message date de plus de
+    ``idle_minutes``. Ce sont les seules à résumer — résumer une conversation en cours
+    produirait un résumé périmé dès le message suivant.
+
+    Renvoie pour chacune l'id du dernier message, qui sert à détecter si le résumé
+    déjà stocké est à jour (cf. ``vectorstore.get_summarized_message_id``).
+    """
+    conn = get_connection()
+    try:
+        with conn.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT c.id AS conversation_id,
+                       c.user_id,
+                       c.name,
+                       MAX(m.id) AS last_message_id,
+                       COUNT(m.id) AS message_count,
+                       MAX(m.created_at) AS last_message_at
+                FROM conversation c
+                JOIN message m ON m.conversation_id = c.id
+                GROUP BY c.id, c.user_id, c.name
+                HAVING MAX(m.created_at) < NOW() - INTERVAL %s MINUTE
+                ORDER BY MAX(m.created_at) DESC
+                LIMIT %s
+                """,
+                (idle_minutes, limit),
+            )
+            return cursor.fetchall()
+    finally:
+        conn.close()
+
+
+def get_conversation(conversation_id: int) -> dict | None:
+    """Une conversation et son propriétaire, ou None si elle n'existe pas."""
+    conn = get_connection()
+    try:
+        with conn.cursor() as cursor:
+            cursor.execute(
+                "SELECT id AS conversation_id, user_id, name FROM conversation WHERE id = %s",
+                (conversation_id,),
+            )
+            return cursor.fetchone()
+    finally:
+        conn.close()
+
+
+def get_conversation_messages(conversation_id: int) -> list[dict]:
+    """
+    Tous les messages d'une conversation, dans l'ordre chronologique, avec ce que le
+    chatbot en a fait : l'intention retenue, la requête générée et le retour de
+    l'utilisateur (like/dislike).
+    """
+    conn = get_connection()
+    try:
+        with conn.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT id, sender_role, content, created_at, intention, generated_sql, feedback
+                FROM message
+                WHERE conversation_id = %s
+                ORDER BY id
+                """,
+                (conversation_id,),
+            )
+            return cursor.fetchall()
+    finally:
+        conn.close()
+
+
 def get_statistic(statistic_id: int) -> dict | None:
     """
     Récupère une statistique (ses deux requêtes + sa présentation) pour l'affiner.
