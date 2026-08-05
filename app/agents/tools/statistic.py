@@ -375,7 +375,7 @@ async def _run(sql: str, db: str) -> tuple[list[dict], list[str]]:
 
 async def load_statistic(deps: ChatDeps, statistic_id: int) -> dict | None:
     """
-    Charge dans les deps la statistique à affiner 
+    Charge dans les deps la statistique à affiner
     """
     row = await asyncio.to_thread(get_statistic, statistic_id)
     if not row or not row.get("sql_request"):

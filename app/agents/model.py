@@ -6,7 +6,6 @@ from pydantic_ai.settings import ModelSettings
 
 from app.config import settings
 
-
 DETERMINISTIC_SETTINGS = ModelSettings(temperature=0.0)
 """Sortie contrainte : SQL, routage vers un outil, classification. Aucune créativité utile."""
 
