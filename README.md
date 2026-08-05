@@ -33,6 +33,7 @@ Tout tourne en local : les modèles de langage sont servis par Ollama, aucune do
 - **Calculer des statistiques** (temps passé, répartitions, estimations) et choisir leur représentation graphique — réservé aux administrateurs.
 - **Sauvegarder, renommer, supprimer** une recherche ou une statistique.
 - **Apprendre des corrections** de l'utilisateur : règles métier, vocabulaire, erreurs de routage.
+- **Se souvenir des conversations passées** et répondre aux questions sur des conversations passées.
 - **Nommer automatiquement** les conversations.
 
 ---
@@ -112,7 +113,8 @@ Sa première règle est de vérifier si le message répond à une question qu'il
 | **Statistiques** | Indicateurs agrégés et choix du graphe (admins) | 0.0 |
 | **Mémoire** | Enregistre, modifie et supprime les souvenirs | 0.2 |
 | **Juge mémoire** | Compare un nouveau souvenir à ceux déjà stockés | 0.0 |
-| **Conversationnel** | Salutations, aide, hors-périmètre | 0.6 |
+| **Résumé de conversation** | Résume une conversation terminée, hors flux de chat | 0.2 |
+| **Conversationnel** | Salutations, aide, hors-périmètre, conversations passées | 0.6 |
 
 Chaque spécialiste reconstruit son prompt système **à chaque requête** : il y injecte le schéma réel de la base (lu en direct, jamais figé dans le code) et les souvenirs pertinents pour la demande en cours.
 
@@ -190,11 +192,28 @@ Le même mécanisme sert à **guider le routage** du superviseur : des exemples 
 
 ### Résumés de conversation
 
-Une conversation restée sans activité pendant une trentaine de minutes est résumée par un agent dédié, et le résumé est stocké dans Chroma. Le travail se fait **hors du flux de chat**, par un script rejouable : résumer coûte un appel au modèle, et un résumé de conversation en cours serait périmé au message suivant. L'identifiant Chroma étant celui de la conversation, régénérer un résumé le remplace ; l'id du dernier message résumé est conservé en métadonnée pour détecter ce qui est périmé.
+Une conversation laissée sans activité pendant un certain délai est résumée par un agent dédié, et le résumé est stocké dans Chroma.
 
-Le résumé est un artefact **dérivé** : il ne contient pas ce que MySQL sait déjà restituer (messages, intentions, SQL généré), mais l'objectif réel de l'échange, les sujets abordés, ce que les recherches ont donné, les corrections de l'utilisateur et l'issue.
+**L'écriture se fait hors du flux de chat**, par un script rejouable à planifier. Résumer coûte un appel au modèle, et un résumé de conversation en cours serait périmé au message suivant — d'où l'attente que l'échange se termine. Comme une conversation n'a pas de fin explicite (elle devient simplement silencieuse), c'est l'inactivité qui sert de signal. L'identifiant Chroma étant celui de la conversation, régénérer un résumé le remplace au lieu de le dupliquer ; l'id du dernier message résumé est conservé en métadonnée, ce qui permet de repérer les résumés périmés et de sauter les autres.
 
-Il n'est jamais injecté d'office dans les prompts. L'agent conversationnel dispose d'un outil qui va le chercher **uniquement** quand l'utilisateur fait référence à un échange antérieur (« qu'avions-nous conclu sur les annotations 3D ? »), filtré sur son propre `user_id`. C'est la différence avec les souvenirs : ceux-ci sont des règles à appliquer automatiquement, les résumés sont des faits consultés à la demande.
+Le résumé est un artefact **dérivé**, régénérable à tout moment. Il ne contient donc pas ce que MySQL sait déjà restituer — messages, intentions, SQL généré — mais ce qu'aucune requête ne reconstitue :
+
+| Champ | Contenu |
+|---|---|
+| `objectif` | Ce que l'utilisateur cherchait vraiment, en une ou deux phrases |
+| `sujets` | Projets, clients, produits et thèmes abordés |
+| `resultats` | Ce que les recherches ou statistiques ont donné |
+| `corrections` | Ce que l'utilisateur a corrigé ou reproché |
+| `issue` | Échange abouti, abandonné, ou laissé en suspens |
+
+C'est ce contenu, rendu sous forme de récit, qui est vectorisé — parce que c'est à cela que ressemblent les questions posées plus tard.
+
+**La lecture se fait uniquement à la demande.** Les résumés ne sont jamais injectés d'office dans les prompts : l'agent conversationnel dispose d'un outil qu'il n'appelle que si l'utilisateur fait référence à un échange absent de l'historique récent. C'est la différence de nature avec les souvenirs — ceux-ci sont des **règles à appliquer** automatiquement, les résumés sont des **faits consultés** ponctuellement. Les mélanger reviendrait à polluer chaque requête avec l'historique complet de l'utilisateur.
+
+Deux garanties à ce niveau :
+
+- le filtre sur l'utilisateur n'est pas optionnel — une conversation appartient à une personne, il n'existe pas de résumé de portée globale, et la conversation en cours est écartée de ses propres résultats ;
+- un résumé couvre une conversation entière, donc souvent plusieurs recherches. L'agent a pour consigne de n'en extraire que les éléments qui répondent à la question posée et de les reformuler, jamais de restituer le résumé tel quel ni d'en faire le récapitulatif.
 
 ---
 
@@ -206,7 +225,8 @@ En lecture :
 
 - le **schéma** (tables, colonnes, types, clés étrangères), relu à chaque requête et injecté dans les prompts, pour que les agents ne travaillent jamais sur une structure périmée ;
 - les **tickets** et toutes les tables métier, via les requêtes générées ;
-- les **valeurs d'entités** (codes projet, noms de clients, trigrammes…), qui alimentent le cache de validation.
+- les **valeurs d'entités** (codes projet, noms de clients, trigrammes…), qui alimentent le cache de validation ;
+- les **conversations et leurs messages**, relus par le script de résumé — c'est là que vit la source de vérité des échanges, le résumé n'en étant qu'une projection.
 
 En écriture :
 
@@ -263,6 +283,8 @@ Les événements d'intention sont émis **au plus tôt**, avant même que la rec
 
 La documentation interactive est disponible sur `/docs`.
 
+`/chat/stream` accepte un `conversation_id` facultatif. Il n'est utile qu'à la recherche dans les conversations passées, pour écarter la conversation en cours de ses propres résultats : sans lui, tout le reste fonctionne à l'identique.
+
 ---
 
 ## Installation et exécution
@@ -293,6 +315,14 @@ Au premier démarrage, il faut indexer les tickets et charger les exemples de ro
 python -m app.scripts.embedding_generation_chroma
 python -m app.scripts.init_supervisor_actions --init
 ```
+
+Et il faut planifier la génération des résumés de conversation, qui n'est déclenchée par aucun appel du chat — par exemple toutes les heures :
+
+```cron
+0 * * * * cd /chemin/vers/chatbot-comant && .venv/bin/python -m app.scripts.generate_conversation_summaries
+```
+
+Le script est conçu pour être rejoué : il ignore les conversations encore actives et celles dont le résumé est déjà à jour.
 
 ---
 
@@ -351,6 +381,6 @@ Le projet utilise Ruff pour le lint et le formatage (lignes à 100 caractères, 
 ```bash
 ruff check app
 ruff format app
-```
+```f
 
 `app/tests/requetes_test.json` contient un jeu de requêtes en langage naturel associées à leur requête SQL attendue, utilisable pour vérifier les régressions sur la génération SQL.
