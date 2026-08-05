@@ -32,6 +32,10 @@ class ChatDeps:
     # Mode courant de l'agent SQL : "recherche" (nouvelle recherche) ou "affinage" (modification d'une recherche existante).
     mode: str = "recherche"
 
+    # Filtre sémantique calculé par le tool `semantic_ticket_filter`
+    semantic_ticket_ids: list[int] = field(default_factory=list)
+    semantic_terms: list[str] = field(default_factory=list)
+
     # Requête SQL précédente à affiner (renseignée en mode affinage).
     previous_sql: str | None = None
 

@@ -26,6 +26,11 @@ TIER_LABELS = {
     4: "sémantiquement proches",
 }
 
+# Jeton laissé par `semantic_ticket_filter` dans le fragment SQL rendu à l'agent
+# hybride. La liste réelle des ids (potentiellement des milliers) ne transite jamais
+# par le LLM : elle est substituée juste avant l'exécution (cf. `app/agents/tools/db.py`).
+SEMANTIC_IDS_TOKEN = "{{SEMANTIC_IDS}}"
+
 
 def _like_clause(column: str, terms: list[str]) -> tuple[str, list[str]]:
     """Construit ``(column LIKE %s OR column LIKE %s ...)`` pour une liste de termes."""
@@ -220,6 +225,53 @@ async def semantic_ticket_search(ctx: RunContext[ChatDeps], query: str) -> dict:
         "synonyms": result["synonyms"],
         "count": result["count"],
         "tier_counts": result["tier_counts"],
+    }
+
+
+async def semantic_ticket_filter(ctx: RunContext[ChatDeps], query: str) -> dict:
+    """
+    Calcule le FILTRE sémantique correspondant à un thème/sujet, à combiner avec des
+    filtres exacts dans une même requête SQL (recherche hybride).
+
+    Renvoie un fragment SQL à recopier TEL QUEL dans la clause WHERE, jeton compris :
+    `{{SEMANTIC_IDS}}` est un marqueur remplacé automatiquement par la liste des tickets
+    au moment de l'exécution. Ne le remplace jamais, ne le réécris jamais, n'essaie pas
+    de deviner les identifiants.
+
+    Args:
+        query: le thème/sujet extrait du message, SANS les critères structurés
+               (ex: "annotations 3D" pour "les tickets du client TPC qui parlent
+               d'annotations 3D")
+
+    Cet outil NE FAIT PAS la recherche : il ne fait que préparer un filtre. L'étape
+    suivante est TOUJOURS de construire la requête SQL complète puis d'appeler `run_sql`.
+
+    Returns:
+        dict avec les clés:
+        - filter_sql: fragment à insérer dans le WHERE, ex: `t.id IN ({{SEMANTIC_IDS}})`
+        - synonyms: liste de tous les termes utilisés (query + synonymes)
+        - next_step: l'action à effectuer immédiatement après cet appel
+    """
+    print("[TOOL CALL] semantic_ticket_filter")
+    print(f"Query: {query}")
+
+    result = await query_tickets(query)
+    ticket_ids = result["ticket_ids"]
+
+    print(f"[NB TICKETS AVANT FILTRES] {len(ticket_ids)}")
+
+    ctx.deps.semantic_ticket_ids = ticket_ids
+    ctx.deps.semantic_terms = result["synonyms"]
+
+    return {
+        "filter_sql": f"t.id IN ({SEMANTIC_IDS_TOKEN})",
+        "synonyms": result["synonyms"],
+        "next_step": (
+            "Filtre sémantique prêt, mais AUCUN ticket n'a encore été cherché. "
+            "Construis maintenant la requête SQL complète en combinant les filtres exacts "
+            f"et `AND t.id IN ({SEMANTIC_IDS_TOKEN})`, puis appelle `run_sql`. "
+            "Ne réponds pas à l'utilisateur avant que `run_sql` ait réussi."
+        ),
     }
 
 

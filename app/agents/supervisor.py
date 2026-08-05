@@ -10,6 +10,7 @@ from app.agents.deps import ChatDeps
 from app.agents.model import DETERMINISTIC_SETTINGS, get_agent_model
 from app.agents.prompts.agent_supervisor import AGENT_SUPERVISOR_PROMPT
 from app.agents.specialists.conversational import conversational_agent
+from app.agents.specialists.hybrid_research import hybrid_research_agent
 from app.agents.specialists.memory import memory_agent
 from app.agents.specialists.semantic_research import semantic_research_agent
 from app.agents.specialists.sql_research import sql_research_agent
@@ -101,6 +102,23 @@ async def delegate_semantic_search(ctx: RunContext[ChatDeps], request: str) -> s
     return result.output
 
 
+async def delegate_hybrid_search(ctx: RunContext[ChatDeps], request: str) -> str:
+    """
+    Délègue une recherche HYBRIDE (filtres exacts ET thème/sujet) à l'agent hybride,
+    puis persiste la recherche créée.
+    Args:
+        request: Message exact envoyé par l'utilisateur, sans modification, sans reformulation, sans ajout de texte
+    """
+    print("[DELEGATE] Hybrid research agent")
+    print(f"Message: {request}")
+    ctx.deps.events.early_intention("recherche")
+    ctx.deps.mode = "recherche"
+    result = await hybrid_research_agent.run(request, deps=ctx.deps, usage=ctx.usage)
+    if ctx.deps.last_sql:
+        await persist_new_research(ctx.deps, True, intention="recherche")
+    return result.output
+
+
 async def delegate_statistics(ctx: RunContext[ChatDeps], request: str) -> str:
     """
     Délègue le calcul d'une NOUVELLE STATISTIQUE (indicateur agrégé) à l'agent statistiques,
@@ -184,6 +202,7 @@ supervisor_agent = Agent(
         delegate_new_research,
         delegate_refine_search,
         delegate_semantic_search,
+        delegate_hybrid_search,
         delegate_statistics,
         delegate_refine_statistic,
         delegate_correction,

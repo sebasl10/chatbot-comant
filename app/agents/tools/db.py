@@ -11,9 +11,34 @@ import asyncio
 from pydantic_ai import RunContext
 
 from app.agents.deps import ChatDeps
+from app.agents.tools.semantic import SEMANTIC_IDS_TOKEN
 from app.services.database import execute_select, get_db_schema
 
-_MAX_SAMPLE = 5
+_MISSING_SEMANTIC_FILTER = (
+    "Le filtre sémantique est absent de la requête : ajoute "
+    f"`AND t.id IN ({SEMANTIC_IDS_TOKEN})` dans la clause WHERE, en recopiant le jeton "
+    "tel quel, puis rappelle `run_sql`."
+)
+
+
+def _expand_semantic_ids(sql: str, deps: ChatDeps) -> str:
+    """
+    Remplace le jeton ``{{SEMANTIC_IDS}}`` par la liste d'ids calculée par
+    ``semantic_ticket_filter`` (recherche hybride), et conserve l'ordre de pertinence
+    de la recherche sémantique via ``ORDER BY FIELD``.
+
+    Sans jeton, la requête est renvoyée telle quelle : le chemin SQL pur est inchangé.
+    """
+    if SEMANTIC_IDS_TOKEN not in sql:
+        return sql
+
+    ids = deps.semantic_ticket_ids or []
+    # `IN (NULL)` ne remonte aucune ligne : cas « aucun ticket ne parle de ce sujet ».
+    ids_str = ", ".join(str(i) for i in ids) or "NULL"
+    sql = sql.replace(SEMANTIC_IDS_TOKEN, ids_str)
+    if ids and "ORDER BY" not in sql.upper():
+        sql += f" ORDER BY FIELD(t.id, {ids_str})"
+    return sql
 
 
 async def db_schema(ctx: RunContext[ChatDeps]) -> str:
@@ -35,11 +60,23 @@ async def run_sql(ctx: RunContext[ChatDeps], sql: str) -> dict:
     En cas de succès, la requête est mémorisée dans les deps pour permettre à la
     couche de délégation de créer/mettre à jour la recherche persistée.
 
+    En recherche hybride, le jeton ``{{SEMANTIC_IDS}}`` de la requête est remplacé par
+    la liste de tickets calculée par ``semantic_ticket_filter`` avant l'exécution.
+
     Args:
         sql: Requête SQL créée à partir de la requête de l'utilisateur
     """
     print("[TOOL CALL] run_sql")
     print(f"SQL: {sql}")
+
+    # Recherche hybride : un filtre sémantique a été calculé, il doit être dans la requête.
+    # `semantic_terms` est renseigné dès que `semantic_ticket_filter` a tourné, même
+    # quand aucun ticket ne correspond au thème (`semantic_ticket_ids` vide).
+    if ctx.deps.semantic_terms and SEMANTIC_IDS_TOKEN not in sql:
+        return {"ok": False, "error": _MISSING_SEMANTIC_FILTER}
+
+    sql = _expand_semantic_ids(sql, ctx.deps)
+
     try:
         rows = await asyncio.to_thread(execute_select, sql)
     except Exception as e:

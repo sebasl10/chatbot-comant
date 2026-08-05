@@ -12,6 +12,7 @@ VALID_TARGET_AGENTS = (
     "supervisor",
     "sql_research",
     "semantic_research",
+    "hybrid_research",
     "statistics",
     "conversational",
     "memory",
@@ -61,6 +62,16 @@ async def save_memory(
             - `semantic_research` : erreur dans une recherche par thème/sujet (vocabulaire ou comportement).
               Ex: "Considère 'lent' et 'slow' comme synonymes de 'performance'",
               "Kinematic doit être lié à cinématique pour les recherches".
+            - `hybrid_research` : erreur dans une recherche qui MÊLE filtres exacts et thème
+              (ex: "les tickets du client TPC qui parlent d'annotations 3D"). À ne choisir que
+              si l'erreur porte sur la COMBINAISON des deux : découpage entre critères
+              structurés et thème, ou façon de croiser le filtre sémantique avec les filtres SQL.
+              Ex: "Quand je demande les tickets d'un client qui parlent d'un sujet, ne mets pas
+              le nom du client dans la recherche sémantique", "Ne remplace jamais le filtre
+              sémantique par un LIKE sur le titre".
+              Si l'erreur porte seulement sur la construction SQL, choisis `sql_research` ;
+              si elle porte seulement sur le vocabulaire ou le thème, choisis `semantic_research` :
+              l'agent hybride lit AUSSI les souvenirs de ces deux agents.
             - `statistics` : erreur dans le calcul d'un indicateur agrégé (mauvais regroupement,
               mauvaise règle de calcul du temps, mauvaise catégorie R&D/absence, double comptage).
               Ex: "Le temps effectif par salarié doit se baser sur planning.user_id, pas sur
@@ -70,7 +81,7 @@ async def save_memory(
             - `memory` : erreur dans TA PROPRE classification/gestion d'un souvenir (mauvais
               `target_agent`/`kind` choisi, mauvais outil utilisé (save/update/delete), trigger
               mal reformulé). C'est une méta-correction sur ton propre comportement, pas sur un
-              des 4 agents ci-dessus.
+              des agents ci-dessus.
               Ex: "Tu as classé mon souvenir sur sql_research, alors qu'il fallait le mettre sur
               semantic_research", "Tu aurais dû mettre à jour mon souvenir, pas le supprimer",
               "Ce n'était pas un synonyme, ne le classe pas en vocabulary".
