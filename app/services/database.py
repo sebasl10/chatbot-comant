@@ -360,7 +360,7 @@ def is_admin(user_id: int) -> bool:
         return None
     finally:
         conn.close()
-        
+
 
 def get_statistic(statistic_id: int) -> dict | None:
     """

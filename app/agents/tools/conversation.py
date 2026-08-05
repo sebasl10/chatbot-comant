@@ -32,6 +32,10 @@ async def search_past_conversations(ctx: RunContext[ChatDeps], query: str) -> di
         dict avec les clés:
         - count: nombre de conversations retrouvées
         - conversations: liste de {name, date, summary}, de la plus proche à la moins proche
+
+        Chaque `summary` résume une conversation ENTIÈRE : il peut couvrir plusieurs
+        recherches et plusieurs sujets. N'en reprends que ce qui répond à la question posée,
+        reformulé — ne restitue jamais un résumé en entier.
     """
     print("[TOOL CALL] search_past_conversations")
     print(f"Query: {query}")
