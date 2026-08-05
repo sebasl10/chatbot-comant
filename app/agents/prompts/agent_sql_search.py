@@ -256,6 +256,8 @@ def build_affinage_prompt(
 
             **Ajout de filtre** ("seulement les...", "uniquement...", "et aussi...")
             → Ajoute une condition WHERE ou AND
+            ATTENTION: Si la requête existante contient une condition de la forme "t.id IN (...)", 
+            tu dois TOUJOURS laisser cette condition comme la dernière condition
 
             **Suppression de filtre** ("pas ceux de...", "peu importe le statut", "tous les projets")
             → Retire la condition concernée
@@ -302,6 +304,10 @@ def build_affinage_prompt(
             5. **Filtrage par utilisateur** :
             - Si la demande contient "mes", "j'ai", ou "je", **filtre par `user_id = {user_id}`**.
             - Sinon, **ne filtre pas par utilisateur** (sauf si la demande l'exige explicitement).
+            
+            6. **Filtrage par ids** :
+            - Si la requête existante contient une condition de la forme "t.id IN (...)", 
+            tu dois TOUJOURS laisser cette condition comme la dernière condition.
 
             ---
 

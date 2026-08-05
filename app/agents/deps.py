@@ -32,9 +32,7 @@ class ChatDeps:
     # Mode courant de l'agent SQL : "recherche" (nouvelle recherche) ou "affinage" (modification d'une recherche existante).
     mode: str = "recherche"
 
-    # Filtre sémantique calculé par le tool `semantic_ticket_filter` (recherche hybride).
-    # Les ids ne transitent jamais par le LLM : ils sont substitués au jeton
-    # `{{SEMANTIC_IDS}}` au moment d'exécuter la requête (voir `app/agents/tools/db.py`).
+    # Filtre sémantique calculé par le tool `semantic_ticket_filter`
     semantic_ticket_ids: list[int] = field(default_factory=list)
     semantic_terms: list[str] = field(default_factory=list)
 
