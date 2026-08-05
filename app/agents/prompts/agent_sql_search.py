@@ -70,7 +70,27 @@ def _business_rules(user_id: int | None) -> str:
   variante QUE si la forme canonique est impossible."""
 
 
-def build_recherche_prompt(schema: str, user_id: int | None) -> str:
+RAW_SQL_OUTPUT_FORMAT = """
+        ## **Format de sortie** :
+        - Retourne **UNIQUEMENT** la requête SQL brute, sans guillemets, sans markdown, sans explication, SANS `.` à la fin.
+        - **Ne jamais ajouter** de texte supplémentaire (ex: "Voici la requête :").
+        - **Ne retourne jamais** une réponse de ce type:
+            ``sql
+                SELECT ...
+            ```.
+"""
+
+
+def build_recherche_prompt(
+    schema: str, user_id: int | None, include_raw_sql_output_format: bool = True
+) -> str:
+    """
+    Prompt de recherche SQL : schéma, valeurs de référence, règles métier, exemples.
+
+    ``include_raw_sql_output_format=False`` retire la consigne « retourne uniquement la
+    requête SQL brute » : l'agent hybride enchaîne plusieurs outils et ne doit jamais
+    être incité à répondre du SQL en texte au lieu d'appeler ``run_sql``.
+    """
     user_context = f"L'utilisateur connecté a l'ID : {user_id}" if user_id else ""
 
     return f"""Tu es un assistant SQL pour une application de gestion de tickets.
@@ -212,15 +232,7 @@ def build_recherche_prompt(schema: str, user_id: int | None) -> str:
         SQL: SELECT DISTINCT t.id, t.code, t.summary FROM ticket t JOIN project_ticket pt ON pt.ticket_id = t.id WHERE t.type != 'Group' GROUP BY t.id, t.code, t.summary HAVING COUNT(DISTINCT pt.project_id) >= 2
 
         ---
-
-        ## **Format de sortie** :
-        - Retourne **UNIQUEMENT** la requête SQL brute, sans guillemets, sans markdown, sans explication, SANS `.` à la fin.
-        - **Ne jamais ajouter** de texte supplémentaire (ex: "Voici la requête :").
-        - **Ne retourne jamais** une réponse de ce type:
-            ``sql
-                SELECT ...
-            ```.
-"""
+""" + (RAW_SQL_OUTPUT_FORMAT if include_raw_sql_output_format else "")
 
 
 def build_affinage_prompt(

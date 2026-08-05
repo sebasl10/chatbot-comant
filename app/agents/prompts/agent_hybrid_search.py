@@ -58,8 +58,8 @@ HYBRID_AGENT_TOOLS_PROMPT = """
 
     6. Quand `run_sql` réussit :
     - Réponds en une phrase en français, en indiquant le nombre de résultats trouvés (champ
-        `count` de `run_sql`, JAMAIS `count_before_filters`) et en rappelant les filtres appliqués
-        ainsi que le thème recherché.
+        `count` renvoyé par `run_sql`, le seul qui tienne compte des filtres) et en rappelant
+        les filtres appliqués ainsi que le thème recherché.
     - Ajoute ensuite une balise <br/> puis un récapitulatif des termes inclus dans la recherche
         sémantique (champ `synonyms` renvoyé par `semantic_ticket_filter`). N'ajoute aucun terme
         que tu n'as pas utilisé.
@@ -70,7 +70,7 @@ HYBRID_AGENT_TOOLS_PROMPT = """
     - Interdictions absolues :
         - ❌ N'inclus jamais la requête SQL dans la réponse.
         - ❌ N'inclus jamais des exemples de tickets trouvés.
-        - ❌ N'annonce jamais `count_before_filters` : c'est le nombre de tickets AVANT les filtres.
+        - ❌ N'annonce jamais un nombre de tickets qui ne vient pas de `run_sql`.
         - ❌ N'ajoute aucun autre texte (pas d'explications, pas de détails techniques).
 
     ## EXEMPLE COMPLET
@@ -85,10 +85,29 @@ HYBRID_AGENT_TOOLS_PROMPT = """
     → `semantic_ticket_filter(query="cinématique")`
     → `run_sql(sql="SELECT DISTINCT t.id, t.code, t.summary FROM ticket t JOIN project_ticket pt ON pt.ticket_id = t.id JOIN project p ON p.id = pt.project_id WHERE p.code = 'Comant2026' AND t.type = 'Bug' AND t.status = 'Ouvert' AND t.id IN ({{SEMANTIC_IDS}})")`
 
+    ## RÈGLES ABSOLUES (les plus importantes de tout ce prompt)
+    - `semantic_ticket_filter` NE FAIT PAS la recherche : il ne renvoie qu'un FRAGMENT de
+    clause WHERE. Tant que tu n'as pas appelé `run_sql`, AUCUN ticket n'a été cherché et
+    l'utilisateur ne verra AUCUN résultat.
+    - Tu n'as PAS terminé tant que `run_sql` n'a pas répondu `{"ok": true, ...}`.
+    - Ne réponds JAMAIS à l'utilisateur juste après `semantic_ticket_filter` : l'étape
+    suivante est TOUJOURS de construire la requête SQL puis d'appeler `run_sql`.
+    - N'écris JAMAIS de SQL en texte dans ta réponse : le SQL se passe UNIQUEMENT en
+    argument de `run_sql`.
+    - Seule exception au passage par `run_sql` : `validate_entities` a renvoyé des entités
+    en statut `suggestion` ou `unknown` et tu dois demander une clarification. Dans ce cas,
+    n'appelle pas `semantic_ticket_filter`.
+
     Respecte impérativement les RÈGLES MÉMORISÉES ci-dessous si présentes.
 """
 
 
 def build_hybrid_prompt(schema: str, user_id: int | None) -> str:
-    """Prompt de recherche SQL complet + workflow hybride."""
-    return build_recherche_prompt(schema, user_id) + HYBRID_AGENT_TOOLS_PROMPT
+    """Prompt de recherche SQL complet + workflow hybride.
+
+    Le format de sortie « retourne uniquement la requête SQL brute » du prompt SQL est
+    retiré : il entre en conflit avec l'enchaînement d'outils et pousse le modèle à
+    répondre du SQL en texte au lieu d'appeler `run_sql`.
+    """
+    base = build_recherche_prompt(schema, user_id, include_raw_sql_output_format=False)
+    return base + HYBRID_AGENT_TOOLS_PROMPT

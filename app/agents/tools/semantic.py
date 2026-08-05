@@ -243,12 +243,14 @@ async def semantic_ticket_filter(ctx: RunContext[ChatDeps], query: str) -> dict:
                (ex: "annotations 3D" pour "les tickets du client TPC qui parlent
                d'annotations 3D")
 
+    Cet outil NE FAIT PAS la recherche : il ne fait que préparer un filtre. L'étape
+    suivante est TOUJOURS de construire la requête SQL complète puis d'appeler `run_sql`.
+
     Returns:
         dict avec les clés:
         - filter_sql: fragment à insérer dans le WHERE, ex: `t.id IN ({{SEMANTIC_IDS}})`
-        - count_before_filters: nombre de tickets correspondant au thème AVANT
-          application des filtres exacts (à ne pas annoncer à l'utilisateur)
         - synonyms: liste de tous les termes utilisés (query + synonymes)
+        - next_step: l'action à effectuer immédiatement après cet appel
     """
     print("[TOOL CALL] semantic_ticket_filter")
     print(f"Query: {query}")
@@ -261,10 +263,19 @@ async def semantic_ticket_filter(ctx: RunContext[ChatDeps], query: str) -> dict:
     ctx.deps.semantic_ticket_ids = ticket_ids
     ctx.deps.semantic_terms = result["synonyms"]
 
+    # Volontairement PAS de `count` dans le retour : un nombre de tickets ressemble à un
+    # résultat de recherche et pousse le modèle à répondre à l'utilisateur au lieu
+    # d'enchaîner sur `run_sql`. Ce compte serait de toute façon faux (calculé avant les
+    # filtres exacts). Le seul compte annonçable est celui renvoyé par `run_sql`.
     return {
         "filter_sql": f"t.id IN ({SEMANTIC_IDS_TOKEN})",
-        "count_before_filters": result["count"],
         "synonyms": result["synonyms"],
+        "next_step": (
+            "Filtre sémantique prêt, mais AUCUN ticket n'a encore été cherché. "
+            "Construis maintenant la requête SQL complète en combinant les filtres exacts "
+            f"et `AND t.id IN ({SEMANTIC_IDS_TOKEN})`, puis appelle `run_sql`. "
+            "Ne réponds pas à l'utilisateur avant que `run_sql` ait réussi."
+        ),
     }
 
 
