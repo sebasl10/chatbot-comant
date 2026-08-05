@@ -25,8 +25,9 @@ from app.services.database import get_connection, get_username
 TICKETS = "tickets"
 MEMORIES = "memories"
 CONVERSATION_SUMMARIES = "conversation_summaries"
-MEMORY_MAX_DISTANCE = 0.45
+MEMORY_MAX_DISTANCE = 0.42
 MEMORY_RECONCILE_MAX_DISTANCE = 0.40
+SUMMARY_MAX_DISTANCE = 0.55
 DEFAULT_HNSW_CONFIG = {
     "hnsw": {"space": "cosine", "max_neighbors": 32, "ef_construction": 1000, "ef_search": 1000}
 }
@@ -828,3 +829,101 @@ async def get_last_memory(user_id: int | None) -> dict | None:
                 last_index = i
 
     return {"id": ids[last_index], "content": docs[last_index], "metadata": metas[last_index]}
+
+
+# ── Résumés de conversation ─────────────────────────────────────────────────
+# Un résumé est un artefact DÉRIVÉ des messages stockés en base : il n'est jamais
+# la source de vérité, et peut être régénéré à tout moment.
+
+
+async def get_summarized_message_id(conversation_id: int) -> int:
+    """
+    Id du dernier message pris en compte par le résumé déjà stocké, ou 0 s'il n'y en a
+    pas. Comparé au dernier message réel, il dit si le résumé est à jour.
+    """
+    col = await summaries_collection()
+    res = await col.get(ids=[str(conversation_id)], include=["metadatas"])
+    metas = res.get("metadatas") or []
+    if not metas:
+        return 0
+    return int((metas[0] or {}).get("last_message_id") or 0)
+
+
+async def upsert_conversation_summary(
+    conversation_id: int,
+    user_id: int,
+    document: str,
+    last_message_id: int,
+    conversation_name: str | None = None,
+    **extra_metadata: Any,
+) -> None:
+    """
+    Écrit ou remplace le résumé d'une conversation. ``document`` est le texte embeddé :
+    c'est lui qui sera comparé aux questions de l'utilisateur, il doit donc être rédigé
+    comme un récit (ce qui a été cherché, trouvé, corrigé), pas comme un dump de champs.
+    """
+    col = await summaries_collection()
+    metadata = {
+        "conversation_id": conversation_id,
+        "user_id": user_id,
+        "last_message_id": last_message_id,
+        "name": conversation_name or "",
+        "updated_at": datetime.now().isoformat(),
+    }
+    for key, value in extra_metadata.items():
+        if value is None:
+            continue
+        # Chroma n'accepte que des scalaires en métadonnée : on aplatit les listes.
+        metadata[key] = ", ".join(str(v) for v in value) if isinstance(value, list) else value
+    await col.upsert(ids=[str(conversation_id)], documents=[document], metadatas=[metadata])
+
+
+async def embed_summary_query(text: str) -> list[float]:
+    """Embedding d'une question portant sur des conversations passées."""
+    instruction = (
+        "Given a question about a past conversation, retrieve summaries of conversations "
+        "that discussed the same subject."
+    )
+    return await asyncio.to_thread(get_embedding, f"Instruct: {instruction}\nQuery: {text}")
+
+
+async def search_conversation_summaries(
+    user_id: int,
+    query: str,
+    k: int = 3,
+    exclude_conversation_id: int = 0,
+    max_distance: float = SUMMARY_MAX_DISTANCE,
+) -> list[dict]:
+    """
+    Résumés des conversations passées de CET utilisateur les plus proches de ``query``.
+
+    Le filtre sur ``user_id`` n'est pas optionnel : une conversation appartient à une
+    personne, il n'existe pas de résumé de portée globale. ``exclude_conversation_id``
+    écarte la conversation en cours, pour ne pas se « souvenir » de soi-même.
+    """
+    col = await summaries_collection()
+    conds: list[dict] = [{"user_id": user_id}]
+    if exclude_conversation_id:
+        conds.append({"conversation_id": {"$ne": exclude_conversation_id}})
+    where = conds[0] if len(conds) == 1 else {"$and": conds}
+
+    res = await col.query(
+        query_embeddings=[await embed_summary_query(query)],
+        n_results=k,
+        where=where,
+        include=["documents", "metadatas", "distances"],
+    )
+    docs = res["documents"][0] if res.get("documents") else []
+    metas = res["metadatas"][0] if res.get("metadatas") else []
+    dists = res["distances"][0] if res.get("distances") else []
+
+    summaries = []
+    for i, doc in enumerate(docs):
+        distance = dists[i] if i < len(dists) else None
+        if distance is not None and distance > max_distance:
+            continue
+        meta = metas[i] if i < len(metas) else {}
+        summaries.append({"summary": doc, "metadata": meta or {}, "distance": distance})
+
+    print(f"[SUMMARIES] query={query!r} -> {len(summaries)}/{len(docs)} résumé(s) sous le seuil")
+    return summaries

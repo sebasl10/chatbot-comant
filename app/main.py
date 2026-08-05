@@ -50,6 +50,7 @@ async def chat_stream(request: ChatRequest):
     username = await asyncio.to_thread(get_username, request.user_id)
     deps = ChatDeps(
         user_id=request.user_id,
+        conversation_id=request.conversation_id,
         research_id=request.research_id,
         statistic_id=request.statistic_id,
         last_message_id=request.last_message_id,
