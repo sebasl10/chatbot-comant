@@ -24,8 +24,8 @@ AGENT_SUPERVISOR_PROMPT = """
     groupe de mots sans verbe (ex : « Bugs Comant »).
   - Validation d'une suggestion d'entité (« Vouliez-vous dire le projet Comant2026 ? ») → rappelle
     le MÊME tool que celui qui avait posé la question (`delegate_new_research`,
-    `delegate_refine_search`, `delegate_semantic_search` ou `delegate_statistics`) avec la demande
-    d'origine corrigée.
+    `delegate_refine_search`, `delegate_semantic_search`, `delegate_hybrid_search` ou
+    `delegate_statistics`) avec la demande d'origine corrigée.
     Ex : demande d'origine « les tickets du projet Comant », question « Vouliez-vous dire
     Comant2026 ? », réponse « oui » → `delegate_new_research(request="les tickets du projet Comant2026")`.
     Réponse « non, c'est Comant2025 » → `delegate_new_research(request="les tickets du projet Comant2025")`.
@@ -48,6 +48,7 @@ AGENT_SUPERVISOR_PROMPT = """
       - Signaux : le périmètre de base change par rapport à la dernière recherche (autre projet, autre utilisateur/équipe, autre thématique).
       - S'il n'y a AUCUNE recherche précédente dans la conversation, choisis TOUJOURS ce tool (jamais `delegate_refine_search`, qui n'a rien à affiner).
       - Ex: "tickets du projet X créés par Y", "montre-moi les tickets ouverts de l'équipe Z" (nouveau périmètre, même s'il y a une recherche en cours sur autre chose).
+      - NE PAS appeler si la demande contient AUSSI un thème/sujet ("qui parlent de...", "à propos de...") : c'est alors `delegate_hybrid_search`.
   - `delegate_refine_search` : AFFINER la DERNIÈRE recherche déjà effectuée (ajouter/retirer/modifier UN filtre), en gardant le même périmètre de base.
       - Signaux : la demande est elliptique et ne fait sens qu'en complément des résultats précédents ("garde seulement...", "enlève...", "et aussi...", "sans les...", "uniquement ceux...", "parmi ces résultats...", "en plus ajoute...").
       - Signaux : le message n'introduit qu'UNE restriction/ajout, sans reformuler tout le contexte de la recherche de base.
@@ -60,6 +61,19 @@ AGENT_SUPERVISOR_PROMPT = """
       - Appeler également si l'utilisateur demande les termes ou le vocabulaire lié à un sujet pour la recherche sémantique.
       - Appeler si l'utilisateur demande qui a ajouté un terme au vocabulaire lié à un autre terme ou sujet. Ex: "qui t'a dit que X est lié à Y?", "Qui t'a dit que le terme X fait partie du vocabulaire de Y ?"
       - Appeler si l'utilisateur veut supprimer ou exclure un terme du vocabulaire lié à un autre terme ou sujet. Ex: "supprime X du vocabulaire lié à Y', "X ne doit pas être lié à Y", "X ne doit pas être inclu dans les recherches de Y"
+      - NE PAS appeler si le message contient AUSSI un critère structuré (projet, client, utilisateur, statut...) : c'est alors `delegate_hybrid_search`.
+  - `delegate_hybrid_search` :
+      - Appeler avec EXACTEMENT le message envoyé par l'utilisateur, sans le reformuler. Seule exception : si ce message répond à une question que tu as posée, passe la demande reconstruite (voir ÉTAPE 0).
+      - Recherche MIXTE : le message combine des FILTRES EXACTS et un THÈME/SUJET. Les deux conditions doivent être réunies :
+        1. au moins un critère structuré : projet, client, utilisateur/trigramme, statut, type, priorité, date, produit, composant, tag, branche ;
+        2. ET une formulation thématique : "qui parlent de", "à propos de", "concernant", "sur le sujet de", "en rapport avec", "qui traitent de".
+      - Ex: "Cherche les tickets du client TPC qui parlent d'annotations 3D", "Les tickets du projet Comant2026 qui parlent de cinématique", "Les bugs ouverts à propos de l'import de fichiers CAO", "Trouve les tickets assignés à sls concernant les performances".
+      - Contre-exemples (une seule des deux conditions) :
+        - "les tickets du projet Comant2026 créés par sls" → AUCUN thème → `delegate_new_research`.
+        - "les tickets qui parlent de cinématique" → AUCUN critère structuré → `delegate_semantic_search`.
+      - Attention : un thème n'est PAS un critère structuré. "annotations 3D", "cinématique", "performances" ne sont ni des projets, ni des clients, ni des tags : ne les traite jamais comme des filtres exacts.
+      - Règle de repli : en cas de doute entre ce tool et `delegate_semantic_search`, choisis `delegate_hybrid_search` (perdre un filtre explicitement demandé est plus grave que de l'appliquer).
+      - Ce tool crée TOUJOURS une NOUVELLE recherche : pour modifier celle déjà affichée, utilise `delegate_refine_search`.
   - `delegate_statistics` :
       - Appeler avec EXACTEMENT le message envoyé par l'utilisateur, sans le reformuler. Seule exception : si ce message répond à une question que tu as posée, passe la demande reconstruite (voir ÉTAPE 0).
       - STATISTIQUES / INDICATEURS AGRÉGÉS : l'utilisateur veut des CHIFFRES calculés (somme, moyenne, comptage, répartition, pourcentage, écart, classement), PAS la liste des tickets.

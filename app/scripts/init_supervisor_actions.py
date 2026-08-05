@@ -50,6 +50,23 @@ SUPERVISOR_EXAMPLES = [
         "user_query": "Donne-moi les tickets qui parlent d'annotations 3d",
         "action": "delegate_semantic_search",
     },
+    # Recherche hybride (filtres exacts + thème)
+    {
+        "user_query": "Cherche les tickets du client TPC qui parlent d'annotations 3D",
+        "action": "delegate_hybrid_search",
+    },
+    {
+        "user_query": "Les tickets du projet Comant2026 qui parlent de cinématique",
+        "action": "delegate_hybrid_search",
+    },
+    {
+        "user_query": "Trouve les tickets assignés à sls concernant les performances",
+        "action": "delegate_hybrid_search",
+    },
+    {
+        "user_query": "Les bugs ouverts à propos de l'import de fichiers CAO",
+        "action": "delegate_hybrid_search",
+    },
     # Affinage de recherche
     {
         "user_query": "Filtre la recherche précédente pour ne garder que les tickets urgents",
