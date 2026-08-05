@@ -313,7 +313,7 @@ async def persist_statistic(deps: ChatDeps) -> int:
         deps.external_sql,
         _json_dump(merged_rows),
     )
-    deps.events.statistic(statistic_id)
+    deps.events.statistic(statistic_id, sql=deps.last_stats_sql)
     return statistic_id
 
 
@@ -336,7 +336,7 @@ async def persist_statistic_affinage(deps: ChatDeps, statistic_id: int) -> int:
         deps.external_sql,
         _json_dump(merged_rows),
     )
-    deps.events.statistic(statistic_id, intention="affinage_statistic")
+    deps.events.statistic(statistic_id, sql=deps.last_stats_sql, intention="affinage_statistic")
     return statistic_id
 
 
