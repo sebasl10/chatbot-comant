@@ -7,7 +7,7 @@ import asyncio
 from pydantic_ai import Agent, RunContext
 
 from app.agents.deps import ChatDeps
-from app.agents.model import get_agent_model
+from app.agents.model import DETERMINISTIC_SETTINGS, get_agent_model
 from app.agents.prompts.agent_supervisor import AGENT_SUPERVISOR_PROMPT
 from app.agents.specialists.conversational import conversational_agent
 from app.agents.specialists.memory import memory_agent
@@ -189,6 +189,7 @@ supervisor_agent = Agent(
         delegate_correction,
     ],
     retries=2,
+    model_settings=DETERMINISTIC_SETTINGS,
 )
 guard_against_tool_call_leak(supervisor_agent)
 

@@ -6,7 +6,7 @@ from pydantic_ai import Agent, RunContext
 from pydantic_ai.capabilities import Capability
 
 from app.agents.deps import ChatDeps
-from app.agents.model import get_agent_model
+from app.agents.model import FACTUAL_SETTINGS, get_agent_model
 from app.agents.prompts.agent_semantic_research import (
     BASE_SEMANTIC_RESEARCH_PROMPT,
     TICKET_SEARCH_CAPABILITY_DESCRIPTION,
@@ -44,6 +44,7 @@ semantic_research_agent = Agent(
     deps_type=ChatDeps,
     retries=2,
     capabilities=[vocabulary_capability, ticket_search_capability],
+    model_settings=FACTUAL_SETTINGS,
 )
 guard_against_tool_call_leak(semantic_research_agent)
 
