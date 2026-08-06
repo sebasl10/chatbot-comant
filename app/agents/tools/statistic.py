@@ -213,9 +213,19 @@ async def set_statistic_presentation(
                 f"son `role` doit être `label`."
             )
 
-    if not label_cols:
+    # Sans colonne `label`, il n'y a pas d'axe des catégories : aucun graphe n'est
+    # possible. Seul un indicateur global (une ligne de chiffres) s'en passe, en table.
+    if not label_cols and (graph_type != "table" or len(rows) > 1):
         errors.append(
-            "Il faut au moins une colonne de rôle `label` (la catégorie décrite par la statistique)."
+            "Aucune colonne de rôle `label` : la statistique n'a pas de catégorie à afficher. "
+            "C'est en général que les catégories sont en COLONNES (un `SUM(CASE ... )` par "
+            "catégorie) alors que la requête est filtrée sur UNE seule entité : dans ce cas, "
+            "réécris la requête en format LONG — `GROUP BY` sur une colonne "
+            "`CASE ... END AS <categorie>` pour obtenir UNE LIGNE par catégorie, plus une "
+            "seule colonne de valeurs — puis décris cette colonne de catégories avec "
+            "role='label'. Si la statistique est vraiment un indicateur GLOBAL sans "
+            "catégorie (une seule ligne de chiffres), garde-la telle quelle et utilise "
+            "graph_type='table'."
         )
     if not value_cols:
         errors.append("Il faut au moins une colonne de rôle `value` (l'indicateur chiffré).")
