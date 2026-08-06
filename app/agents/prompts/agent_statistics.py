@@ -53,16 +53,16 @@ def _sql_rules(user_id: int | None) -> str:
   (le salarié, le projet, le mois, le statut, la nature de l'estimation...) : c'est elle
   qui devient l'axe du graphe. Sans elle, `set_statistic_presentation` refuse la
   présentation.
-- Quand la demande est **filtrée sur UNE seule entité** ("le nombre de tickets que dba a
-  sous-estimés, surestimés et correctement estimés", "la répartition du temps de mwu par
-  type"), la catégorie n'est plus le salarié : c'est la dimension qui reste (la nature de
-  l'estimation, le type...). Elle doit être en **LIGNES**, jamais en colonnes.
-- Concrètement : au lieu d'une colonne `SUM(CASE WHEN ... THEN 1 ELSE 0 END)` par catégorie
-  (format large, une seule ligne, aucune colonne descriptive), écris une colonne
-  `CASE ... END AS <categorie>` dans le `SELECT` et **regroupe dessus** — tu obtiens une
-  ligne par catégorie et une seule colonne de valeurs, directement affichable en graphe.
-- Le format large (une colonne par catégorie) est réservé au croisement de DEUX dimensions
-  décrit à la règle 8, où la 1ʳᵉ dimension fournit déjà la colonne descriptive.
+- Quand la demande **filtre sur UNE seule entité** une statistique qui existe aussi en
+  version groupée ("le nombre de tickets que dba a sous-estimés, surestimés et
+  correctement estimés" ↔ "... par utilisateur"), n'invente pas une autre requête :
+  **reprends la version groupée et ajoute simplement le filtre**. Tu gardes le même
+  `GROUP BY` (donc la même colonne descriptive, qui ne contient plus qu'une valeur) et
+  surtout les mêmes définitions d'indicateurs.
+- C'est ce qui garantit que les chiffres d'un salarié filtré sont EXACTEMENT ceux de sa
+  ligne dans la version groupée. Réécrire la requête sous une autre forme (catégories
+  déplacées en lignes, `ELSE` fourre-tout à la place d'un `= `, filtre descendu dans la
+  sous-requête d'agrégation) fait diverger les résultats : ne le fais pas.
 
 8. **Croisement de deux dimensions (pivot)** :
 - Quand la demande croise DEUX dimensions (ex : "le temps de chaque utilisateur par
@@ -129,9 +129,7 @@ def _examples(user_id: int | None) -> str:
       SQL: SELECT u.username, SUM(CASE WHEN e.temps_effectif_secondes > e.temps_estime_secondes THEN 1 ELSE 0 END) AS nb_tickets_sous_estimes, SUM(CASE WHEN e.temps_effectif_secondes < e.temps_estime_secondes THEN 1 ELSE 0 END) AS nb_tickets_surestimes, SUM(CASE WHEN e.temps_effectif_secondes = e.temps_estime_secondes THEN 1 ELSE 0 END) AS nb_tickets_correctement_estimes FROM (SELECT t.id, t.assignee_id, t.time_estimate * 3600 AS temps_estime_secondes, SUM(pl.duration) AS temps_effectif_secondes FROM ticket t JOIN planning pl ON pl.ticket_id = t.id WHERE t.type != 'Group' AND t.time_estimate IS NOT NULL AND t.time_estimate > 0 GROUP BY t.id, t.assignee_id, t.time_estimate) e JOIN user u ON u.id = e.assignee_id GROUP BY u.id, u.username
 
       Message: "Je veux voir le nombre de tickets que dba a sous-estimé, surestimé et correctement estimé"
-      (filtré sur UN salarié : les catégories d'estimation passent en LIGNES, sinon la
-      requête n'a aucune colonne descriptive et la présentation est refusée)
-      SQL: SELECT CASE WHEN e.temps_effectif_secondes > e.temps_estime_secondes THEN 'Sous-estimé' WHEN e.temps_effectif_secondes < e.temps_estime_secondes THEN 'Surestimé' WHEN e.temps_effectif_secondes = e.temps_estime_secondes THEN 'Correctement estimé' END AS categorie_estimation, COUNT(*) AS nb_tickets FROM (SELECT t.id, t.assignee_id, t.time_estimate * 3600 AS temps_estime_secondes, SUM(pl.duration) AS temps_effectif_secondes FROM ticket t JOIN planning pl ON pl.ticket_id = t.id WHERE t.type != 'Group' AND t.time_estimate IS NOT NULL AND t.time_estimate > 0 GROUP BY t.id, t.assignee_id, t.time_estimate) e JOIN user u ON u.id = e.assignee_id WHERE u.username = 'dba' GROUP BY categorie_estimation HAVING categorie_estimation IS NOT NULL ORDER BY nb_tickets DESC
+      SQL: SELECT u.username, SUM(CASE WHEN e.temps_effectif_secondes > e.temps_estime_secondes THEN 1 ELSE 0 END) AS nb_tickets_sous_estimes, SUM(CASE WHEN e.temps_effectif_secondes < e.temps_estime_secondes THEN 1 ELSE 0 END) AS nb_tickets_surestimes, SUM(CASE WHEN e.temps_effectif_secondes = e.temps_estime_secondes THEN 1 ELSE 0 END) AS nb_tickets_correctement_estimes FROM (SELECT t.id, t.assignee_id, t.time_estimate * 3600 AS temps_estime_secondes, SUM(pl.duration) AS temps_effectif_secondes FROM ticket t JOIN planning pl ON pl.ticket_id = t.id WHERE t.type != 'Group' AND t.time_estimate IS NOT NULL AND t.time_estimate > 0 GROUP BY t.id, t.assignee_id, t.time_estimate) e JOIN user u ON u.id = e.assignee_id WHERE u.username = 'dba' GROUP BY u.id, u.username
 
       Message: "L'écart moyen entre temps estimé et temps effectif par type de ticket"
       SQL: SELECT e.type, ROUND(AVG(e.temps_effectif_secondes - e.temps_estime_secondes)) AS ecart_moyen_secondes, COUNT(*) AS nb_tickets FROM (SELECT t.id, t.type, t.time_estimate * 3600 AS temps_estime_secondes, SUM(pl.duration) AS temps_effectif_secondes FROM ticket t JOIN planning pl ON pl.ticket_id = t.id WHERE t.type != 'Group' AND t.time_estimate IS NOT NULL AND t.time_estimate > 0 GROUP BY t.id, t.type, t.time_estimate) e GROUP BY e.type ORDER BY nb_tickets DESC
@@ -281,15 +279,19 @@ PRESENTATION = """
     ]
 
   Demande : "Je veux voir le nombre de tickets que dba a sous-estimé, surestimé et correctement estimé"
-  Colonnes SQL : `categorie_estimation`, `nb_tickets`
-  → graph_type: "bar" (des comptages)
-    description: "Nombre de tickets de dba par nature de l'estimation"
+  Colonnes SQL : `username`, `nb_tickets_sous_estimes`, `nb_tickets_surestimes`,
+  `nb_tickets_correctement_estimes` (la requête groupée par salarié, filtrée sur dba)
+  → graph_type: "bar" (des comptages : trois séries côte à côte)
+    description: "Nombre de tickets sous-estimés, surestimés et correctement estimés de dba"
     columns: [
-      {"key": "categorie_estimation", "label": "Estimation", "role": "label", "format": "text"},
-      {"key": "nb_tickets", "label": "Nb de tickets", "role": "value", "format": "number"}
+      {"key": "username", "label": "Salarié", "role": "label", "format": "text"},
+      {"key": "nb_tickets_sous_estimes", "label": "Sous-estimés", "role": "value", "format": "number"},
+      {"key": "nb_tickets_surestimes", "label": "Surestimés", "role": "value", "format": "number"},
+      {"key": "nb_tickets_correctement_estimes", "label": "Correctement estimés", "role": "value", "format": "number"}
     ]
-    ⚠️ La colonne descriptive est la NATURE DE L'ESTIMATION, pas le salarié : celui-ci est
-    un filtre, il ne peut pas servir d'axe de catégories.
+    ⚠️ La colonne `username` ne contient qu'une valeur, mais elle reste la colonne
+    descriptive : c'est elle qui porte le `role: "label"`. Une statistique filtrée sur un
+    salarié se décrit donc exactement comme sa version groupée.
 
   Demande : "Mon temps effectif par mois cette année"
   Colonnes SQL : `mois`, `temps_effectif_secondes`
