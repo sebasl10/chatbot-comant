@@ -1,9 +1,5 @@
 """
 Prompt de l'agent de recherche hybride (filtres exacts + thème sémantique).
-
-Réutilise intégralement le prompt de recherche SQL (schéma, valeurs de référence,
-règles métier, exemples de jointures) et n'y ajoute que le workflow hybride, qui
-remplace ``SQL_AGENT_TOOLS_PROMPT``.
 """
 
 from app.agents.prompts.agent_sql_search import build_recherche_prompt
@@ -17,10 +13,19 @@ HYBRID_AGENT_TOOLS_PROMPT = """
     1. DÉCOMPOSE le message en deux parties :
     - les CRITÈRES STRUCTURÉS : projet, client, utilisateur/trigramme, statut, type, priorité,
         dates, produit, composant, tag, branche… (tout ce qui correspond à une colonne de la base) ;
-    - le THÈME : le sujet dont parlent les tickets, introduit par « qui parlent de », « à propos
-        de », « concernant », « sur le sujet de », « en rapport avec »…
+    - les THÈMES : les sujets dont parlent les tickets, introduits par « qui parlent de », « à
+        propos de », « concernant », « sur le sujet de », « en rapport avec »…
     Exemple : "les tickets du client TPC qui parlent d'annotations 3D"
-        → critères : client = TPC ; thème : "annotations 3D".
+        → critères : client = TPC ; thèmes : ["annotations 3D"].
+
+    Il peut y avoir PLUSIEURS thèmes, reliés par « ou » ou par « et ». Note aussi
+    l'OPÉRATEUR qui les relie — c'est une propriété des THÈMES, jamais des critères :
+    - « ou », ou une énumération → `operator="or"` : le ticket parle de L'UN des thèmes ;
+    - « et » → `operator="and"` : le ticket parle de TOUS les thèmes à la fois.
+    Exemple : "les tickets du projet CAO2026 qui parlent de cinématique ou d'annotations"
+        → critères : projet = CAO2026 ; thèmes : ["cinématique", "annotations"] ; operator = "or".
+    Exemple : "les tickets de sls qui parlent de cinématique et d'annotations"
+        → critères : user = sls ; thèmes : ["cinématique", "annotations"] ; operator = "and".
 
     2. Si les critères structurés mentionnent des entités nommées (username, projet, utilisateur,
     client, composant, produit, tag, branche, branch_dev, branch_release, branch_travail),
@@ -34,13 +39,18 @@ HYBRID_AGENT_TOOLS_PROMPT = """
     Dans ces deux cas, demande une clarification à l'utilisateur avant de continuer.
     N'appelle JAMAIS `validate_entities` sur le thème : ce n'est pas une entité de la base.
 
-    3. Appelle OBLIGATOIREMENT `semantic_ticket_filter(query=<le thème SEUL>)`.
-    - Le thème doit être extrait LITTÉRALEMENT du message : ne le reformule pas, ne change pas
-        les minuscules et majuscules, n'ajoute aucun synonyme (l'outil s'en charge).
-    - N'inclus JAMAIS les critères structurés dans `query` (pas de nom de client, de projet,
+    3. Appelle OBLIGATOIREMENT `semantic_ticket_filter(queries=<les thèmes SEULS>, operator=<"or" ou "and">)`.
+    - Chaque thème doit être extrait LITTÉRALEMENT du message : ne le reformule pas, ne change
+        pas les minuscules et majuscules, n'ajoute aucun synonyme (l'outil s'en charge).
+    - N'inclus JAMAIS les critères structurés dans `queries` (pas de nom de client, de projet,
         d'utilisateur, de statut ni de date).
-        Ex: "les tickets du client TPC qui parlent d'annotations 3D" → query="annotations 3D".
+        Ex: "les tickets du client TPC qui parlent d'annotations 3D" → queries=["annotations 3D"].
+    - UN SEUL appel, même avec plusieurs thèmes : c'est l'outil qui les combine.
+        N'appelle jamais `semantic_ticket_filter` deux fois — le second appel écraserait le
+        premier et tu perdrais un thème.
     - L'outil renvoie `filter_sql`, un fragment prêt à l'emploi : `t.id IN ({{SEMANTIC_IDS}})`.
+        Ce fragment est le MÊME quel que soit le nombre de thèmes : n'écris jamais deux
+        conditions `t.id IN (...)` dans ta requête, et n'invente aucun `OR`/`AND` entre elles.
 
     4. Construis OBLIGATOIREMENT la requête SQL (un SELECT) en combinant :
     - les jointures et conditions WHERE correspondant aux critères structurés (mêmes règles et
@@ -59,10 +69,19 @@ HYBRID_AGENT_TOOLS_PROMPT = """
     6. Quand `run_sql` réussit :
     - Réponds en une phrase en français, en indiquant le nombre de résultats trouvés (champ
         `count` renvoyé par `run_sql`, le seul qui tienne compte des filtres) et en rappelant
-        les filtres appliqués ainsi que le thème recherché.
+        les filtres appliqués ainsi que le ou les thèmes recherchés. S'il y avait PLUSIEURS
+        thèmes, précise comment ils ont été combinés (champ `operator` renvoyé par
+        `semantic_ticket_filter`) : « or » → l'un OU l'autre, « and » → tous à la fois.
     - Ajoute ensuite une balise <br/> puis un récapitulatif des termes inclus dans la recherche
         sémantique (champ `synonyms` renvoyé par `semantic_ticket_filter`). N'ajoute aucun terme
         que tu n'as pas utilisé.
+    - Ajoute ensuite, ligne par ligne, la répartition des tickets trouvés par catégorie de
+        correspondance : champ `tier_counts` renvoyé par **`run_sql`**, pour chaque élément son
+        `label` et son `count`, dans l'ordre fourni. Précise que les tickets sont affichés dans
+        cet ordre.
+        ⚠️ Cette répartition vient de `run_sql`, JAMAIS de `semantic_ticket_filter` : seule
+        celle de `run_sql` tient compte des filtres exacts, et donc seule sa somme est égale
+        au nombre de résultats que tu annonces.
     - Après une balise <br/> pour sauter une ligne, ajoute une seule phrase d'aide :
         *"Tu peux me demander de sauvegarder la recherche, l'affiner ou corriger mon comportement."*
     - Si `count` vaut 0, dis simplement qu'aucun ticket ne correspond à la fois aux filtres et au
@@ -70,20 +89,32 @@ HYBRID_AGENT_TOOLS_PROMPT = """
     - Interdictions absolues :
         - ❌ N'inclus jamais la requête SQL dans la réponse.
         - ❌ N'inclus jamais des exemples de tickets trouvés.
-        - ❌ N'annonce jamais un nombre de tickets qui ne vient pas de `run_sql`.
+        - ❌ N'annonce jamais un nombre de tickets qui ne vient pas de `run_sql`, y compris
+            dans la répartition par catégorie de correspondance.
         - ❌ N'ajoute aucun autre texte (pas d'explications, pas de détails techniques).
 
     ## EXEMPLE COMPLET
 
     Message: "Cherche les tickets du client TPC qui parlent d'annotations 3D"
     → `validate_entities(entities=[{"type": "client", "value": "TPC"}])`
-    → `semantic_ticket_filter(query="annotations 3D")`
+    → `semantic_ticket_filter(queries=["annotations 3D"], operator="or")`
     → `run_sql(sql="SELECT DISTINCT t.id, t.code, t.summary FROM ticket t JOIN ticket_client tc ON tc.ticket_id = t.id JOIN client cl ON cl.id = tc.client_id WHERE cl.name LIKE '%TPC%' AND t.type != 'Group' AND t.id IN ({{SEMANTIC_IDS}})")`
 
     Message: "Les bugs ouverts du projet Comant2026 qui parlent de cinématique"
     → `validate_entities(entities=[{"type": "project", "value": "Comant2026"}])`
-    → `semantic_ticket_filter(query="cinématique")`
+    → `semantic_ticket_filter(queries=["cinématique"], operator="or")`
     → `run_sql(sql="SELECT DISTINCT t.id, t.code, t.summary FROM ticket t JOIN project_ticket pt ON pt.ticket_id = t.id JOIN project p ON p.id = pt.project_id WHERE p.code = 'Comant2026' AND t.type = 'Bug' AND t.status = 'Ouvert' AND t.id IN ({{SEMANTIC_IDS}})")`
+
+    Message: "Les tickets du client TPC qui parlent de cinématique ou d'annotations"
+    → `validate_entities(entities=[{"type": "client", "value": "TPC"}])`
+    → `semantic_ticket_filter(queries=["cinématique", "annotations"], operator="or")`
+    → `run_sql(sql="SELECT DISTINCT t.id, t.code, t.summary FROM ticket t JOIN ticket_client tc ON tc.ticket_id = t.id JOIN client cl ON cl.id = tc.client_id WHERE cl.name LIKE '%TPC%' AND t.type != 'Group' AND t.id IN ({{SEMANTIC_IDS}})")`
+    (un seul `t.id IN (...)`, exactement comme avec un thème unique)
+
+    Message: "Les bugs du projet Comant2026 qui parlent de cinématique et d'annotations"
+    → `validate_entities(entities=[{"type": "project", "value": "Comant2026"}])`
+    → `semantic_ticket_filter(queries=["cinématique", "annotations"], operator="and")`
+    → `run_sql(sql="SELECT DISTINCT t.id, t.code, t.summary FROM ticket t JOIN project_ticket pt ON pt.ticket_id = t.id JOIN project p ON p.id = pt.project_id WHERE p.code = 'Comant2026' AND t.type = 'Bug' AND t.id IN ({{SEMANTIC_IDS}})")`
 
     ## RÈGLES ABSOLUES (les plus importantes de tout ce prompt)
     - `semantic_ticket_filter` NE FAIT PAS la recherche : il ne renvoie qu'un FRAGMENT de

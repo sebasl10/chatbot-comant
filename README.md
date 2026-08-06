@@ -151,13 +151,19 @@ L'agent valide les entités citées, construit la requête à partir du schéma 
 
 Le thème est d'abord enrichi des synonymes connus, puis converti en embeddings et comparé aux tickets indexés dans Chroma. Les résultats sont ensuite **reclassés par priorité lexicale** : un ticket dont le titre contient le terme exact passe devant un ticket seulement proche sémantiquement. Cinq niveaux, du plus littéral au plus flou, dont la répartition est annoncée à l'utilisateur.
 
+Une demande peut porter sur **plusieurs sujets**, et la conjonction utilisée décide de la combinaison : « cinématique **ou** annotations » réunit les deux jeux de résultats, « cinématique **et** annotations » les croise. Chaque sujet est cherché séparément — avec ses propres synonymes et sa propre priorité lexicale — et ce n'est qu'ensuite que les listes sont réunies ou intersectées. Le classement suit : en union, un ticket vaut par son meilleur sujet ; en intersection, par son plus mauvais, puisqu'une conjonction ne vaut que par son maillon le plus faible.
+
 La requête produite est une liste d'identifiants (`WHERE t.id IN (…)`), ce qui la rend interchangeable avec une recherche par filtres du point de vue de l'application.
 
 ### Hybride
 
 > « Les tickets du client TPC qui parlent d'annotations 3D »
 
-L'agent découpe la demande en deux : les critères structurés d'un côté, le thème de l'autre. La recherche sémantique devient alors **un filtre de plus** dans la requête SQL, et non une requête concurrente.
+L'agent découpe la demande en deux : les critères structurés d'un côté, les thèmes de l'autre. La recherche sémantique devient alors **un filtre de plus** dans la requête SQL, et non une requête concurrente.
+
+Les thèmes multiples fonctionnent ici comme en recherche par thème (« ou » réunit, « et » croise), en un seul appel : le filtre inséré dans la requête reste `t.id IN (…)`, quel que soit le nombre de thèmes. Le « et » qui relie deux critères structurés, lui, reste une condition `AND` ordinaire — c'est la distinction que l'agent doit faire au moment de décomposer la demande.
+
+La répartition par niveau de correspondance est annoncée ici aussi, mais **recalculée après coup** sur les tickets réellement retenus : celle du filtre sémantique décrit l'ensemble avant que les critères exacts ne l'aient réduit, et sa somme ne correspondrait pas au nombre de résultats affiché.
 
 Les identifiants ne transitent jamais par le modèle : l'outil sémantique rend un marqueur, l'agent l'insère tel quel dans sa clause `WHERE`, et la liste réelle est substituée juste avant l'exécution. L'ordre de pertinence sémantique est préservé dans le résultat final.
 

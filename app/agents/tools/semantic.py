@@ -106,13 +106,14 @@ def _fetch_lexical_tiers(base_term: str, synonyms: list[str]) -> dict[int, int]:
     return {row["ticket_id"]: row["tier"] for row in rows}
 
 
-async def query_tickets(query: str, threshold: float = 0.52, use_synonyms: bool = True) -> dict:
+async def _search_term(query: str, threshold: float, use_synonyms: bool) -> dict:
     """
-    Recherche des tickets sémantiquement proches de la query.
-    Récupère toujours 3000 résultats puis filtre ceux avec distance <= threshold.
-    Priorise ensuite par tier lexical (cf. ``_fetch_lexical_tiers``) : terme dans le
-    titre > terme dans description/commentaires > synonyme dans le titre > synonyme
-    dans description/commentaires > proximité purement sémantique.
+    Recherche les tickets proches d'UN sujet.
+
+    Renvoie ``{"tiers": {ticket_id: 0..4}, "distances": {ticket_id: float}, "terms_used": [...]}``.
+    ``tiers`` contient TOUS les tickets retenus pour ce sujet : ceux repérés lexicalement
+    (tiers 0-3) et ceux qui ne doivent leur présence qu'à la proximité sémantique (tier 4).
+    ``distances`` ne contient que ceux remontés par la recherche vectorielle.
     """
     col = await vs.tickets_collection()
 
@@ -161,50 +162,140 @@ async def query_tickets(query: str, threshold: float = 0.52, use_synonyms: bool 
     lexical_tiers = await asyncio.to_thread(_fetch_lexical_tiers, query, synonyms)
 
     all_ids = set(best_distance) | set(lexical_tiers)
-    ticket_ids = sorted(
-        all_ids,
-        key=lambda tid: (lexical_tiers.get(tid, 4), best_distance.get(tid, float("inf"))),
-    )
-
-    tier_counts: dict[int, int] = {}
-    for tid in all_ids:
-        tier = lexical_tiers.get(tid, 4)
-        tier_counts[tier] = tier_counts.get(tier, 0) + 1
-    for tier, label in TIER_LABELS.items():
-        print(f"[TIER {tier} - {label}] {tier_counts.get(tier, 0)} ticket(s)")
-
     return {
-        "ticket_ids": ticket_ids,
-        "synonyms": terms_used,
-        "count": len(ticket_ids),
-        "tier_counts": [
-            {"tier": tier, "label": label, "count": tier_counts.get(tier, 0)}
-            for tier, label in TIER_LABELS.items()
-        ],
+        "tiers": {tid: lexical_tiers.get(tid, 4) for tid in all_ids},
+        "distances": best_distance,
+        "terms_used": terms_used,
     }
 
 
-async def semantic_ticket_search(ctx: RunContext[ChatDeps], query: str) -> dict:
+def tier_counts_for(tiers: dict[int, int], ticket_ids: list[int]) -> list[dict]:
     """
-    Recherche des tickets sémantiquement proches de `query` (sujet/thème).
+    Répartition ``[{tier, label, count}]`` des ``ticket_ids`` donnés, dans l'ordre des tiers.
+    """
+    counts: dict[int, int] = {}
+    for tid in ticket_ids:
+        tier = tiers.get(tid)
+        if tier is not None:
+            counts[tier] = counts.get(tier, 0) + 1
+    return [
+        {"tier": tier, "label": label, "count": counts.get(tier, 0)}
+        for tier, label in TIER_LABELS.items()
+    ]
+
+
+def _combine(results: list[dict], operator: str) -> tuple[list[int], dict[int, int]]:
+    """
+    Fusionne les résultats de plusieurs sujets et renvoie ``(ticket_ids triés, tiers)``.
+
+    - ``or``  : UNION — le ticket parle d'au moins un des sujets. Son rang est celui de
+      son MEILLEUR sujet (le tier et la distance les plus favorables).
+    - ``and`` : INTERSECTION — le ticket parle de TOUS les sujets. Son rang est celui de
+      son PLUS MAUVAIS sujet : une conjonction ne vaut que par son maillon le plus faible,
+      donc un ticket qui ne rattrape l'un des sujets que par proximité sémantique passe
+      derrière celui qui les porte tous les deux dans son titre.
+    """
+    id_sets = [set(r["tiers"]) for r in results]
+    if operator == "and":
+        matched, pick = set.intersection(*id_sets), max
+    else:
+        matched, pick = set.union(*id_sets), min
+
+    tiers: dict[int, int] = {}
+    distances: dict[int, float] = {}
+    for tid in matched:
+        # En union, seuls les sujets qui ont trouvé le ticket décrivent sa pertinence.
+        found = [r for r in results if tid in r["tiers"]]
+        tiers[tid] = pick(r["tiers"][tid] for r in found)
+        distances[tid] = pick(r["distances"].get(tid, float("inf")) for r in found)
+
+    ticket_ids = sorted(matched, key=lambda tid: (tiers[tid], distances[tid]))
+    return ticket_ids, tiers
+
+
+async def query_tickets(
+    queries: list[str],
+    operator: str = "or",
+    threshold: float = 0.52,
+    use_synonyms: bool = True,
+) -> dict:
+    """
+    Recherche des tickets proches d'un ou PLUSIEURS sujets, puis combine les résultats.
+
+    Chaque sujet est cherché séparément : les synonymes et la priorité lexicale sont propres
+    à chacun. C'est seulement ensuite que les jeux de tickets sont réunis ou croisés.
+    """
+    operator = "and" if str(operator).strip().lower() in {"and", "et"} else "or"
+    terms = [q.strip() for q in queries if q and q.strip()]
+
+    if not terms:
+        return {
+            "ticket_ids": [],
+            "tiers": {},
+            "synonyms": [],
+            "count": 0,
+            "tier_counts": tier_counts_for({}, []),
+            "queries": [],
+            "operator": operator,
+        }
+
+    results = await asyncio.gather(*(_search_term(term, threshold, use_synonyms) for term in terms))
+    ticket_ids, tiers = _combine(results, operator)
+
+    # Tous les termes réellement utilisés (sujets + synonymes), sans doublon, dans l'ordre.
+    terms_used = list(dict.fromkeys(t for r in results for t in r["terms_used"]))
+
+    tier_counts = tier_counts_for(tiers, ticket_ids)
+    print(f"[SUJETS] {terms} (operateur: {operator})")
+    for entry in tier_counts:
+        print(f"[TIER {entry['tier']} - {entry['label']}] {entry['count']} ticket(s)")
+
+    return {
+        "ticket_ids": ticket_ids,
+        "tiers": tiers,
+        "synonyms": terms_used,
+        "count": len(ticket_ids),
+        "tier_counts": tier_counts,
+        "queries": terms,
+        "operator": operator,
+    }
+
+
+async def semantic_ticket_search(
+    ctx: RunContext[ChatDeps], queries: list[str], operator: str = "or"
+) -> dict:
+    """
+    Recherche des tickets sémantiquement proches d'un ou plusieurs sujets/thèmes.
     Renvoie la requête SQL construite, les synonymes utilisés, le count et la
     répartition du nombre de tickets par catégorie de correspondance (tier_counts).
 
     Args:
-        query: Message exact envoyé par l'utilisateur, sans modification, sans reformulation, sans ajout de texte
+        queries: LISTE des sujets extraits du message, avec les mots exacts de
+            l'utilisateur (sans reformulation, sans changer les majuscules). Un seul
+            sujet donne une liste d'un seul élément.
+            Ex: "les tickets qui parlent de cinématique" -> ["cinématique"]
+            Ex: "les tickets qui parlent de cinématique ou d'annotations" -> ["cinématique", "annotations"]
+        operator: Comment relier les sujets quand il y en a plusieurs.
+            "or"  (défaut) : le ticket parle d'AU MOINS UN des sujets (union) —
+                  c'est le cas de "cinématique OU annotations", et d'une énumération.
+            "and" : le ticket parle de TOUS les sujets à la fois (intersection) —
+                  c'est le cas de "cinématique ET annotations".
+            Avec un seul sujet, ce paramètre n'a aucun effet.
 
     Returns:
         dict avec les clés:
         - sql_query: requête SQL au format SELECT t.id, t.summary, t.description FROM ticket t WHERE t.id IN (<ids>)
-        - synonyms: liste de tous les termes utilisés (query + synonymes)
+        - synonyms: liste de tous les termes utilisés (sujets + synonymes)
         - count: nombre de tickets trouvés
         - tier_counts: liste de {tier, label, count}, du plus littéral (tier 0 : terme dans
           le titre) au plus sémantique (tier 4 : proximité sémantique pure)
+        - queries: les sujets réellement cherchés
+        - operator: l'opérateur réellement appliqué ("or" ou "and")
     """
     print("[TOOL CALL] semantic_ticket_search")
-    print(f"Query: {query}")
+    print(f"Queries: {queries} (operator: {operator})")
 
-    result = await query_tickets(query)
+    result = await query_tickets(queries, operator)
     ticket_ids = result["ticket_ids"]
     if ticket_ids:
         ids_str = ", ".join(str(tid) for tid in ticket_ids)
@@ -225,23 +316,35 @@ async def semantic_ticket_search(ctx: RunContext[ChatDeps], query: str) -> dict:
         "synonyms": result["synonyms"],
         "count": result["count"],
         "tier_counts": result["tier_counts"],
+        "queries": result["queries"],
+        "operator": result["operator"],
     }
 
 
-async def semantic_ticket_filter(ctx: RunContext[ChatDeps], query: str) -> dict:
+async def semantic_ticket_filter(
+    ctx: RunContext[ChatDeps], queries: list[str], operator: str = "or"
+) -> dict:
     """
-    Calcule le FILTRE sémantique correspondant à un thème/sujet, à combiner avec des
-    filtres exacts dans une même requête SQL (recherche hybride).
+    Calcule le FILTRE sémantique correspondant à un ou plusieurs thèmes/sujets, à combiner
+    avec des filtres exacts dans une même requête SQL (recherche hybride).
 
     Renvoie un fragment SQL à recopier TEL QUEL dans la clause WHERE, jeton compris :
     `{{SEMANTIC_IDS}}` est un marqueur remplacé automatiquement par la liste des tickets
     au moment de l'exécution. Ne le remplace jamais, ne le réécris jamais, n'essaie pas
-    de deviner les identifiants.
+    de deviner les identifiants. Le fragment reste le MÊME quel que soit le nombre de
+    thèmes : la combinaison est faite ici, pas dans ta requête SQL.
 
     Args:
-        query: le thème/sujet extrait du message, SANS les critères structurés
-               (ex: "annotations 3D" pour "les tickets du client TPC qui parlent
-               d'annotations 3D")
+        queries: LISTE des thèmes extraits du message, avec les mots exacts de
+            l'utilisateur, SANS les critères structurés (ni client, ni projet, ni
+            utilisateur, ni statut, ni date). Un seul thème donne une liste d'un élément.
+            Ex: "les tickets du client TPC qui parlent d'annotations 3D" -> ["annotations 3D"]
+            Ex: "les tickets de TPC qui parlent de cinématique ou d'annotations"
+                -> ["cinématique", "annotations"]
+        operator: Comment relier les thèmes quand il y en a plusieurs.
+            "or"  (défaut) : le ticket parle d'AU MOINS UN des thèmes (union).
+            "and" : le ticket parle de TOUS les thèmes à la fois (intersection).
+            Avec un seul thème, ce paramètre n'a aucun effet.
 
     Cet outil NE FAIT PAS la recherche : il ne fait que préparer un filtre. L'étape
     suivante est TOUJOURS de construire la requête SQL complète puis d'appeler `run_sql`.
@@ -249,23 +352,28 @@ async def semantic_ticket_filter(ctx: RunContext[ChatDeps], query: str) -> dict:
     Returns:
         dict avec les clés:
         - filter_sql: fragment à insérer dans le WHERE, ex: `t.id IN ({{SEMANTIC_IDS}})`
-        - synonyms: liste de tous les termes utilisés (query + synonymes)
+        - synonyms: liste de tous les termes utilisés (thèmes + synonymes)
+        - queries: les thèmes réellement cherchés
+        - operator: l'opérateur réellement appliqué ("or" ou "and")
         - next_step: l'action à effectuer immédiatement après cet appel
     """
     print("[TOOL CALL] semantic_ticket_filter")
-    print(f"Query: {query}")
+    print(f"Queries: {queries} (operator: {operator})")
 
-    result = await query_tickets(query)
+    result = await query_tickets(queries, operator)
     ticket_ids = result["ticket_ids"]
 
     print(f"[NB TICKETS AVANT FILTRES] {len(ticket_ids)}")
 
     ctx.deps.semantic_ticket_ids = ticket_ids
     ctx.deps.semantic_terms = result["synonyms"]
+    ctx.deps.semantic_tiers = result["tiers"]
 
     return {
         "filter_sql": f"t.id IN ({SEMANTIC_IDS_TOKEN})",
         "synonyms": result["synonyms"],
+        "queries": result["queries"],
+        "operator": result["operator"],
         "next_step": (
             "Filtre sémantique prêt, mais AUCUN ticket n'a encore été cherché. "
             "Construis maintenant la requête SQL complète en combinant les filtres exacts "
