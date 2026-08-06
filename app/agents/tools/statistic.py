@@ -109,8 +109,7 @@ async def set_statistic_presentation(
             - `label`  : libellé lisible en français affiché à l'utilisateur. Ne jamais ajouter l'unité de mesure.
             - `role`   : "label" pour une colonne descriptive (catégorie / axe X),
                          "value" pour une colonne de valeurs numériques (série)
-            - `format` : "text", "date", "number", "seconds" (durée, affichée en h min s
-              par le front) ou "percent"
+            - `format` : "text", "date", "number", "seconds" ou "percent"
         user_requested_graph_type: `True` UNIQUEMENT si l'utilisateur a explicitement demandé
             ce type d'affichage (ex: "mets ça en barres"). Son choix lève alors les règles de
             LISIBILITÉ (une durée en barres), mais jamais les règles d'IMPOSSIBILITÉ

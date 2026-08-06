@@ -8,7 +8,7 @@ from app.agents.deps import ChatDeps
 from app.agents.model import FACTUAL_SETTINGS, get_agent_model
 from app.agents.prompts.agent_memory import AGENT_MEMORY_PROMPT
 from app.agents.tools.memory import delete_memory, relevant_memories, save_memory, update_memory
-from app.agents.util.output_guard import guard_against_tool_call_leak
+from app.agents.util.output_guard import guard_agent_output
 
 memory_agent = Agent(
     get_agent_model(),
@@ -19,7 +19,7 @@ memory_agent = Agent(
 memory_agent.tool(save_memory)
 memory_agent.tool(delete_memory)
 memory_agent.tool(update_memory)
-guard_against_tool_call_leak(memory_agent)
+guard_agent_output(memory_agent)
 
 
 @memory_agent.system_prompt

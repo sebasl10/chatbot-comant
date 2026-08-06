@@ -24,7 +24,7 @@ from app.agents.tools.statistic import (
     statistic_changed,
 )
 from app.agents.util.history_utils import _history_context
-from app.agents.util.output_guard import guard_against_tool_call_leak
+from app.agents.util.output_guard import guard_agent_output
 from app.services.database import delete_research as db_delete_research
 from app.services.database import delete_statistic as db_delete_statistic
 from app.services.database import get_sql, is_admin
@@ -75,11 +75,19 @@ async def delegate_refine_search(ctx: RunContext[ChatDeps], request: str) -> str
         request: Message exact envoyé par l'utilisateur, sans modification, sans reformulation, sans ajout de texte
     """
     print("[DELEGATE] SQL research agent (affinage)")
+    print(f"Message: {request}")
+
+    previous_sql = _previous_sql(ctx.deps)
+    print(f"LAST SQL: {previous_sql}")
+
+    if not previous_sql:
+        print("[DELEGATE] Aucune recherche à affiner -> nouvelle recherche")
+        return await delegate_new_research(ctx, request)
+
     ctx.deps.events.early_intention("affinage")
     ctx.deps.mode = "affinage"
-    ctx.deps.previous_sql = _previous_sql(ctx.deps)
-    print(f"LAST SQL: {ctx.deps.previous_sql}")
-    prompt = f"Requête SQL précédente : {ctx.deps.previous_sql}\nDemande d'affinage : {request}"
+    ctx.deps.previous_sql = previous_sql
+    prompt = f"Requête SQL précédente : {previous_sql}\nDemande d'affinage : {request}"
     result = await sql_research_agent.run(prompt, deps=ctx.deps, usage=ctx.usage)
     if ctx.deps.last_sql:
         await persist_affinage(ctx.deps, intention="affinage")
@@ -210,7 +218,7 @@ supervisor_agent = Agent(
     retries=2,
     model_settings=DETERMINISTIC_SETTINGS,
 )
-guard_against_tool_call_leak(supervisor_agent)
+guard_agent_output(supervisor_agent)
 
 
 @supervisor_agent.system_prompt

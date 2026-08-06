@@ -16,7 +16,7 @@ from app.agents.prompts.agent_sql_search import (
 from app.agents.tools.db import run_sql
 from app.agents.tools.entity import validate_entities
 from app.agents.tools.memory import relevant_memories
-from app.agents.util.output_guard import guard_against_tool_call_leak
+from app.agents.util.output_guard import guard_agent_output
 from app.services.database import get_db_schema
 
 sql_research_agent = Agent(
@@ -27,7 +27,7 @@ sql_research_agent = Agent(
 )
 sql_research_agent.tool(validate_entities)
 sql_research_agent.tool(run_sql)
-guard_against_tool_call_leak(sql_research_agent)
+guard_agent_output(sql_research_agent)
 
 
 @sql_research_agent.system_prompt

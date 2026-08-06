@@ -20,7 +20,7 @@ from app.agents.tools.semantic import (
     remove_term_from_vocabulary,
     semantic_ticket_search,
 )
-from app.agents.util.output_guard import guard_against_tool_call_leak
+from app.agents.util.output_guard import guard_agent_output
 
 vocabulary_capability = Capability(
     id="vocabulary",
@@ -46,7 +46,7 @@ semantic_research_agent = Agent(
     capabilities=[vocabulary_capability, ticket_search_capability],
     model_settings=FACTUAL_SETTINGS,
 )
-guard_against_tool_call_leak(semantic_research_agent)
+guard_agent_output(semantic_research_agent)
 
 
 @semantic_research_agent.system_prompt
