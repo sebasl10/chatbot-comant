@@ -22,7 +22,6 @@ from app.agents.tools.statistic import set_statistic_presentation
 from app.agents.util.output_guard import guard_agent_output
 from app.services.database import get_db_schema
 
-
 absences_capability = Capability(
     id="absences",
     description=ABSENCES_CAPABILITY_DESCRIPTION,
