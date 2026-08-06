@@ -10,6 +10,7 @@ puis persistée.
 import asyncio
 import datetime
 import json
+import re
 from decimal import Decimal
 
 from pydantic_ai import RunContext
@@ -26,9 +27,23 @@ GRAPH_TYPES = ("pie", "bar", "line", "table")
 ROLES = ("label", "value")
 FORMATS = ("text", "date", "number", "seconds", "percent")
 
+_DURATION_KEY = re.compile(r"second|seconde|duree|durée|duration", re.I)
+_COUNT_KEY = re.compile(r"^(nb|nombre|count)_", re.I)
+
 
 def _is_numeric(value) -> bool:
     return value is None or isinstance(value, (int, float, Decimal)) and not isinstance(value, bool)
+
+
+def _is_duration(col: dict) -> bool:
+    """
+    Colonne de durée : annoncée en `seconds`, ou dont l'alias SQL en est une
+    (`temps_effectif_secondes`) même si l'agent s'est trompé de `format`.
+    """
+    key = col.get("key") or ""
+    return not _COUNT_KEY.match(key) and (
+        col.get("format") == "seconds" or bool(_DURATION_KEY.search(key))
+    )
 
 
 def merge_statistic_results(deps: ChatDeps) -> tuple[list[str], list[dict]]:
@@ -99,17 +114,23 @@ async def set_statistic_presentation(
     Args:
         graph_type: Type d'affichage : "pie", "bar", "line" ou "table" (si aucun graphe
             n'est adapté). Le front affiche TOUJOURS une table ; le graphe vient en plus.
-            Une DURÉE seule → "pie" (quel que soit le nombre de lignes) ; des valeurs
+            Une DURÉE seule → "pie" (quel que soit le nombre de lignes, et même si la
+            requête est filtrée sur un seul salarié ou un seul projet) ; des valeurs
             numériques (comptages, moyennes) → "bar" ; une évolution temporelle → "line".
         description: Une phrase en français qui reformule la demande de l'utilisateur en
             gardant exactement les mêmes informations (indicateur, regroupement, filtres,
             période).
         columns: Un descripteur par colonne du résultat SQL, dans l'ordre d'affichage :
             - `key`    : nom EXACT de la colonne renvoyée par la requête (l'alias SQL)
-            - `label`  : libellé lisible en français affiché à l'utilisateur. Ne jamais ajouter l'unité de mesure.
+            - `label`  : libellé lisible en français affiché à l'utilisateur : du TEXTE,
+                         sans underscore, sans unité, jamais l'alias SQL recopié
+                         (`temps_effectif_secondes` → "Temps effectif")
             - `role`   : "label" pour une colonne descriptive (catégorie / axe X),
                          "value" pour une colonne de valeurs numériques (série)
-            - `format` : "text", "date", "number", "seconds" ou "percent"
+            - `format` : "text", "date", "number", "seconds" ou "percent". Toute DURÉE
+                         (alias en `_secondes`, `SUM(duration)`, `time_estimate * 3600`)
+                         → "seconds" : c'est ce format qui déclenche l'affichage en
+                         `h min s`. "number" est réservé aux comptages et aux moyennes.
         user_requested_graph_type: `True` UNIQUEMENT si l'utilisateur a explicitement demandé
             ce type d'affichage (ex: "mets ça en barres"). Son choix lève alors les règles de
             LISIBILITÉ (une durée en barres), mais jamais les règles d'IMPOSSIBILITÉ
@@ -150,18 +171,39 @@ async def set_statistic_presentation(
         )
 
     for col in columns:
-        if not col.get("label"):
-            errors.append(f"Colonne {col.get('key')!r} : `label` manquant.")
+        key = str(col.get("key") or "")
+        label = (col.get("label") or "").strip()
+        if not label:
+            errors.append(f"Colonne {key!r} : `label` manquant.")
+        elif "_" in label or label == key:
+            errors.append(
+                f"Colonne {key!r} : `label` {label!r} reprend l'alias SQL. Le libellé est un "
+                f"texte lisible en français, avec des espaces, sans underscore et sans unité "
+                f"(ex: 'Temps effectif', 'Salarié', 'Nb de tickets')."
+            )
         if col.get("role") not in ROLES:
-            errors.append(f"Colonne {col.get('key')!r} : `role` doit valoir {list(ROLES)}.")
+            errors.append(f"Colonne {key!r} : `role` doit valoir {list(ROLES)}.")
         if col.get("format") not in FORMATS:
-            errors.append(f"Colonne {col.get('key')!r} : `format` doit valoir {list(FORMATS)}.")
+            errors.append(f"Colonne {key!r} : `format` doit valoir {list(FORMATS)}.")
 
     if errors:
         return {"ok": False, "error": " ".join(errors)}
 
     label_cols = [c for c in columns if c["role"] == "label"]
     value_cols = [c for c in columns if c["role"] == "value"]
+
+    for col in value_cols:
+        if _DURATION_KEY.search(col["key"]) and col["format"] != "seconds":
+            errors.append(
+                f"Colonne {col['key']!r} : c'est une DURÉE en secondes, son `format` doit être "
+                f"`seconds` et non {col['format']!r} (sinon le front affiche un nombre brut de "
+                f"secondes au lieu de 'h min s')."
+            )
+        elif _COUNT_KEY.match(col["key"]) and col["format"] == "seconds":
+            errors.append(
+                f"Colonne {col['key']!r} : c'est un COMPTAGE, son `format` doit être `number` "
+                f"(avec `seconds` il serait affiché comme une durée)."
+            )
 
     # La clé de jointure sert de catégorie commune aux deux requêtes : c'est un `label`.
     for col in columns:
@@ -214,7 +256,7 @@ async def set_statistic_presentation(
         if (
             graph_type == "bar"
             and not user_requested_graph_type
-            and all(c["format"] == "seconds" for c in value_cols)
+            and all(_is_duration(c) for c in value_cols)
         ):
             errors.append(
                 "Toutes les colonnes de valeurs sont des durées : n'utilise pas graph_type='bar' "
@@ -222,6 +264,24 @@ async def set_statistic_presentation(
                 "durée et que les valeurs sont positives — quel que soit le nombre de lignes — "
                 "sinon 'table'."
             )
+
+    # Une répartition de temps (UNE durée par catégorie) se lit en camembert : la table
+    # seule ne montre pas le poids de chaque part.
+    elif (
+        not user_requested_graph_type
+        and len(label_cols) == 1
+        and len(value_cols) == 1
+        and _is_duration(value_cols[0])
+        and label_cols[0]["format"] != "date"
+        and len(rows) > 1
+        and all((row.get(value_cols[0]["key"]) or 0) >= 0 for row in rows)
+    ):
+        errors.append(
+            f"Cette statistique est une RÉPARTITION de durée : une seule catégorie "
+            f"({label_cols[0]['key']!r}) et une seule colonne de durée "
+            f"({value_cols[0]['key']!r}), toutes positives. Utilise graph_type='pie' "
+            f"(la table reste affichée en plus) — le nombre de lignes n'y change rien."
+        )
 
     if errors:
         return {"ok": False, "error": " ".join(errors)}
@@ -259,6 +319,20 @@ def _json_load(value) -> list[dict] | None:
         return None
 
 
+def _fallback_column(key: str, index: int) -> dict:
+    """
+    Descripteur de secours quand l'agent n'a pas décrit la présentation : l'alias SQL
+    devient un libellé lisible, et une durée garde son formatage `h min s`.
+    """
+    is_value = index > 0
+    return {
+        "key": key,
+        "label": key.replace("_", " ").capitalize(),
+        "role": "value" if is_value else "label",
+        "format": ("seconds" if _DURATION_KEY.search(key) else "number") if is_value else "text",
+    }
+
+
 def _presentation(deps: ChatDeps) -> tuple[str, list[dict], list[dict]]:
     """
     Présentation à persister : le résultat FUSIONNÉ et les métadonnées qui le décrivent.
@@ -280,15 +354,7 @@ def _presentation(deps: ChatDeps) -> tuple[str, list[dict], list[dict]]:
             graph_type = graph_type or previous.get("graph_type")
 
     graph_type = graph_type or "table"
-    labels = labels or [
-        {
-            "key": key,
-            "label": key,
-            "role": "label" if i == 0 else "value",
-            "format": "text" if i == 0 else "number",
-        }
-        for i, key in enumerate(merged_columns)
-    ]
+    labels = labels or [_fallback_column(key, i) for i, key in enumerate(merged_columns)]
     return graph_type, labels, merged_rows
 
 

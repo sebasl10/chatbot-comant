@@ -106,6 +106,9 @@ def _examples(user_id: int | None) -> str:
       Message: "Le temps effectif total par projet en 2026"
       SQL: SELECT p.code, SUM(pl.duration) AS temps_effectif_secondes FROM planning pl JOIN ticket t ON t.id = pl.ticket_id JOIN project_ticket pt ON pt.ticket_id = t.id JOIN project p ON p.id = pt.project_id WHERE YEAR(pl.date) = 2026 AND t.type != 'Group' GROUP BY p.id, p.code ORDER BY temps_effectif_secondes DESC
 
+      Message: "Donne-moi le temps que dba a passé sur chaque projet"
+      SQL: SELECT p.code, SUM(pl.duration) AS temps_effectif_secondes FROM planning pl JOIN user u ON u.id = pl.user_id JOIN ticket t ON t.id = pl.ticket_id JOIN project_ticket pt ON pt.ticket_id = t.id JOIN project p ON p.id = pt.project_id WHERE u.username = 'dba' AND t.type != 'Group' GROUP BY p.id, p.code ORDER BY temps_effectif_secondes DESC
+
       Message: "Je veux savoir le nombre de tickets où le temps a été surestimé, sous-estimé ou correctement estimé par utilisateur"
       SQL: SELECT u.username, SUM(CASE WHEN e.temps_effectif_secondes > e.temps_estime_secondes THEN 1 ELSE 0 END) AS nb_tickets_sous_estimes, SUM(CASE WHEN e.temps_effectif_secondes < e.temps_estime_secondes THEN 1 ELSE 0 END) AS nb_tickets_surestimes, SUM(CASE WHEN e.temps_effectif_secondes = e.temps_estime_secondes THEN 1 ELSE 0 END) AS nb_tickets_correctement_estimes, COUNT(*) AS nb_tickets_estimes FROM (SELECT t.id, t.assignee_id, t.time_estimate * 3600 AS temps_estime_secondes, SUM(pl.duration) AS temps_effectif_secondes FROM ticket t JOIN planning pl ON pl.ticket_id = t.id WHERE t.type != 'Group' AND t.time_estimate IS NOT NULL AND t.time_estimate > 0 GROUP BY t.id, t.assignee_id, t.time_estimate) e JOIN user u ON u.id = e.assignee_id GROUP BY u.id, u.username ORDER BY nb_tickets_estimes DESC
 
@@ -151,10 +154,16 @@ PRESENTATION = """
     "194h 25m 40s, 44h 33m 20s" ne veut rien dire, alors qu'un camembert montre
     immédiatement le poids de chaque part.
     **Le nombre de lignes n'a AUCUNE importance** : la légende du camembert permet
-    de filtrer les parts une par une. Ne bascule donc JAMAIS sur `bar` sous
-    prétexte qu'il y a beaucoup de salariés, de projets ou de types.
+    de filtrer les parts une par une. Ne bascule donc JAMAIS sur `bar` ni sur `table`
+    sous prétexte qu'il y a beaucoup — ou peu — de salariés, de projets ou de types.
+    Un FILTRE sur un seul salarié ou un seul projet ne change rien non plus : ce qui
+    compte est la colonne de regroupement, pas le filtre.
     Ex : "le temps effectif par salarié" (même avec 40 salariés), "la répartition
-    du temps par type de ticket, projet ou produit", "le temps passé par projet en 2026".
+    du temps par type de ticket, projet ou produit", "le temps passé par projet en 2026",
+    "le temps que dba a passé sur chaque projet" (regroupé par projet → camembert),
+    "le temps que mwu a passé sur le projet Comant2026, par type de ticket".
+    Dès qu'une demande de TEMPS produit plusieurs lignes et une seule colonne de durée,
+    c'est une répartition, donc un camembert : le tool refusera `table`.
 
   3. **`bar`** — la statistique renvoie des valeurs **NUMÉRIQUES**
     (`format: "number"` ou `"percent"`) : comptages, moyennes, pourcentages.
@@ -187,6 +196,11 @@ PRESENTATION = """
   - `label` : le libellé lisible affiché en en-tête de table et dans la légende du
     graphe, en français ("Salarié", "Temps effectif", "Nb de tickets"). N'ajoute JAMAIS
     l'unité de mesure.
+    C'est un TEXTE, jamais l'alias SQL : il ne contient donc **aucun underscore** et
+    ne recopie **jamais** la `key`. Traduis systématiquement l'alias en mots.
+    ✅ `temps_effectif_secondes` → "Temps effectif" ; `nb_tickets` → "Nb de tickets" ;
+       `username` → "Salarié" ; `secondes_absence` → "Absence".
+    ❌ "temps_effectif_secondes", "temps effectif (secondes)", "username", "nb_tickets".
   - `role` :
     - `label` → colonne descriptive : c'est l'axe des catégories du graphe
       (le salarié, le projet, le mois, le statut...) ;
@@ -197,8 +211,15 @@ PRESENTATION = """
     Un `pie` n'affiche qu'UNE série.
   - `format` : `text`, `date`, `number`, `seconds` (durée en secondes) ou `percent`.
     Il pilote le formatage côté front, donc il doit correspondre à ce que la requête
-    calcule réellement : toute DURÉE → `seconds`, un `COUNT(*)` → `number`. 
-    N'utilise jamais `seconds` pour un comptage : il serait affiché comme une durée.
+    calcule réellement : toute DURÉE → `seconds`, un `COUNT(*)` → `number`.
+    **Règle mécanique** : tout alias contenant `secondes` / `duree` (donc tout `SUM(pl.duration)`,
+    tout `time_estimate * 3600`, tout écart entre deux durées) → `format: "seconds"`,
+    SANS EXCEPTION. C'est ce format, et lui seul, qui déclenche la conversion en
+    `h min s` côté front : avec `number`, l'utilisateur lit "699940" au lieu de
+    "194h 25m 40s". Le fait que la valeur soit un nombre ne justifie JAMAIS `number` :
+    `number` est réservé aux comptages, moyennes de comptages et ratios.
+    Inversement, n'utilise jamais `seconds` pour un comptage (`nb_...`) : il serait
+    affiché comme une durée.
 
   ### 3. `description`
   Reprends la demande de l'utilisateur et reformule-la en gardant **exactement** les
@@ -216,6 +237,18 @@ PRESENTATION = """
       {"key": "username", "label": "Salarié", "role": "label", "format": "text"},
       {"key": "temps_effectif_secondes", "label": "Temps effectif", "role": "value", "format": "seconds"}
     ]
+
+  Demande : "Donne-moi le temps que dba a passé sur chaque projet"
+  Colonnes SQL : `code`, `temps_effectif_secondes`
+  → graph_type: "pie" (répartition d'une DURÉE : le filtre sur un seul salarié ne change
+    rien, c'est le regroupement par projet qui fait les parts)
+    description: "Temps effectif de dba par projet"
+    columns: [
+      {"key": "code", "label": "Projet", "role": "label", "format": "text"},
+      {"key": "temps_effectif_secondes", "label": "Temps effectif", "role": "value", "format": "seconds"}
+    ]
+    ❌ Erreurs à ne pas commettre ici : `format: "number"` (le front afficherait un nombre
+    brut de secondes) et `label: "temps_effectif_secondes"` (l'alias SQL n'est pas un libellé).
 
   Demande : "Combien de tickets par statut sur le projet SLS2025 ?"
   Colonnes SQL : `status`, `nb_tickets`
