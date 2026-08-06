@@ -26,9 +26,23 @@ async def validate_entities(ctx: RunContext[ChatDeps], entities: list[Entity]) -
     """
     Valide des entités nommées contre le vocabulaire réel de la base.
 
-    `type` doit être l'un de : {types}. Renvoie chaque entité avec son statut
-    (ok / suggestion / unknown). Si des entités sont `unknown` ou `suggestion`,
-    l'agent doit demander une clarification à l'utilisateur avant de générer le SQL.
+    `type` doit être l'un de : {types}. Renvoie chaque entité avec son statut :
+    - `ok` : la valeur existe, utilise `resolved` dans le SQL ;
+    - `suggestion` / `unknown` : demande une clarification à l'utilisateur AVANT de
+      générer le SQL ;
+    - `ignored` : la valeur n'avait pas à être envoyée ici (voir `reason`) ; ne
+      demande aucune clarification et poursuis normalement.
+
+    N'envoie QUE des noms propres du métier (un code projet, un trigramme
+    d'utilisateur, un nom de client, de composant, de produit, de tag, de branche).
+    N'envoie JAMAIS :
+    - une PÉRIODE : "2026", "mars 2026", "ce mois-ci", "les 30 derniers jours", car c'est
+      un filtre de date (`YEAR(...) = 2026`), pas une entité. Une année ressemble à
+      tous les codes projet qui la contiennent ("2026" → "3df_2026") : l'envoyer ici
+      déclenche une suggestion absurde ;
+    - une valeur de référence (`ticket.type`, `ticket.status`, `project.type`...) : elles
+      sont déjà listées dans ton prompt, utilise-les telles quelles ;
+    - un thème, un mot-clé de recherche libre ou un nom de colonne.
 
     Args:
         entities: Liste d'instances de la classe Entity avec 'type' le type de l'entité et 'value' sa valeur

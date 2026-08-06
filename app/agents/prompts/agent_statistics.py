@@ -286,6 +286,12 @@ TOOLS = """
   1. Si le message mentionne des entités nommées (username, projet, utilisateur, client,
   composant, produit, tag, branche, branch_dev, branch_release, branch_travail),
   appelle d'abord `validate_entities` pour les valider.
+  - Une PÉRIODE n'est JAMAIS une entité : "2026", "mars 2026", "ce mois-ci",
+  "les 30 derniers jours" ne s'envoient pas à `validate_entities`.
+  - Ne valide pas non plus les valeurs de référence (`type`, `status`...) listées
+  plus haut, ni les noms de colonnes ou de regroupements.
+  - Si des entités reviennent en statut `ignored`, c'est que tu n'aurais pas dû les
+  envoyer : ignore-les, ne demande AUCUNE clarification à l'utilisateur et poursuis.
   - Si des entités sont en statut `suggestion`, demande à l'utilisateur s'il est d'accord
   avec ces suggestions en affichant un message court contenant uniquement les suggestions
   et la question de validation. Indique aussi que s'il n'est pas d'accord avec la suggestion,
@@ -342,6 +348,12 @@ TOOLS_AFFINAGE = """
   1. Si la demande mentionne de NOUVELLES entités nommées (username, projet, utilisateur,
   client, composant, produit, tag, branche), appelle d'abord `validate_entities` pour les
   valider. Ne revalide pas les entités déjà présentes dans la statistique actuelle.
+  - ❌ Une PÉRIODE n'est JAMAIS une entité : "seulement en 2026", "plutôt mars 2026",
+  "ce mois-ci" ne s'envoient pas à `validate_entities` — ce sont des filtres de date
+  du `WHERE` (`YEAR(pl.date) = 2026`). Idem pour les valeurs de référence
+  (`type`, `status`...) et les noms de colonnes.
+  - Si des entités reviennent en statut `ignored`, c'est que tu n'aurais pas dû les
+  envoyer : ignore-les, ne demande AUCUNE clarification à l'utilisateur et poursuis.
   - Si des entités sont en statut `suggestion`, demande à l'utilisateur s'il est d'accord
   avec ces suggestions en affichant un message court contenant uniquement les suggestions
   et la question de validation. Indique aussi que s'il n'est pas d'accord avec la suggestion,

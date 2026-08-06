@@ -1,4 +1,5 @@
 import json
+import re
 from datetime import datetime, timedelta
 
 from rapidfuzz import fuzz, process
@@ -6,6 +7,7 @@ from rapidfuzz import fuzz, process
 from app.services.database import get_connection
 
 SIMILARITY_THRESHOLD = 65
+
 CACHEABLE_COLUMNS = {
     "branch_dev": ("project", "branch_dev"),
     "branch_travail": ("project", "branches"),
@@ -17,6 +19,30 @@ CACHEABLE_COLUMNS = {
     "tag": ("tag", "name"),
     "user": ("user", "username"),
 }
+
+_MONTHS = (
+    "janvier|f[ée]vrier|mars|avril|mai|juin|juillet|ao[uû]t|septembre|octobre|novembre|d[ée]cembre"
+)
+_UNAMBIGUOUS_MONTHS = _MONTHS.replace("|mai|", "|")
+_PERIOD_PATTERNS = (
+    r"(19|20|21)\d{2}",  # une année seule : 2026
+    r"\d{4}-\d{2}(-\d{2})?",  # 2026-03, 2026-03-15
+    r"\d{1,2}[/-]\d{1,2}[/-]\d{2,4}",  # 15/03/2026
+    rf"{_UNAMBIGUOUS_MONTHS}",  # mars
+    rf"(en|le|d[ée]but|fin|courant)\s+({_MONTHS})(\s+(19|20|21)\d{{2}})?",  # en mai 2026
+    rf"({_MONTHS})\s+(19|20|21)\d{{2}}",  # mai 2026
+    # ce mois-ci, cette année, le mois dernier, l'année passée
+    r"(ce|cet|cette|le|la|l')\s*(mois|semaine|ann[ée]e|jour|trimestre|semestre)"
+    r"([-\s](ci|derni[eè]re?|pass[ée]e?|prochaine?|en\s+cours))?",
+    r"(hier|aujourd'hui|demain)",
+    r"(les\s+)?\d+\s*(derni[eè]rs?\s+)?(jours?|semaines?|mois|ans?|ann[ée]es?)",  # 30 derniers jours
+)
+_PERIOD = re.compile(rf"^\s*(?:{'|'.join(_PERIOD_PATTERNS)})\s*$", re.I)
+
+
+def is_period(value: str) -> bool:
+    """Une date, une année ou une période relative — jamais une entité du vocabulaire."""
+    return bool(_PERIOD.match(value or ""))
 
 
 class EntityCache:
@@ -70,6 +96,7 @@ def link_entities(entities: list[dict]) -> dict:
     - "ok" si la valeur existe exactement
     - "suggestion" si un proche match est trouvé
     - "unknown" si aucun match satisfaisant
+    - "ignored" si la valeur est une période (date, année) et non du vocabulaire métier
     """
     results = []
 
@@ -85,6 +112,22 @@ def link_entities(entities: list[dict]) -> dict:
         exact = next((v for v in valid_values if v.lower() == value.lower()), None)
         if exact:
             results.append({**entity, "status": "ok", "resolved": exact})
+            continue
+
+        if is_period(value):
+            results.append(
+                {
+                    **entity,
+                    "status": "ignored",
+                    "resolved": None,
+                    "reason": (
+                        f"{value!r} est une période (date, année, mois), pas une entité du "
+                        f"vocabulaire métier. Ne demande AUCUNE clarification à l'utilisateur "
+                        f"à son sujet : traduis-la directement en filtre de date dans le SQL "
+                        f"(ex: YEAR(<colonne_date>) = 2026)."
+                    ),
+                }
+            )
             continue
 
         match = process.extractOne(
