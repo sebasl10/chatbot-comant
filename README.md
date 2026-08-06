@@ -159,7 +159,9 @@ La requête produite est une liste d'identifiants (`WHERE t.id IN (…)`), ce qu
 
 > « Les tickets du client TPC qui parlent d'annotations 3D »
 
-L'agent découpe la demande en deux : les critères structurés d'un côté, le thème de l'autre. La recherche sémantique devient alors **un filtre de plus** dans la requête SQL, et non une requête concurrente.
+L'agent découpe la demande en deux : les critères structurés d'un côté, les thèmes de l'autre. La recherche sémantique devient alors **un filtre de plus** dans la requête SQL, et non une requête concurrente.
+
+Les thèmes multiples fonctionnent ici comme en recherche par thème (« ou » réunit, « et » croise), en un seul appel : le filtre inséré dans la requête reste `t.id IN (…)`, quel que soit le nombre de thèmes. Le « et » qui relie deux critères structurés, lui, reste une condition `AND` ordinaire — c'est la distinction que l'agent doit faire au moment de décomposer la demande.
 
 Les identifiants ne transitent jamais par le modèle : l'outil sémantique rend un marqueur, l'agent l'insère tel quel dans sa clause `WHERE`, et la liste réelle est substituée juste avant l'exécution. L'ordre de pertinence sémantique est préservé dans le résultat final.
 

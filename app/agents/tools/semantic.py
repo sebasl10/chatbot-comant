@@ -207,7 +207,7 @@ async def query_tickets(
     """
     Recherche des tickets proches d'un ou PLUSIEURS sujets, puis combine les résultats.
 
-    Chaque sujet est cherché séparément : les synonymes et la priorité lexicale sont propres 
+    Chaque sujet est cherché séparément : les synonymes et la priorité lexicale sont propres
     à chacun. C'est seulement ensuite que les jeux de tickets sont réunis ou croisés.
     """
     operator = "and" if str(operator).strip().lower() in {"and", "et"} else "or"
@@ -312,20 +312,30 @@ async def semantic_ticket_search(
     }
 
 
-async def semantic_ticket_filter(ctx: RunContext[ChatDeps], query: str) -> dict:
+async def semantic_ticket_filter(
+    ctx: RunContext[ChatDeps], queries: list[str], operator: str = "or"
+) -> dict:
     """
-    Calcule le FILTRE sémantique correspondant à un thème/sujet, à combiner avec des
-    filtres exacts dans une même requête SQL (recherche hybride).
+    Calcule le FILTRE sémantique correspondant à un ou plusieurs thèmes/sujets, à combiner
+    avec des filtres exacts dans une même requête SQL (recherche hybride).
 
     Renvoie un fragment SQL à recopier TEL QUEL dans la clause WHERE, jeton compris :
     `{{SEMANTIC_IDS}}` est un marqueur remplacé automatiquement par la liste des tickets
     au moment de l'exécution. Ne le remplace jamais, ne le réécris jamais, n'essaie pas
-    de deviner les identifiants.
+    de deviner les identifiants. Le fragment reste le MÊME quel que soit le nombre de
+    thèmes : la combinaison est faite ici, pas dans ta requête SQL.
 
     Args:
-        query: le thème/sujet extrait du message, SANS les critères structurés
-               (ex: "annotations 3D" pour "les tickets du client TPC qui parlent
-               d'annotations 3D")
+        queries: LISTE des thèmes extraits du message, avec les mots exacts de
+            l'utilisateur, SANS les critères structurés (ni client, ni projet, ni
+            utilisateur, ni statut, ni date). Un seul thème donne une liste d'un élément.
+            Ex: "les tickets du client TPC qui parlent d'annotations 3D" -> ["annotations 3D"]
+            Ex: "les tickets de TPC qui parlent de cinématique ou d'annotations"
+                -> ["cinématique", "annotations"]
+        operator: Comment relier les thèmes quand il y en a plusieurs.
+            "or"  (défaut) : le ticket parle d'AU MOINS UN des thèmes (union).
+            "and" : le ticket parle de TOUS les thèmes à la fois (intersection).
+            Avec un seul thème, ce paramètre n'a aucun effet.
 
     Cet outil NE FAIT PAS la recherche : il ne fait que préparer un filtre. L'étape
     suivante est TOUJOURS de construire la requête SQL complète puis d'appeler `run_sql`.
@@ -333,13 +343,15 @@ async def semantic_ticket_filter(ctx: RunContext[ChatDeps], query: str) -> dict:
     Returns:
         dict avec les clés:
         - filter_sql: fragment à insérer dans le WHERE, ex: `t.id IN ({{SEMANTIC_IDS}})`
-        - synonyms: liste de tous les termes utilisés (query + synonymes)
+        - synonyms: liste de tous les termes utilisés (thèmes + synonymes)
+        - queries: les thèmes réellement cherchés
+        - operator: l'opérateur réellement appliqué ("or" ou "and")
         - next_step: l'action à effectuer immédiatement après cet appel
     """
     print("[TOOL CALL] semantic_ticket_filter")
-    print(f"Query: {query}")
+    print(f"Queries: {queries} (operator: {operator})")
 
-    result = await query_tickets([query])
+    result = await query_tickets(queries, operator)
     ticket_ids = result["ticket_ids"]
 
     print(f"[NB TICKETS AVANT FILTRES] {len(ticket_ids)}")
@@ -350,6 +362,8 @@ async def semantic_ticket_filter(ctx: RunContext[ChatDeps], query: str) -> dict:
     return {
         "filter_sql": f"t.id IN ({SEMANTIC_IDS_TOKEN})",
         "synonyms": result["synonyms"],
+        "queries": result["queries"],
+        "operator": result["operator"],
         "next_step": (
             "Filtre sémantique prêt, mais AUCUN ticket n'a encore été cherché. "
             "Construis maintenant la requête SQL complète en combinant les filtres exacts "
