@@ -5,7 +5,7 @@ Prompts de l'agent SQL (recherche + affinage).
 REFERENCE_VALUES = """## Valeurs de référence
 
 ### Table `log` - colonne `action`
-LOGIN, CREATE, UPDATE, DELETE, VIEW-TICKET (quand un utilisateur consulte un ticket), VIEW-PROJECT (quand un utilisateur consulte un projt), CLOSE-NOTIFICATION, RESEARCH
+LOGIN, CREATE, UPDATE, DELETE, VIEW-TICKET (quand un utilisateur consulte un ticket), VIEW-PROJECT (quand un utilisateur consulte un projet), CLOSE-NOTIFICATION, RESEARCH
 
 ### TABLE `notification` - colonne `category`
 Tickets, Mention, Projets
@@ -38,14 +38,24 @@ Fermé, En cours, Nouveau, Planifié, Ouvert, Rien à faire
 1 (Basse), 2 (Moyenne), 3 (Haute), 4 (Urgent)"""
 
 
-def _business_rules(user_id: int | None) -> str:
-    return f"""## Règles métier et de la base de données
+COMMON_BUSINESS_RULES = """## Règles métier et de la base de données
 - Les trigrammes correspondent à l'username d'un utilisateur (ex: sls, dba, mwu)
+- Quand tu dois filtrer par un projet, utilise toujours la colonne `code`, jamais la colonne `name`
+- Si le type de branche n'est pas spécifié (branche dev/branche développement, branche de travail, branche release), tu dois chercher dans les 3 types de branche
+- L'historique de modifications des attributs d'un ticket (status, assigné, description, etc) est stocké dans la table `log` (action UPDATE)"""
+"""Règles métier partagées par l'agent SQL et l'agent statistiques.
+
+Les règles de TEMPS n'y figurent pas : les deux agents en ont besoin, mais pas avec la
+même consigne. L'agent SQL convertit librement (`SUM(pl.duration) / 3600 >= 5`) là où
+l'agent statistiques doit renvoyer des secondes brutes, le front se chargeant du
+formatage. Chacun décrit donc les siennes.
+"""
+
+
+def _business_rules(user_id: int | None) -> str:
+    return f"""{COMMON_BUSINESS_RULES}
 - Le temps estimé d'un ticket (champ time_estimate de la table ticket) est stocké en nombre d'heures
 - Le temps effectif d'un ticket est stocké en secondes dans le champ duration de la table planning. Il faut savoir qu'il peut y avoir plusieurs lignes pour un même ticket_id, il faut donc faire la somme du champ duration de chaque ligne.
-- Quand tu dois filtrer par un projet, utilise toujours la colonne code, jamais la colonne name
-- Si le type de branche n'est pas specifié (branch dev/branche développement, branche de travail, branche release), tu dois chercher dans les 3 types de branche
-- L'historique de modifications des attributs d'un ticket (status, assigné, description, etc) est stockée dans la table Log (action UPDATE)
 
 ### MENTIONS (« où j'ai été mentionné », « où mwu a été mentionné »)
 - Les mentions sont stockées dans la table `notification` avec `category = 'Mention'`.
@@ -71,13 +81,13 @@ def _business_rules(user_id: int | None) -> str:
 
 
 RAW_SQL_OUTPUT_FORMAT = """
-        ## **Format de sortie** :
-        - Retourne **UNIQUEMENT** la requête SQL brute, sans guillemets, sans markdown, sans explication, SANS `.` à la fin.
-        - **Ne jamais ajouter** de texte supplémentaire (ex: "Voici la requête :").
-        - **Ne retourne jamais** une réponse de ce type:
-            ``sql
-                SELECT ...
-            ```.
+    ## **Format de sortie** :
+    - Retourne **UNIQUEMENT** la requête SQL brute, sans guillemets, sans markdown, sans explication, SANS `.` à la fin.
+    - **Ne jamais ajouter** de texte supplémentaire (ex: "Voici la requête :").
+    - **Ne retourne jamais** une réponse de ce type:
+        ``sql
+            SELECT ...
+        ```.
 """
 
 

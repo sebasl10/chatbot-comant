@@ -370,7 +370,9 @@ app/
 └── tests/                   # Jeu de requêtes de référence
 ```
 
-Les prompts sont volontairement séparés du code — un fichier par agent dans `agents/prompts/` — ce qui permet de les faire évoluer sans toucher à la logique.
+Les prompts sont volontairement séparés du code — un fichier par agent dans `agents/prompts/` — ce qui permet de les faire évoluer sans toucher à la logique. Ce qui décrit la **base** plutôt qu'un agent (valeurs de référence, règles métier générales) n'est écrit qu'une fois et réutilisé par les agents concernés.
+
+Une **capability** regroupe des instructions et les outils qui vont avec, et ne rejoint la requête que si l'agent la charge — sa description suffit à décider. Les absences en sont une : ni les règles de la base externe ni `run_external_sql` n'entrent dans le run tant que la demande n'en parle pas. L'agent sémantique en utilise deux, une par intention.
 
 ---
 
