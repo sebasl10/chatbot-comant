@@ -17,7 +17,7 @@ from app.agents.tools.db import run_sql
 from app.agents.tools.entity import validate_entities
 from app.agents.tools.memory import relevant_memories
 from app.agents.tools.semantic import semantic_ticket_filter
-from app.agents.util.output_guard import guard_against_tool_call_leak
+from app.agents.util.output_guard import guard_agent_output
 from app.services.database import get_db_schema
 
 hybrid_research_agent = Agent(
@@ -29,7 +29,7 @@ hybrid_research_agent = Agent(
 hybrid_research_agent.tool(validate_entities)
 hybrid_research_agent.tool(semantic_ticket_filter)
 hybrid_research_agent.tool(run_sql)
-guard_against_tool_call_leak(hybrid_research_agent)
+guard_agent_output(hybrid_research_agent)
 
 
 @hybrid_research_agent.output_validator

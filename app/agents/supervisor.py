@@ -24,7 +24,7 @@ from app.agents.tools.statistic import (
     statistic_changed,
 )
 from app.agents.util.history_utils import _history_context
-from app.agents.util.output_guard import guard_against_tool_call_leak
+from app.agents.util.output_guard import guard_agent_output
 from app.services.database import delete_research as db_delete_research
 from app.services.database import delete_statistic as db_delete_statistic
 from app.services.database import get_sql, is_admin
@@ -210,7 +210,7 @@ supervisor_agent = Agent(
     retries=2,
     model_settings=DETERMINISTIC_SETTINGS,
 )
-guard_against_tool_call_leak(supervisor_agent)
+guard_agent_output(supervisor_agent)
 
 
 @supervisor_agent.system_prompt

@@ -12,7 +12,7 @@ from app.agents.prompts.agent_conversational import AGENT_CONVERSATIONAL_PROMPT
 from app.agents.tools.conversation import search_past_conversations
 from app.agents.tools.memory import relevant_memories
 from app.agents.util.history_utils import _history_context
-from app.agents.util.output_guard import guard_against_tool_call_leak
+from app.agents.util.output_guard import guard_agent_output
 
 conversational_agent = Agent(
     get_agent_model(),
@@ -21,7 +21,7 @@ conversational_agent = Agent(
     model_settings=CONVERSATIONAL_SETTINGS,
 )
 conversational_agent.tool(search_past_conversations)
-guard_against_tool_call_leak(conversational_agent)
+guard_agent_output(conversational_agent)
 
 
 @conversational_agent.system_prompt
