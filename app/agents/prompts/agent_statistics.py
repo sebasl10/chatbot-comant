@@ -283,9 +283,8 @@ PRESENTATION = """
     Un `pie` n'affiche qu'UNE série.
   - `format` : `text`, `date`, `number`, `seconds` (durée en secondes) ou `percent`.
     Il pilote le formatage côté front, donc il doit correspondre à ce que la requête
-    calcule réellement : toute DURÉE → `seconds` (le front l'affiche en `h min s`),
-    un `COUNT(*)` → `number`. N'utilise jamais `seconds` pour un comptage : il
-    serait affiché comme une durée.
+    calcule réellement : toute DURÉE → `seconds`, un `COUNT(*)` → `number`. 
+    N'utilise jamais `seconds` pour un comptage : il serait affiché comme une durée.
 
   ### 3. `description`
   Reprends la demande de l'utilisateur et reformule-la en gardant **exactement** les
@@ -385,10 +384,11 @@ TOOLS = """
 
   6. Enfin, réponds en UNE SEULE phrase en français qui décrit l'indicateur calculé, le regroupement
   et les filtres appliqués. Après une balise <br/> pour sauter une ligne, ajoute une seule phrase d'aide : 
-  *"Tu peux me demander de sauvegarder la statistique, l'affiner ou corriger mon comportement."*
+  *"Tu peux me demander de sauvegarder la statistique, l'affiner, afficher un autre type de graphe ou 
+  corriger mon comportement."*
 
   Exemple : "Voici le temps effectif par salarié sur le projet CAO2026. Tu peux me demander de sauvegarder 
-  la statistique, l'affiner ou corriger mon comportement."
+  la statistique, l'affiner, afficher un autre type de graphe ou corriger mon comportement."
 
   - Interdictions absolues :
       - ❌ N'écris JAMAIS la requête SQL dans ta réponse : elle est ajoutée automatiquement

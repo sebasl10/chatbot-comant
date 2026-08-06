@@ -1,19 +1,15 @@
 """
 Garde-fou contre les sorties inexploitables des modèles locaux.
 
-Deux dérapages sont filtrés, tous deux observés avec Ministral servi via Ollama :
+Deux dérapages sont filtrés :
 
-1. **L'appel d'outil qui fuite en texte** — le modèle émet son appel natif dans le
-   texte de réponse au lieu de passer par le tool-calling de l'API
-   OpenAI-compatible, par ex. :
+1. L'appel d'outil : le modèle émet son appel natif dans le texte de réponse au lieu de passer 
+    par le tool-calling de l'API
+   Ex : semantic_ticket_search[ARGS]{"query": "..."}
 
-   semantic_ticket_search[ARGS]{"query": "..."}
-
-2. **Le dump de code source** — au moment de rédiger sa phrase finale, le modèle
-   bascule en mode « complétion de code » et écrit une implémentation Python des
-   tools qu'il vient d'appeler, préfixée du séparateur de fichiers du corpus de
-   code de Mistral :
-
+2. Le dump de code source : au moment de rédiger sa phrase finale, le modèle bascule en mode 
+    « complétion de code » et écrit une implémentation Python des tools qu'il vient d'appeler
+    Ex:
    +++++ assistant_tools.py
    from typing import List, Dict
    def run_stats_sql(sql: str) -> Dict:
