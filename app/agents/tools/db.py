@@ -11,7 +11,7 @@ import asyncio
 from pydantic_ai import RunContext
 
 from app.agents.deps import ChatDeps
-from app.agents.tools.semantic import SEMANTIC_IDS_TOKEN
+from app.agents.tools.semantic import SEMANTIC_IDS_TOKEN, tier_counts_for
 from app.services.database import execute_select, get_db_schema
 
 _MISSING_SEMANTIC_FILTER = (
@@ -41,6 +41,23 @@ def _expand_semantic_ids(sql: str, deps: ChatDeps) -> str:
     return sql
 
 
+def _semantic_tier_counts(deps: ChatDeps, rows: list[dict]) -> list[dict] | None:
+    """
+    Répartition par catégorie de correspondance sémantique, RECALCULÉE sur les tickets
+    réellement renvoyés par la requête.
+
+    En recherche hybride, les compteurs produits par ``semantic_ticket_filter`` décrivent
+    le filtre sémantique SEUL, avant que les critères structurés ne l'aient réduit : les
+    annoncer tels quels donnerait un total différent du nombre de résultats affiché.
+    """
+    if not deps.semantic_tiers:
+        return None
+    ids = [row["id"] for row in rows if "id" in row]
+    if len(ids) != len(rows):
+        return None
+    return tier_counts_for(deps.semantic_tiers, ids)
+
+
 async def db_schema(ctx: RunContext[ChatDeps]) -> str:
     """
     Retourne le schéma de la base (tables, colonnes, types, clés étrangères)
@@ -61,7 +78,12 @@ async def run_sql(ctx: RunContext[ChatDeps], sql: str) -> dict:
     couche de délégation de créer/mettre à jour la recherche persistée.
 
     En recherche hybride, le jeton ``{{SEMANTIC_IDS}}`` de la requête est remplacé par
-    la liste de tickets calculée par ``semantic_ticket_filter`` avant l'exécution.
+    la liste de tickets calculée par ``semantic_ticket_filter`` avant l'exécution, et la
+    réponse porte en plus ``tier_counts`` : la répartition des tickets TROUVÉS par
+    catégorie de correspondance sémantique, du plus littéral (tier 0 : terme dans le
+    titre) au plus flou (tier 4 : proximité sémantique pure). C'est la SEULE répartition
+    à annoncer à l'utilisateur : elle tient compte des filtres exacts, contrairement à
+    celle du filtre sémantique seul.
 
     Args:
         sql: Requête SQL créée à partir de la requête de l'utilisateur
@@ -84,7 +106,14 @@ async def run_sql(ctx: RunContext[ChatDeps], sql: str) -> dict:
 
     ctx.deps.last_sql = sql
     ctx.deps.last_count = len(rows)
-    return {"ok": True, "count": len(rows)}
+
+    result = {"ok": True, "count": len(rows)}
+    tier_counts = _semantic_tier_counts(ctx.deps, rows)
+    if tier_counts is not None:
+        result["tier_counts"] = tier_counts
+        for entry in tier_counts:
+            print(f"[TIER {entry['tier']} - {entry['label']}] {entry['count']} ticket(s) retenus")
+    return result
 
 
 async def run_stats_sql(ctx: RunContext[ChatDeps], sql: str) -> dict:

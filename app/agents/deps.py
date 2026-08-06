@@ -36,6 +36,7 @@ class ChatDeps:
     # Filtre sémantique calculé par le tool `semantic_ticket_filter`
     semantic_ticket_ids: list[int] = field(default_factory=list)
     semantic_terms: list[str] = field(default_factory=list)
+    semantic_tiers: dict[int, int] = field(default_factory=dict)
 
     # Requête SQL précédente à affiner (renseignée en mode affinage).
     previous_sql: str | None = None

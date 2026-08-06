@@ -75,6 +75,13 @@ HYBRID_AGENT_TOOLS_PROMPT = """
     - Ajoute ensuite une balise <br/> puis un récapitulatif des termes inclus dans la recherche
         sémantique (champ `synonyms` renvoyé par `semantic_ticket_filter`). N'ajoute aucun terme
         que tu n'as pas utilisé.
+    - Ajoute ensuite, ligne par ligne, la répartition des tickets trouvés par catégorie de
+        correspondance : champ `tier_counts` renvoyé par **`run_sql`**, pour chaque élément son
+        `label` et son `count`, dans l'ordre fourni. Précise que les tickets sont affichés dans
+        cet ordre.
+        ⚠️ Cette répartition vient de `run_sql`, JAMAIS de `semantic_ticket_filter` : seule
+        celle de `run_sql` tient compte des filtres exacts, et donc seule sa somme est égale
+        au nombre de résultats que tu annonces.
     - Après une balise <br/> pour sauter une ligne, ajoute une seule phrase d'aide :
         *"Tu peux me demander de sauvegarder la recherche, l'affiner ou corriger mon comportement."*
     - Si `count` vaut 0, dis simplement qu'aucun ticket ne correspond à la fois aux filtres et au
@@ -82,7 +89,8 @@ HYBRID_AGENT_TOOLS_PROMPT = """
     - Interdictions absolues :
         - ❌ N'inclus jamais la requête SQL dans la réponse.
         - ❌ N'inclus jamais des exemples de tickets trouvés.
-        - ❌ N'annonce jamais un nombre de tickets qui ne vient pas de `run_sql`.
+        - ❌ N'annonce jamais un nombre de tickets qui ne vient pas de `run_sql`, y compris
+            dans la répartition par catégorie de correspondance.
         - ❌ N'ajoute aucun autre texte (pas d'explications, pas de détails techniques).
 
     ## EXEMPLE COMPLET

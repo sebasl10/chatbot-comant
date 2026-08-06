@@ -169,6 +169,21 @@ async def _search_term(query: str, threshold: float, use_synonyms: bool) -> dict
     }
 
 
+def tier_counts_for(tiers: dict[int, int], ticket_ids: list[int]) -> list[dict]:
+    """
+    Répartition ``[{tier, label, count}]`` des ``ticket_ids`` donnés, dans l'ordre des tiers.
+    """
+    counts: dict[int, int] = {}
+    for tid in ticket_ids:
+        tier = tiers.get(tid)
+        if tier is not None:
+            counts[tier] = counts.get(tier, 0) + 1
+    return [
+        {"tier": tier, "label": label, "count": counts.get(tier, 0)}
+        for tier, label in TIER_LABELS.items()
+    ]
+
+
 def _combine(results: list[dict], operator: str) -> tuple[list[int], dict[int, int]]:
     """
     Fusionne les résultats de plusieurs sujets et renvoie ``(ticket_ids triés, tiers)``.
@@ -213,15 +228,13 @@ async def query_tickets(
     operator = "and" if str(operator).strip().lower() in {"and", "et"} else "or"
     terms = [q.strip() for q in queries if q and q.strip()]
 
-    empty_tier_counts = [
-        {"tier": tier, "label": label, "count": 0} for tier, label in TIER_LABELS.items()
-    ]
     if not terms:
         return {
             "ticket_ids": [],
+            "tiers": {},
             "synonyms": [],
             "count": 0,
-            "tier_counts": empty_tier_counts,
+            "tier_counts": tier_counts_for({}, []),
             "queries": [],
             "operator": operator,
         }
@@ -232,21 +245,17 @@ async def query_tickets(
     # Tous les termes réellement utilisés (sujets + synonymes), sans doublon, dans l'ordre.
     terms_used = list(dict.fromkeys(t for r in results for t in r["terms_used"]))
 
-    tier_counts: dict[int, int] = {}
-    for tid in ticket_ids:
-        tier_counts[tiers[tid]] = tier_counts.get(tiers[tid], 0) + 1
+    tier_counts = tier_counts_for(tiers, ticket_ids)
     print(f"[SUJETS] {terms} (operateur: {operator})")
-    for tier, label in TIER_LABELS.items():
-        print(f"[TIER {tier} - {label}] {tier_counts.get(tier, 0)} ticket(s)")
+    for entry in tier_counts:
+        print(f"[TIER {entry['tier']} - {entry['label']}] {entry['count']} ticket(s)")
 
     return {
         "ticket_ids": ticket_ids,
+        "tiers": tiers,
         "synonyms": terms_used,
         "count": len(ticket_ids),
-        "tier_counts": [
-            {"tier": tier, "label": label, "count": tier_counts.get(tier, 0)}
-            for tier, label in TIER_LABELS.items()
-        ],
+        "tier_counts": tier_counts,
         "queries": terms,
         "operator": operator,
     }
@@ -358,6 +367,7 @@ async def semantic_ticket_filter(
 
     ctx.deps.semantic_ticket_ids = ticket_ids
     ctx.deps.semantic_terms = result["synonyms"]
+    ctx.deps.semantic_tiers = result["tiers"]
 
     return {
         "filter_sql": f"t.id IN ({SEMANTIC_IDS_TOKEN})",

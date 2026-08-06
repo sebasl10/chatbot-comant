@@ -163,6 +163,8 @@ L'agent découpe la demande en deux : les critères structurés d'un côté, les
 
 Les thèmes multiples fonctionnent ici comme en recherche par thème (« ou » réunit, « et » croise), en un seul appel : le filtre inséré dans la requête reste `t.id IN (…)`, quel que soit le nombre de thèmes. Le « et » qui relie deux critères structurés, lui, reste une condition `AND` ordinaire — c'est la distinction que l'agent doit faire au moment de décomposer la demande.
 
+La répartition par niveau de correspondance est annoncée ici aussi, mais **recalculée après coup** sur les tickets réellement retenus : celle du filtre sémantique décrit l'ensemble avant que les critères exacts ne l'aient réduit, et sa somme ne correspondrait pas au nombre de résultats affiché.
+
 Les identifiants ne transitent jamais par le modèle : l'outil sémantique rend un marqueur, l'agent l'insère tel quel dans sa clause `WHERE`, et la liste réelle est substituée juste avant l'exécution. L'ordre de pertinence sémantique est préservé dans le résultat final.
 
 ### Statistiques
