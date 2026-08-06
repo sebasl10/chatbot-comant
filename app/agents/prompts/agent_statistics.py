@@ -240,7 +240,7 @@ PRESENTATION = """
     de filtrer les parts une par une. Ne bascule donc JAMAIS sur `bar` sous
     prétexte qu'il y a beaucoup de salariés, de projets ou de types.
     Ex : "le temps effectif par salarié" (même avec 40 salariés), "la répartition
-    du temps par type de ticket", "le temps passé par projet en 2026".
+    du temps par type de ticket, projet ou produit", "le temps passé par projet en 2026".
 
   3. **`bar`** — la statistique renvoie des valeurs **NUMÉRIQUES**
     (`format: "number"` ou `"percent"`) : comptages, moyennes, pourcentages.
@@ -384,8 +384,11 @@ TOOLS = """
   graphe n'est adapté, bascule sur `graph_type='table'`.
 
   6. Enfin, réponds en UNE SEULE phrase en français qui décrit l'indicateur calculé, le regroupement
-  et les filtres appliqués
-  Exemple : "Voici le temps effectif par salarié sur le projet CAO2026."
+  et les filtres appliqués. Après une balise <br/> pour sauter une ligne, ajoute une seule phrase d'aide : 
+  *"Tu peux me demander de sauvegarder la statistique, l'affiner ou corriger mon comportement."*
+
+  Exemple : "Voici le temps effectif par salarié sur le projet CAO2026. Tu peux me demander de sauvegarder 
+  la statistique, l'affiner ou corriger mon comportement."
 
   - Interdictions absolues :
       - ❌ N'écris JAMAIS la requête SQL dans ta réponse : elle est ajoutée automatiquement
