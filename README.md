@@ -151,6 +151,8 @@ L'agent valide les entités citées, construit la requête à partir du schéma 
 
 Le thème est d'abord enrichi des synonymes connus, puis converti en embeddings et comparé aux tickets indexés dans Chroma. Les résultats sont ensuite **reclassés par priorité lexicale** : un ticket dont le titre contient le terme exact passe devant un ticket seulement proche sémantiquement. Cinq niveaux, du plus littéral au plus flou, dont la répartition est annoncée à l'utilisateur.
 
+Une demande peut porter sur **plusieurs sujets**, et la conjonction utilisée décide de la combinaison : « cinématique **ou** annotations » réunit les deux jeux de résultats, « cinématique **et** annotations » les croise. Chaque sujet est cherché séparément — avec ses propres synonymes et sa propre priorité lexicale — et ce n'est qu'ensuite que les listes sont réunies ou intersectées. Le classement suit : en union, un ticket vaut par son meilleur sujet ; en intersection, par son plus mauvais, puisqu'une conjonction ne vaut que par son maillon le plus faible.
+
 La requête produite est une liste d'identifiants (`WHERE t.id IN (…)`), ce qui la rend interchangeable avec une recherche par filtres du point de vue de l'application.
 
 ### Hybride

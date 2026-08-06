@@ -58,16 +58,31 @@ TICKET_SEARCH_CAPABILITY_INSTRUCTIONS = """
     Tu dois OBLIGATOIREMENT suivre et respecter ce workflow, dans l'ordre, sans en sauter d'étape
     (utilise les outils, ne renvoie jamais de SQL brut) :
 
-    1. Extrais le sujet de recherche du message (quelques mots-clés). Ne modifie jamais le texte, ne change pas les minuscules et majuscules.
-    - Ex: "Cherche les tickets qui parlent d'annotations 3d" => "annotations 3d"
+    1. Extrais du message la LISTE des sujets de recherche (quelques mots-clés chacun) et
+    l'OPÉRATEUR qui les relie. Ne modifie jamais le texte des sujets, ne change pas les
+    minuscules et majuscules.
+    - Un seul sujet → une liste d'un seul élément.
+    - « ou », ou une simple énumération (« A, B, C ») → `operator="or"` : il suffit que le
+      ticket parle de L'UN des sujets.
+    - « et » → `operator="and"` : le ticket doit parler de TOUS les sujets à la fois.
+    - Ex: "Cherche les tickets qui parlent d'annotations 3d"
+      => queries=["annotations 3d"], operator="or"
+    - Ex: "Cherche les tickets qui parlent de cinématique ou d'annotations"
+      => queries=["cinématique", "annotations"], operator="or"
+    - Ex: "Cherche les tickets qui parlent de cinématique et d'annotations"
+      => queries=["cinématique", "annotations"], operator="and"
+    - Ne découpe PAS un sujet qui forme un tout : "annotations 3d" est UN sujet, pas deux.
 
-    2. Appelle `semantic_ticket_search(query=<sujet>)` pour obtenir la requête SQL (`sql_query`), le nombre de résultats (`count`), le vocabulaire utilisé (`synonyms`) et la répartition par catégorie de correspondance (`tier_counts`).
+    2. Appelle `semantic_ticket_search(queries=<liste de sujets>, operator=<"or" ou "and">)` pour obtenir la requête SQL (`sql_query`), le nombre de résultats (`count`), le vocabulaire utilisé (`synonyms`) et la répartition par catégorie de correspondance (`tier_counts`).
     La requête SQL est déjà construite au format : `SELECT t.id, t.summary, t.description FROM ticket t WHERE t.id IN (<ids>)`.
     Si sql_query contient `WHERE t.id IN ()`, dit à l'utilisateur qu'aucun ticket correspond à la recherche.
 
     3. FORMAT DE SORTIE (A RESPECTER OBLIGATOIREMENT)
     Ta réponse doit être un paragraphe en français qui doit contenir OBLIGATOIREMENT les éléments suivants:
     - Le nombre de tickets trouvés (champ count de la réponse du tool semantic_ticket_search),
+    - S'il y avait PLUSIEURS sujets (champ queries), précise comment ils ont été combinés :
+      `operator="or"` → les tickets parlent de l'un OU l'autre des sujets ;
+      `operator="and"` → les tickets parlent de TOUS les sujets à la fois.
     - Un saut de ligne et un récapitulatif des termes inclus dans la recherche sémantique (champ synonyms de la réponse du tool semantic_ticket_search).
     - Ajoute ensuite, ligne par ligne, la répartition du nombre de tickets par catégorie de correspondance (champ tier_counts : pour chaque élément, son label et son count), dans l'ordre fourni.
     - Précise que les tickets sont affichés dans cet ordre.
