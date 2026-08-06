@@ -3,11 +3,11 @@ Garde-fou contre les sorties inexploitables des modèles locaux.
 
 Deux dérapages sont filtrés :
 
-1. L'appel d'outil : le modèle émet son appel natif dans le texte de réponse au lieu de passer 
+1. L'appel d'outil : le modèle émet son appel natif dans le texte de réponse au lieu de passer
     par le tool-calling de l'API
    Ex : semantic_ticket_search[ARGS]{"query": "..."}
 
-2. Le dump de code source : au moment de rédiger sa phrase finale, le modèle bascule en mode 
+2. Le dump de code source : au moment de rédiger sa phrase finale, le modèle bascule en mode
     « complétion de code » et écrit une implémentation Python des tools qu'il vient d'appeler
     Ex:
    +++++ assistant_tools.py
