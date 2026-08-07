@@ -53,9 +53,18 @@ async def save_memory(
 
     Args:
         target_agent: agent qui devra respecter ce souvenir.
-            - `supervisor` : le chatbot a mal délégué/routé la demande (mauvais agent choisi ou mauvaise fonctionnaliée identifiée).
+            - `supervisor` : TOUTE règle sur le CHOIX DE L'AGENT à appeler, que ce soit une
+              correction d'un mauvais routage passé ou une consigne générale sur la façon de
+              router les futures demandes (y compris "ne délègue jamais à l'agent X",
+              "appelle toujours l'agent Y quand je demande Z", ou comment reconstruire la
+              demande à partir de l'historique avant de déléguer).
+              Un souvenir qui NOMME un agent comme destinataire d'une délégation va TOUJOURS
+              sur `supervisor`, jamais sur l'agent nommé : c'est le superviseur, et lui seul,
+              qui décide à qui déléguer.
               Ex: "Tu as délégué à l'agent memory, mais tu devais déléguer à l'agent semantic_search",
-              "Tu as fait une recherche sémantique, mais tu devais faire une recherche par filtres".
+              "Tu as fait une recherche sémantique, mais tu devais faire une recherche par filtres",
+              "Quand je demande de refaire une recherche, retrouve la demande d'origine dans
+              l'historique et appelle l'agent correspondant, jamais l'agent conversationnel".
             - `sql_research` : erreur dans la génération d'une requête SQL (filtres, colonnes, syntaxe).
               Ex: "Tu as ajouté un point-virgule à la fin de la requête SQL, ne le fais jamais",
               "Tu dois filtrer sur le status 'En attente d'une compilation', pas 'Rien à faire'".
@@ -76,8 +85,11 @@ async def save_memory(
               mauvaise règle de calcul du temps, mauvaise catégorie R&D/absence, double comptage).
               Ex: "Le temps effectif par salarié doit se baser sur planning.user_id, pas sur
               l'assigné du ticket", "Une estimation est correcte à 20 % près, pas 10 %".
-            - `conversational` : erreur de formulation ou de comportement conversationnel.
-              Ex: "Tu devais répondre ma question à partir de l'historique de la conversation".
+            - `conversational` : erreur sur la RÉDACTION de la réponse finale une fois que
+              l'agent conversationnel a déjà été choisi : formulation, ton, longueur, façon
+              d'exploiter l'historique pour rédiger.
+              Ex: "Tu devais répondre ma question à partir de l'historique de la conversation",
+              "Réponds de façon plus concise, sans reformuler ma question".
             - `memory` : erreur dans TA PROPRE classification/gestion d'un souvenir (mauvais
               `target_agent`/`kind` choisi, mauvais outil utilisé (save/update/delete), trigger
               mal reformulé). C'est une méta-correction sur ton propre comportement, pas sur un
