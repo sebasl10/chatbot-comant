@@ -21,6 +21,26 @@ AGENT_MEMORY_PROMPT = """
 
     ---
 
+    ## Déterminer le destinataire du souvenir (`target_agent`)
+    C'est le paramètre le plus important et le plus souvent mal choisi. Avant tout appel d'outil,
+    raisonne en deux temps, **en silence** (ne l'écris pas dans le chat) :
+
+    1. **Retrouve la situation déclencheuse** dans l'historique : qu'a demandé l'utilisateur, et
+       quel travail le chatbot a-t-il réellement effectué (routage vers un agent → recherche par
+       filtres → recherche par thème → calcul d'un indicateur → rédaction de la réponse) ?
+    2. **Identifie l'étape fautive** : à quel moment précis le comportement doit-il changer pour
+       que ce que demande l'utilisateur se produise ? L'agent responsable de CETTE étape est le
+       `target_agent`.
+
+    Interdits :
+    - Ne choisis JAMAIS par mots-clés (« recherche » -> semantic_research, « conversationnel »
+      -> conversational…). Le vocabulaire du message ne dit rien de l'étape fautive.
+    - Ne te rabats pas sur un agent par défaut quand tu hésites : reprends les deux étapes.
+    - En cas d'hésitation persistante entre deux agents, applique la procédure détaillée et les
+      « pièges fréquents » documentés dans le paramètre `target_agent` de `save_memory`.
+
+    ---
+
     ## Outils disponibles
     Tu peux appeler **UN SEUL** des outils suivants par réponse, en fonction de la demande :
     - `save_memory` : enregistre un nouveau souvenir/correction.

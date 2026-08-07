@@ -53,6 +53,37 @@ async def save_memory(
 
     Args:
         target_agent: agent qui devra respecter ce souvenir.
+
+            PROCÉDURE OBLIGATOIRE — ne choisis JAMAIS par ressemblance de mots entre le
+            message de l'utilisateur et les exemples ci-dessous. Pose-toi une seule
+            question : « quel agent doit changer de comportement pour que ce que
+            l'utilisateur décrit se produise ? », puis déroule dans l'ordre :
+            1. La règle porte sur QUEL agent appeler ou ne pas appeler ? -> `supervisor`.
+            2. Sinon, sur la façon dont TOI tu as classé/géré un souvenir ? -> `memory`.
+            3. Sinon, identifie dans l'historique le travail concerné :
+               - un chiffre agrégé (compte, somme, moyenne, temps, taux, répartition)
+                 -> `statistics` ;
+               - une liste de tickets obtenue par des CRITÈRES EXACTS de la base (statut,
+                 client, projet, branche, produit, composant, tag, date, priorité, type,
+                 utilisateur/trigramme) -> `sql_research` ;
+               - une liste de tickets obtenue par le SUJET/THÈME du texte libre, c'est-à-dire
+                 ce dont le ticket parle -> `semantic_research` ;
+               - les deux à la fois, ET l'erreur porte sur leur combinaison
+                 -> `hybrid_research` ;
+               - aucune recherche, juste une réponse rédigée -> `conversational`.
+
+            PIÈGES FRÉQUENTS (ce sont tes erreurs les plus courantes) :
+            - « X est un/une <valeur d'un champ de la base> » — ex: "DCheckGVP est une
+              branche dev", "PTC est un client", "TRI est le trigramme de Tristan" — est une
+              connaissance sur une VALEUR DE LA BASE : elle sert à construire le bon filtre
+              SQL -> `sql_research` avec `kind="behavior"`. Ce n'est PAS du vocabulaire.
+              `kind="vocabulary"` / `semantic_research` est réservé aux SYNONYMES d'un THÈME
+              cherché dans le texte libre des tickets (ex: "lent" ~ "performance").
+            - La présence des mots « recherche », « cherche », « branche », ou du nom d'un
+              agent dans le message ne détermine RIEN : seul compte le type de travail visé.
+            - Une consigne tournée vers l'avenir (« quand je demande X, fais Y ») se classe
+              exactement comme une correction au passé : même procédure.
+
             - `supervisor` : TOUTE règle sur le CHOIX DE L'AGENT à appeler, que ce soit une
               correction d'un mauvais routage passé ou une consigne générale sur la façon de
               router les futures demandes (y compris "ne délègue jamais à l'agent X",
@@ -65,12 +96,22 @@ async def save_memory(
               "Tu as fait une recherche sémantique, mais tu devais faire une recherche par filtres",
               "Quand je demande de refaire une recherche, retrouve la demande d'origine dans
               l'historique et appelle l'agent correspondant, jamais l'agent conversationnel".
-            - `sql_research` : erreur dans la génération d'une requête SQL (filtres, colonnes, syntaxe).
+            - `sql_research` : tout ce qui concerne les CHAMPS STRUCTURÉS de la base — génération
+              de la requête (filtres, colonnes, jointures, syntaxe) MAIS AUSSI toute connaissance
+              métier sur ce que valent ou signifient ces champs : à quelle colonne rattacher une
+              valeur, quel statut/type/priorité utiliser, à quoi correspond un nom de branche, de
+              client, de produit, de composant, un trigramme.
               Ex: "Tu as ajouté un point-virgule à la fin de la requête SQL, ne le fais jamais",
-              "Tu dois filtrer sur le status 'En attente d'une compilation', pas 'Rien à faire'".
-            - `semantic_research` : erreur dans une recherche par thème/sujet (vocabulaire ou comportement).
+              "Tu dois filtrer sur le status 'En attente d'une compilation', pas 'Rien à faire'",
+              "DCheckGVP est une branche dev" (-> l'agent doit filtrer sur `branch_dev`,
+              pas balayer les trois types de branche).
+            - `semantic_research` : erreur dans une recherche par THÈME, c'est-à-dire sur le
+              CONTENU TEXTUEL des tickets (titre/description) et non sur un champ structuré :
+              synonymes d'un concept, ou façon de formuler/élargir le thème recherché.
               Ex: "Considère 'lent' et 'slow' comme synonymes de 'performance'",
               "Kinematic doit être lié à cinématique pour les recherches".
+              Si la connaissance porte sur la valeur d'une colonne (branche, client, statut,
+              produit…), ce n'est PAS ici : choisis `sql_research`.
             - `hybrid_research` : erreur dans une recherche qui MÊLE filtres exacts et thème
               (ex: "les tickets du client TPC qui parlent d'annotations 3D"). À ne choisir que
               si l'erreur porte sur la COMBINAISON des deux : découpage entre critères
@@ -107,6 +148,11 @@ async def save_memory(
             quel que soit `target_agent` ; dans la quasi-totalité des cas tu n'as PAS
             besoin de fournir ce paramètre) ou `vocabulary` (synonymes — UNIQUEMENT
             valide si `target_agent="semantic_research"`).
+            `vocabulary` ne s'applique QUE si l'utilisateur déclare que plusieurs mots
+            veulent dire la même chose pour la recherche par thème. Une phrase du type
+            « X est un/une Y » qui rattache une valeur à un champ de la base (branche,
+            client, statut, produit…) n'est PAS du vocabulaire : c'est `behavior` sur
+            `sql_research`.
         trigger: OBLIGATOIRE (sauf `kind=vocabulary`). La requête utilisateur
             DÉCLENCHEUSE : celle de l'historique qui a causé le comportement incorrect
             à corriger (généralement l'avant-dernier message utilisateur), reformulée
