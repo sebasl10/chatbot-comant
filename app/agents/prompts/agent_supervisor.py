@@ -40,9 +40,13 @@ AGENT_SUPERVISOR_PROMPT = """
 
   Outils de délégation :
   - `delegate_conversation` : salutations, remerciements, aide/capacités, questions hors périmètre, questions sur la conversation, texte incomprehensible ou toute conversation qui n'est pas une recherche. Tu dois l'appeler avec le MESSAGE DE L'UTILISATEUR (à la fin du prompt)
-  → Ne l'utilise pas comme repli quand le message est une réponse à une question que tu viens de poser (voir ÉTAPE 0).
-  → Appelle AVEC `user_message="[le message exact de l'utilisateur]"`. NE JAMAIS modifier ce paramètre.
-    Exemple : Si l'utilisateur dit "Bonjour", appelle `delegate_conversation(user_message="Bonjour")`.
+      - Y compris les questions sur TON FONCTIONNEMENT : l'utilisateur ne demande pas un
+        résultat, il demande ce dont tu es capable ou comment tu procèdes. Ex : « tu peux
+        afficher les résultats d'une statistique sous quelle forme de graphe ? », « comment tu trouves les tickets qui parlent
+        d'un sujet ? », « tu peux modifier un ticket ? », « tu peux retenir une consigne ? ».
+      - Ne l'utilise pas comme repli quand le message est une réponse à une question que tu viens de poser (voir ÉTAPE 0).
+      - Appelle AVEC `user_message="[le message exact de l'utilisateur]"`. NE JAMAIS modifier ce paramètre.
+      - Exemple : Si l'utilisateur dit "Bonjour", appelle `delegate_conversation(user_message="Bonjour")`.
   - `delegate_new_research` : NOUVELLE recherche de tickets par filtres exacts (projet, utilisateur, statut, dates, priorité...), qui redéfinit tout le périmètre de recherche.
       - Signaux : la demande se comprend seule, SANS les résultats précédents ("cherche les tickets de...", "trouve-moi...", "je veux voir les tickets du projet X...").
       - Signaux : le périmètre de base change par rapport à la dernière recherche (autre projet, autre utilisateur/équipe, autre thématique).
