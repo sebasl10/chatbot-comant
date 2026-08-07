@@ -42,6 +42,7 @@ COMMON_BUSINESS_RULES = """## Règles métier et de la base de données
 - Les trigrammes correspondent à l'username d'un utilisateur (ex: sls, dba, mwu)
 - Quand tu dois filtrer par un projet, utilise toujours la colonne `code`, jamais la colonne `name`
 - Si le type de branche n'est pas spécifié (branche dev/branche développement, branche de travail, branche release), tu dois chercher dans les 3 types de branche
+- Le type d'une branche est propre à CHAQUE branche : ne le déduis jamais d'une autre branche déjà présente dans la conversation ou dans la requête. Deux branches mentionnées ensemble peuvent relever de colonnes différentes
 - L'historique de modifications des attributs d'un ticket (status, assigné, description, etc) est stocké dans la table `log` (action UPDATE)"""
 """Règles métier partagées par l'agent SQL et l'agent statistiques.
 
@@ -281,6 +282,14 @@ def build_affinage_prompt(
             **Correction** ("je voulais dire assignés, pas créés")
             → Corrige le champ ou la jointure concernée
 
+            **Nouvelle entité nommée apportée par l'affinage**
+            → Si le message introduit une valeur métier qui ne figure PAS déjà dans la requête
+            existante (branche, projet, client, composant, produit, tag, trigramme), appelle
+            `validate_entities` sur cette nouvelle valeur AVANT de toucher au SQL.
+            La forme de la condition déjà présente ne dit RIEN du type de la nouvelle valeur
+            N'ajoute JAMAIS une nouvelle valeur en recopiant la condition existante et en y
+            substituant simplement le nom : c'est l'erreur la plus fréquente en affinage.
+
             {REFERENCE_VALUES}
 
             ---
@@ -319,6 +328,13 @@ def build_affinage_prompt(
             - Si la requête existante contient une condition de la forme "t.id IN (...)", 
             tu dois TOUJOURS laisser cette condition comme la dernière condition.
 
+            7. **Validation des entités en affinage** :
+            - Partir de la requête existante ne te dispense PAS d'appeler `validate_entities` :
+            toute valeur métier NOUVELLE apportée par le message d'affinage doit être validée
+            avant d'être écrite dans le SQL.
+            - Les entités déjà validées plus tôt dans la conversation n'ont pas à l'être une
+            seconde fois : seules les nouvelles valeurs sont concernées.
+
             ---
 
             {_business_rules(user_id)}
@@ -349,6 +365,18 @@ def build_affinage_prompt(
             Dernière SQL: SELECT DISTINCT t.id, t.code, t.summary FROM ticket t WHERE t.type != 'Group' AND EXISTS (SELECT 1 FROM notification n JOIN comment c ON n.ressource_id = CONCAT('comment#', c.id) WHERE n.category = 'Mention' AND n.user_id = {user_id} AND c.ticket_id = t.id)
             Message: "enlève le filtre des mentions, garde juste les bugs"
             → SELECT DISTINCT t.id, t.code, t.summary FROM ticket t WHERE t.type = 'Bug'
+
+            Dernière SQL: SELECT DISTINCT t.id, t.code, t.summary FROM ticket t JOIN project_ticket pt ON pt.ticket_id = t.id JOIN project p ON p.id = pt.project_id WHERE FIND_IN_SET('PChlorine', REPLACE(p.branches, ' ', '')) > 0 AND t.type != 'Group'
+            Message: "je veux aussi les tickets de la branche RTest"
+            → RTest est une entité nouvelle : appelle D'ABORD
+            `validate_entities(entities=[{{"type": "branch_dev", "value": "RTest"}}, {{"type": "branch_travail", "value": "RTest"}}, {{"type": "branch_release", "value": "RTest"}}])`
+            Le tool répond que seul `branch_release` correspond -> RTest est une branche release,
+            alors que PChlorine était une branche de travail. Chaque branche garde donc SA
+            colonne :
+            → SELECT DISTINCT t.id, t.code, t.summary FROM ticket t JOIN project_ticket pt ON pt.ticket_id = t.id JOIN project p ON p.id = pt.project_id WHERE (FIND_IN_SET('PChlorine', REPLACE(p.branches, ' ', '')) > 0 OR p.branch_release = 'RTest') AND t.type != 'Group'
+            (❌ l'erreur à ne pas commettre : écrire
+            `FIND_IN_SET('RTest', REPLACE(p.branches, ' ', '')) > 0` par recopie de la condition
+            de PChlorine, sans avoir validé RTest)
             """
 
 
@@ -359,6 +387,9 @@ SQL_AGENT_TOOLS_PROMPT = """
     1. Si le message mentionne des entités nommées (username, projet, utilisateur, client,
     composant, produit, projet, tag, branche, branch_dev, branch_release, branch_travail),
     appelle d'abord `validate_entities` pour les valider.
+    Cela vaut AUSSI en affinage : une entité nouvelle apportée par la demande d'affinage se
+    valide exactement comme dans une recherche initiale, même si tu pars d'une requête
+    existante qui filtre déjà sur une entité du même genre.
     - Si des entités sont en statut `suggestion`, demande à l'utilisateur s'il est d'accord
     avec ces suggestions en affichant un message court contenant uniquement les suggestions
     et la question de validation. Indique aussi que s'il n'est pas d'accord avec la suggestion, il peut envoyer la valeur correcte.
