@@ -33,6 +33,12 @@ def get_connection(db: str = "comant"):
         raise RuntimeError(f"Erreur de connexion à la base de données : {e}")
 
 
+def normalize_sql(sql: str | None) -> str | None:
+    if sql is None:
+        return None
+    return re.sub(r"[;\s]+$", "", sql.strip())
+
+
 # Recupère les tables et colonnes réelles depuis la base
 def get_db_schema():
     conn = get_connection()
@@ -178,7 +184,9 @@ def create_research(user_id: int, sql: str, isSemantic: bool = False) -> int:
                 INSERT INTO research (creator_id, name, filters, columns, sql_request, is_semantic)
                 VALUES (%s, %s, '[]', %s, %s, %s)
             """
-            cursor.execute(query, (user_id, name, defaultColumns_json, sql, isSemantic))
+            cursor.execute(
+                query, (user_id, name, defaultColumns_json, normalize_sql(sql), isSemantic)
+            )
             conn.commit()
             research_id = cursor.lastrowid
             return research_id
@@ -205,7 +213,10 @@ def update_sql(last_message_id: int, sql: str, research_id: int) -> int:
                 if research_id is None:
                     raise ValueError(f"Le message {last_message_id} n'a pas de research_id associé")
 
-            cursor.execute("UPDATE research SET sql_request = %s WHERE id = %s", (sql, research_id))
+            cursor.execute(
+                "UPDATE research SET sql_request = %s WHERE id = %s",
+                (normalize_sql(sql), research_id),
+            )
             conn.commit()
             return research_id
     except Exception as e:
@@ -406,7 +417,15 @@ def update_statistic(
             """
             cursor.execute(
                 query,
-                (sql, external_sql, last_result, graph_type, labels, description, statistic_id),
+                (
+                    normalize_sql(sql),
+                    normalize_sql(external_sql),
+                    last_result,
+                    graph_type,
+                    labels,
+                    description,
+                    statistic_id,
+                ),
             )
             conn.commit()
     except Exception as e:
@@ -441,8 +460,8 @@ def create_statistic(
                     user_id,
                     name,
                     now,
-                    sql,
-                    external_sql,
+                    normalize_sql(sql),
+                    normalize_sql(external_sql),
                     last_result,
                     graph_type,
                     labels,
