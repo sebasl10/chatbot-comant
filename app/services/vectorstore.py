@@ -347,12 +347,15 @@ def _debug_memory(
     docs: list[str],
     metas: list[dict] | None = None,
     distances: list[float | None] | None = None,
+    meta_keys: tuple[str, ...] | None = None,
 ) -> None:
     """
     Affiche un bloc de débogage pour toute écriture/lecture de souvenir.
     ``distances`` (optionnel, aligné sur ``docs``) : distance cosinus du souvenir
     à la requête, pour calibrer ``MEMORY_MAX_DISTANCE``. None pour un invariant,
     récupéré par filtre de métadonnées et donc sans distance.
+    ``meta_keys`` (optionnel) : restreint l'affichage des métadonnées à ces clés
+    (celles absentes sont ignorées, et rien n'est affiché s'il n'en reste aucune).
     """
     print(f"\n{'━' * 64}")
     print(f"[MEMORY {action}] {header}")
@@ -366,7 +369,10 @@ def _debug_memory(
             suffix = f"  (distance={dist:.3f})" if dist is not None else "  (invariant)"
         print(f"  {i + 1}. {doc}{suffix}")
         if meta is not None:
-            print(f"     meta: {meta}")
+            if meta_keys is not None:
+                meta = {k: meta[k] for k in meta_keys if k in meta}
+            if meta:
+                print(f"     meta: {meta}")
     print("━" * 64)
 
 
@@ -463,6 +469,7 @@ async def get_memories_text(
             raw_docs,
             raw_metas,
             raw_dists,
+            meta_keys=("correction",),
         )
         for i, doc in enumerate(raw_docs):
             dist = raw_dists[i] if i < len(raw_dists) else None
