@@ -333,6 +333,10 @@ TOOLS = """
   - Si des entités sont en statut `unknown`, informe l'utilisateur que les entités n'existent
   pas et qu'il doit vérifier ses informations ou l'orthographe.
   Dans ces deux cas, demande une clarification AVANT de construire la requête.
+  ⚠️ Ta réponse s'ARRÊTE là : elle ne contient QUE la clarification demandée. Aucune
+  statistique n'a été calculée, donc il n'y a rien à sauvegarder, à affiner ni à afficher —
+  n'ajoute SURTOUT PAS la phrase d'aide du point 5, ni une description d'indicateur.
+  Ces éléments ne sont autorisés QU'APRÈS un `run_stats_sql` réussi.
 
   2. Construis la requête SQL d'agrégation (un `SELECT`), puis appelle OBLIGATOIREMENT
   `run_stats_sql` pour l'exécuter et la valider.
@@ -369,6 +373,9 @@ TOOLS = """
         sous ton message. L'écrire toi-même la ferait apparaître en double.
       - ❌ Ne détaille jamais les valeurs chiffrées du résultat (pas de tableau, pas de liste).
       - ❌ N'ajoute aucun autre texte (pas d'explications techniques, pas de reformulation).
+      - ❌ La phrase d'aide appartient au SEUL cas d'un `run_stats_sql` réussi. Ne la mets
+        jamais au bas d'une demande de clarification, d'un message d'entité inconnue ou de
+        n'importe quelle réponse où aucune statistique n'a été calculée.
 
   Respecte impérativement les RÈGLES MÉMORISÉES ci-dessous si présentes.
 """
@@ -395,6 +402,9 @@ TOOLS_AFFINAGE = """
   - Si des entités sont en statut `unknown`, informe l'utilisateur que les entités n'existent
   pas et qu'il doit vérifier ses informations ou l'orthographe.
   Dans ces deux cas, demande une clarification AVANT de modifier la requête.
+  ⚠️ Ta réponse s'ARRÊTE là : elle ne contient QUE la clarification demandée. L'affinage
+  n'a pas eu lieu — ne décris pas la statistique modifiée et n'ajoute aucune phrase
+  d'aide proposant de la sauvegarder, l'affiner ou changer son graphe.
 
   2. UNIQUEMENT si la demande change les DONNÉES (filtre, période, regroupement, indicateur) :
   reprends la requête SQL principale actuelle, applique la modification demandée, puis appelle

@@ -396,6 +396,10 @@ SQL_AGENT_TOOLS_PROMPT = """
     - Si des entités sont en statut `unknown`, informe l'utilisateur que les entités n'existent
     pas et qu'il doit vérifier ses informations ou l'orthographe.
     Dans ces deux cas, demande une clarification à l'utilisateur avant de continuer.
+    ⚠️ Ta réponse s'ARRÊTE là : elle ne contient QUE la clarification demandée. Aucune
+    recherche n'a été faite, donc il n'y a rien à sauvegarder ni à affiner — n'ajoute
+    SURTOUT PAS la phrase d'aide du point 4, ni un nombre de résultats, ni un rappel de
+    filtres. Ces éléments ne sont autorisés QU'APRÈS un `run_sql` réussi.
     2. Construis OBLIGATOIREMENT la requête SQL (un SELECT), puis appelle OBLIGATOIREMENT `run_sql`
     pour l'exécuter et la vérifier.
     3. Si `run_sql` renvoie `{"ok": false, "error": ...}`, CORRIGE ta requête à
@@ -407,6 +411,9 @@ SQL_AGENT_TOOLS_PROMPT = """
         - ❌ N'inclus jamais la requête SQL dans la réponse.
         - ❌ N'inclus jamais des exemples de tickets trouvés.
         - ❌ N'ajoute aucun autre texte (pas d'explications, pas de détails techniques, pas de reformulation).
+        - ❌ Cette phrase d'aide appartient au SEUL cas d'un `run_sql` réussi. Ne la mets jamais
+            au bas d'une demande de clarification, d'un message d'entité inconnue ou de
+            n'importe quelle réponse où aucune recherche n'a été exécutée.
 
     Respecte impérativement les RÈGLES MÉMORISÉES ci-dessous si présentes.
 """

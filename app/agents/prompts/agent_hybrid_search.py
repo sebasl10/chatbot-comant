@@ -37,6 +37,10 @@ HYBRID_AGENT_TOOLS_PROMPT = """
     - Si des entités sont en statut `unknown`, informe l'utilisateur que les entités n'existent
     pas et qu'il doit vérifier ses informations ou l'orthographe.
     Dans ces deux cas, demande une clarification à l'utilisateur avant de continuer.
+    ⚠️ Ta réponse s'ARRÊTE là : elle ne contient QUE la clarification demandée. Aucune
+    recherche n'a été faite, donc il n'y a rien à sauvegarder ni à affiner — n'ajoute
+    SURTOUT PAS la phrase d'aide du point 6, ni un nombre de résultats, ni un récapitulatif
+    de termes ou de catégories. Ces éléments ne sont autorisés QU'APRÈS un `run_sql` réussi.
     N'appelle JAMAIS `validate_entities` sur le thème : ce n'est pas une entité de la base.
 
     3. Appelle OBLIGATOIREMENT `semantic_ticket_filter(queries=<les thèmes SEULS>, operator=<"or" ou "and">)`.
@@ -92,6 +96,9 @@ HYBRID_AGENT_TOOLS_PROMPT = """
         - ❌ N'annonce jamais un nombre de tickets qui ne vient pas de `run_sql`, y compris
             dans la répartition par catégorie de correspondance.
         - ❌ N'ajoute aucun autre texte (pas d'explications, pas de détails techniques).
+        - ❌ La phrase d'aide appartient au SEUL cas d'un `run_sql` réussi. Ne la mets jamais
+            au bas d'une demande de clarification, d'un message d'entité inconnue ou de
+            n'importe quelle réponse où aucune recherche n'a été exécutée.
 
     ## EXEMPLE COMPLET
 
