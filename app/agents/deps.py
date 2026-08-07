@@ -30,6 +30,10 @@ class ChatDeps:
     last_sql: str | None = None
     last_count: int = 0
 
+    # `validate_entities` a renvoyé une entité en `suggestion`/`unknown` : l'agent doit
+    # rendre la main pour demander une clarification, sans avoir exécuté de requête.
+    awaiting_entity_clarification: bool = False
+
     # Mode courant de l'agent SQL : "recherche" (nouvelle recherche) ou "affinage" (modification d'une recherche existante).
     mode: str = "recherche"
 

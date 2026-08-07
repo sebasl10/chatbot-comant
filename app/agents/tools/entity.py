@@ -49,6 +49,10 @@ async def validate_entities(ctx: RunContext[ChatDeps], entities: list[Entity]) -
     """
     raw = [e.model_dump() for e in entities]
     linked = await asyncio.to_thread(link_entities, raw)
+    
+    ctx.deps.awaiting_entity_clarification = any(
+        e["status"] in ("suggestion", "unknown") for e in linked
+    )
     return {"entities": linked}
 
 
